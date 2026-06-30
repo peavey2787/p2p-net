@@ -1,0 +1,16 @@
+[package]
+name = "libp2p-dns"
+version = "0.44.0"
+edition = "2021"
+license = "MIT"
+description = "p2p-net local DNS transport patch without Hickory resolver dependencies."
+publish = false
+
+[features]
+default = ["tokio"]
+tokio = []
+
+[dependencies]
+futures = "0.3"
+libp2p-core = "0.43.2"
+tokio = { version = "1", features = ["net"] }

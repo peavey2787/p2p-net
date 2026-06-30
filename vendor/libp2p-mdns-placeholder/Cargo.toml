@@ -1,0 +1,15 @@
+[package]
+name = "libp2p-mdns"
+version = "0.48.0"
+edition = "2021"
+license = "MIT"
+description = "p2p-net policy placeholder: upstream libp2p mDNS intentionally disabled."
+publish = false
+
+[features]
+default = []
+tokio = []
+
+[lib]
+name = "libp2p_mdns"
+path = "src/lib.rs"

@@ -1,0 +1,122 @@
+[package]
+name = "p2p-net"
+version = "0.1.0"
+edition = "2021"
+license = "BUSL-1.1"
+description = "Standalone all-in-one libp2p node with discovery, heartbeat gossip, NAT traversal, DCUtR, and optional Circuit Relay service."
+publish = false
+
+[features]
+default = ["dns"]
+# DNS is enabled by default through p2p-net's own bounded startup resolver plus
+# a local no-Hickory libp2p-dns compatibility patch required by WebSocket.
+# /dnsaddr is resolved before configured/cached dials through p2p-net's
+# operator-configurable DoH path; the transport adapter rejects /dnsaddr so
+# there is no hidden hard-coded third-party resolver.
+# LAN multicast discovery/mDNS is intentionally not included.
+dns = ["libp2p/dns"]
+dashboard = ["dep:crossterm", "dep:ratatui"]
+
+[lib]
+name = "p2p_net"
+path = "src/lib.rs"
+
+[[example]]
+name = "p2p_node"
+path = "examples/p2p_node.rs"
+required-features = ["dashboard"]
+test = false
+bench = false
+
+[[test]]
+name = "windows_build"
+path = "unit_tests/windows_build.rs"
+
+[[test]]
+name = "swarm_smoke"
+path = "unit_tests/swarm_smoke.rs"
+
+[[test]]
+name = "pulse_validation"
+path = "unit_tests/pulse_validation.rs"
+
+[[test]]
+name = "config_defaults"
+path = "unit_tests/config_defaults.rs"
+
+[[test]]
+name = "relay_client"
+path = "unit_tests/relay_client.rs"
+
+[[test]]
+name = "relay_server_limits"
+path = "unit_tests/relay_server_limits.rs"
+
+[[test]]
+name = "message_security"
+path = "unit_tests/message_security.rs"
+
+[[test]]
+name = "discovery"
+path = "unit_tests/discovery.rs"
+
+[[test]]
+name = "rendezvous"
+path = "unit_tests/rendezvous.rs"
+
+[[test]]
+name = "observability"
+path = "unit_tests/observability.rs"
+
+[[test]]
+name = "hostile_network"
+path = "unit_tests/hostile_network.rs"
+
+[[test]]
+name = "multi_node_hostile"
+path = "unit_tests/multi_node_hostile.rs"
+
+[dependencies]
+futures = "0.3"
+libp2p = { version = "0.56", default-features = false, features = [
+    "tokio",
+    "tcp",
+    "noise",
+    "yamux",
+    "quic",
+    "websocket",
+    "gossipsub",
+    "kad",
+    "identify",
+    "ping",
+    "relay",
+    "autonat",
+    "dcutr",
+    "macros",
+] }
+libp2p-rendezvous = "0.17.1"
+ratatui = { version = "0.29", optional = true }
+crossterm = { version = "0.28", optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hex = "0.4"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "fs", "io-util", "net"] }
+tracing = "0.1"
+blake3 = "1"
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+[[test]]
+name = "dependency_policy"
+path = "unit_tests/dependency_policy.rs"
+
+[patch.crates-io]
+
+# rust-libp2p's WebSocket builder expects libp2p-dns when WebSocket support
+# is compiled. Patch libp2p-dns to a local no-Hickory adapter. Patch unused mDNS
+# to a no-op placeholder so the rejected Hickory DNS parser/resolver line cannot
+# enter Cargo.lock through optional metadata. p2p-net /dnsaddr support lives in
+# src/connectivity/dns.rs.
+libp2p-dns = { path = "vendor/libp2p-dns" }
+libp2p-mdns = { path = "vendor/libp2p-mdns-placeholder" }

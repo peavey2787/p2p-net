@@ -1,0 +1,347 @@
+use libp2p::swarm::Swarm;
+use libp2p::{identify, Multiaddr, PeerId};
+use libp2p_rendezvous as rendezvous;
+
+use crate::connectivity::discovery::DiscoveryConfig;
+use crate::connectivity::peer_cache;
+use crate::connectivity::relay::{relay_reservation_addr, RelayReservationPlan};
+use crate::connectivity::rendezvous::{peer_record_addrs, RendezvousActionPlan, RendezvousState};
+
+use super::behaviour::{MeshBehaviour, MeshEvent};
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StartupDiscoveryPlan {
+    pub dial_addrs: Vec<Multiaddr>,
+    pub bootstrap_peer_count: usize,
+    pub bootstrap_seed_count: usize,
+    pub rendezvous_seed_count: usize,
+    pub cached_peer_count: usize,
+}
+
+pub fn startup_discovery_plan(
+    bootstrap_peers: Vec<Multiaddr>,
+    bootstrap_seed_peers: Vec<Multiaddr>,
+    rendezvous_peers: Vec<Multiaddr>,
+    cached_peers: Vec<Multiaddr>,
+) -> StartupDiscoveryPlan {
+    let mut plan = StartupDiscoveryPlan {
+        bootstrap_peer_count: bootstrap_peers.len(),
+        bootstrap_seed_count: bootstrap_seed_peers.len(),
+        rendezvous_seed_count: rendezvous_peers.len(),
+        cached_peer_count: cached_peers.len(),
+        dial_addrs: Vec::new(),
+    };
+
+    for addr in bootstrap_peers
+        .into_iter()
+        .chain(bootstrap_seed_peers)
+        .chain(rendezvous_peers)
+        .chain(cached_peers)
+    {
+        if extract_p2p_peer_id(&addr).is_some() && !plan.dial_addrs.contains(&addr) {
+            plan.dial_addrs.push(addr);
+        }
+    }
+
+    plan
+}
+
+pub fn seed_bootstrap(swarm: &mut Swarm<MeshBehaviour>, addrs: &[Multiaddr]) {
+    for addr in addrs {
+        if let Some(peer) = extract_p2p_peer_id(addr) {
+            add_peer_address_to_discovery(swarm, peer, addr.clone());
+            let _ = swarm.dial(addr.clone());
+        }
+    }
+    let _ = swarm.behaviour_mut().kademlia.bootstrap();
+}
+
+/// Dial configured relay peers and request a Circuit Relay v2 reservation by
+/// listening on each relay's `/p2p-circuit` address.
+pub fn reserve_configured_relays(
+    swarm: &mut Swarm<MeshBehaviour>,
+    relay_addrs: &[Multiaddr],
+) -> RelayReservationPlan {
+    let mut plan = RelayReservationPlan::default();
+
+    for relay_addr in relay_addrs {
+        if let Some(peer) = extract_p2p_peer_id(relay_addr) {
+            add_peer_address_to_discovery(swarm, peer, relay_addr.clone());
+        }
+
+        let _ = swarm.dial(relay_addr.clone());
+
+        let Some(listen_addr) = relay_reservation_addr(relay_addr) else {
+            plan.errors.push(format!(
+                "relay peer address cannot be converted to reservation address: {relay_addr}"
+            ));
+            continue;
+        };
+
+        match swarm.listen_on(listen_addr.clone()) {
+            Ok(_) => {
+                plan.attempted = plan.attempted.saturating_add(1);
+                plan.listen_addrs.push(listen_addr);
+            }
+            Err(err) => plan.errors.push(format!(
+                "relay reservation listen_on failed for {listen_addr}: {err}"
+            )),
+        }
+    }
+
+    plan
+}
+
+/// Dial configured rendezvous peers and issue register/discover requests when enabled.
+/// Registration is safe to call repeatedly; the caller passes `RendezvousState` so we avoid
+/// repeated registrations after one succeeds.
+pub fn refresh_rendezvous(
+    swarm: &mut Swarm<MeshBehaviour>,
+    discovery_cfg: &DiscoveryConfig,
+    rendezvous_addrs: &[Multiaddr],
+    state: &mut RendezvousState,
+) -> RendezvousActionPlan {
+    let mut plan = RendezvousActionPlan::default();
+    let rv_cfg = &discovery_cfg.rendezvous;
+
+    if !rv_cfg.client_enabled || rendezvous_addrs.is_empty() {
+        return plan;
+    }
+
+    let namespace = match rv_cfg.namespace() {
+        Ok(v) => v,
+        Err(err) => {
+            plan.errors.push(err.to_string());
+            return plan;
+        }
+    };
+
+    for addr in rendezvous_addrs {
+        let Some(peer) = extract_p2p_peer_id(addr) else {
+            plan.errors
+                .push(format!("rendezvous address lacks /p2p/<PeerId>: {addr}"));
+            continue;
+        };
+
+        add_peer_address_to_discovery(swarm, peer, addr.clone());
+        let _ = swarm.dial(addr.clone());
+
+        let Some(client) = swarm.behaviour_mut().rendezvous_client.as_mut() else {
+            plan.errors
+                .push("rendezvous client behaviour is disabled".to_string());
+            continue;
+        };
+
+        if rv_cfg.register
+            && !state.registered_with.contains(&peer)
+            && !state.register_inflight.contains(&peer)
+        {
+            state.register_attempts = state.register_attempts.saturating_add(1);
+            match client.register(namespace.clone(), peer, Some(rv_cfg.register_ttl_secs)) {
+                Ok(()) => {
+                    state.register_inflight.insert(peer);
+                    plan.register_attempts = plan.register_attempts.saturating_add(1);
+                }
+                Err(err) => {
+                    state.register_failures = state.register_failures.saturating_add(1);
+                    plan.errors.push(format!(
+                        "rendezvous register request failed peer={peer} namespace={namespace}: {err}"
+                    ));
+                }
+            }
+        }
+
+        if rv_cfg.discover && !state.discover_inflight.contains(&peer) {
+            state.discover_attempts = state.discover_attempts.saturating_add(1);
+            let cookie = state.cookies.get(&peer).cloned();
+            client.discover(
+                Some(namespace.clone()),
+                cookie,
+                rv_cfg.discover_limit(),
+                peer,
+            );
+            state.discover_inflight.insert(peer);
+            plan.discover_attempts = plan.discover_attempts.saturating_add(1);
+        }
+    }
+
+    plan
+}
+
+pub fn on_mesh_event(
+    swarm: &mut Swarm<MeshBehaviour>,
+    event: &MeshEvent,
+    discovery_cfg: &DiscoveryConfig,
+) {
+    match event {
+        MeshEvent::Identify(ev) => on_identify_event(swarm, ev, discovery_cfg),
+        MeshEvent::Kademlia(_) => {}
+        _ => {}
+    }
+}
+
+pub fn on_rendezvous_client_event(
+    swarm: &mut Swarm<MeshBehaviour>,
+    event: &rendezvous::client::Event,
+    discovery_cfg: &DiscoveryConfig,
+    state: &mut RendezvousState,
+) -> String {
+    match event {
+        rendezvous::client::Event::Registered {
+            rendezvous_node,
+            ttl,
+            namespace,
+        } => {
+            state.register_inflight.remove(rendezvous_node);
+            state.registered_with.insert(rendezvous_node.to_owned());
+            format!(
+                "rendezvous_client registered node={rendezvous_node} namespace={namespace} ttl={ttl}"
+            )
+        }
+        rendezvous::client::Event::RegisterFailed {
+            rendezvous_node,
+            namespace,
+            error,
+        } => {
+            state.register_inflight.remove(rendezvous_node);
+            state.register_failures = state.register_failures.saturating_add(1);
+            format!(
+                "rendezvous_client register failed node={rendezvous_node} namespace={namespace} error={error:?}"
+            )
+        }
+        rendezvous::client::Event::Discovered {
+            rendezvous_node,
+            registrations,
+            cookie,
+        } => {
+            state.discover_inflight.remove(rendezvous_node);
+            state
+                .cookies
+                .insert(rendezvous_node.to_owned(), cookie.clone());
+            let mut learned = 0usize;
+            for registration in registrations {
+                let peer = registration.record.peer_id();
+                let mut dialed_peer = false;
+                for addr in peer_record_addrs(registration) {
+                    add_peer_address_to_discovery(swarm, peer, addr.clone());
+                    peer_cache::record_seen_peer_addr(discovery_cfg, &peer, &addr);
+                    if !dialed_peer {
+                        let _ = swarm.dial(addr.clone());
+                        dialed_peer = true;
+                    }
+                    learned = learned.saturating_add(1);
+                }
+                state.discovered_peers.insert(peer);
+            }
+            format!(
+                "rendezvous_client discovered {} registrations from {rendezvous_node}; learned {learned} addrs",
+                registrations.len()
+            )
+        }
+        rendezvous::client::Event::DiscoverFailed {
+            rendezvous_node,
+            namespace,
+            error,
+        } => {
+            state.discover_inflight.remove(rendezvous_node);
+            state.discover_failures = state.discover_failures.saturating_add(1);
+            format!(
+                "rendezvous_client discover failed node={rendezvous_node} namespace={namespace:?} error={error:?}"
+            )
+        }
+        rendezvous::client::Event::Expired { peer } => {
+            state.discovered_peers.remove(peer);
+            format!("rendezvous_client discovered registration expired peer={peer}")
+        }
+    }
+}
+
+pub fn on_rendezvous_server_event(
+    event: &rendezvous::server::Event,
+    state: &mut RendezvousState,
+) -> String {
+    match event {
+        rendezvous::server::Event::DiscoverServed {
+            enquirer,
+            registrations,
+        } => {
+            state.server_discoveries_served = state.server_discoveries_served.saturating_add(1);
+            format!(
+                "rendezvous_server discover served enquirer={enquirer} registrations={}",
+                registrations.len()
+            )
+        }
+        rendezvous::server::Event::DiscoverNotServed { enquirer, error } => {
+            state.server_errors = state.server_errors.saturating_add(1);
+            format!("rendezvous_server discover not served enquirer={enquirer} error={error:?}")
+        }
+        rendezvous::server::Event::PeerRegistered { peer, registration } => {
+            state.server_registrations = state.server_registrations.saturating_add(1);
+            format!(
+                "rendezvous_server peer registered peer={peer} namespace={} ttl={}",
+                registration.namespace, registration.ttl
+            )
+        }
+        rendezvous::server::Event::PeerNotRegistered {
+            peer,
+            namespace,
+            error,
+        } => {
+            state.server_errors = state.server_errors.saturating_add(1);
+            format!(
+                "rendezvous_server peer not registered peer={peer} namespace={namespace} error={error:?}"
+            )
+        }
+        rendezvous::server::Event::PeerUnregistered { peer, namespace } => {
+            state.server_registrations = state.server_registrations.saturating_sub(1);
+            format!("rendezvous_server peer unregistered peer={peer} namespace={namespace}")
+        }
+        rendezvous::server::Event::RegistrationExpired(registration) => {
+            state.server_registrations = state.server_registrations.saturating_sub(1);
+            format!(
+                "rendezvous_server registration expired peer={} namespace={}",
+                registration.record.peer_id(),
+                registration.namespace
+            )
+        }
+    }
+}
+
+pub fn add_peer_address_to_discovery(
+    swarm: &mut Swarm<MeshBehaviour>,
+    peer: PeerId,
+    addr: Multiaddr,
+) {
+    swarm
+        .behaviour_mut()
+        .kademlia
+        .add_address(&peer, addr.clone());
+    swarm.add_peer_address(peer, addr);
+}
+
+fn on_identify_event(
+    swarm: &mut Swarm<MeshBehaviour>,
+    event: &identify::Event,
+    discovery_cfg: &DiscoveryConfig,
+) {
+    match event {
+        identify::Event::Received { peer_id, info, .. }
+        | identify::Event::Pushed { peer_id, info, .. } => {
+            for addr in &info.listen_addrs {
+                add_peer_address_to_discovery(swarm, peer_id.to_owned(), addr.clone());
+                peer_cache::record_seen_peer_addr(discovery_cfg, peer_id, addr);
+            }
+        }
+        _ => {}
+    }
+}
+
+pub fn extract_p2p_peer_id(addr: &Multiaddr) -> Option<PeerId> {
+    let mut peer = None;
+    for protocol in addr.iter() {
+        if let libp2p::multiaddr::Protocol::P2p(id) = protocol {
+            peer = Some(id);
+        }
+    }
+    peer
+}

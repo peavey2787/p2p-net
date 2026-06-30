@@ -1,0 +1,85 @@
+{
+  "network_id": 1,
+  "heartbeat_interval_secs": 30,
+  "startup_peer_cache_probe": 5,
+  "identity_key_path": ".p2p-net-identity-key",
+  "listen_addresses": [
+    "/ip4/0.0.0.0/udp/4001/quic-v1",
+    "/ip4/0.0.0.0/tcp/4001",
+    "/ip4/0.0.0.0/tcp/4002/ws"
+  ],
+  "bootstrap_peers": [],
+  "discovery": {
+    "peer_cache_path": ".p2p-net-peer-cache.json",
+    "peer_cache_max_entries": 64,
+    "peer_cache_max_age_secs": 2592000,
+    "peer_cache_max_failures": 3,
+    "bootstrap_seed_peers": [],
+    "rendezvous_peers": [],
+    "rendezvous": {
+      "client_enabled": false,
+      "server_enabled": false,
+      "namespace": "p2p-net",
+      "register": true,
+      "discover": true,
+      "register_ttl_secs": 7200,
+      "discover_limit": 100,
+      "server_min_ttl_secs": 7200,
+      "server_max_ttl_secs": 7200,
+      "server_max_registrations_per_peer": 16,
+      "server_max_registrations_total": 4096,
+      "server_max_stored_cookies": 1024
+    }
+  },
+  "dnsaddr": {
+    "enabled": true,
+    "doh_endpoint": "https://cloudflare-dns.com/dns-query",
+    "timeout_secs": 5
+  },
+  "relay_peers": [],
+  "reserve_configured_relays": true,
+  "connection_limits": {
+    "enabled": true,
+    "max_pending_incoming": 64,
+    "max_pending_outgoing": 64,
+    "max_established_incoming": 256,
+    "max_established_outgoing": 128,
+    "max_established": 320,
+    "max_established_per_peer": 4,
+    "max_established_per_ip": 32
+  },
+  "message_security": {
+    "max_heartbeat_wire_bytes": 4096,
+    "max_heartbeat_age_secs": 600,
+    "max_heartbeat_future_skew_secs": 120,
+    "replay_cache_capacity": 8192,
+    "replay_cache_ttl_secs": 900,
+    "reputation": {
+      "accept_reward": 1,
+      "invalid_penalty": 5,
+      "decay_step": 1,
+      "decay_interval_secs": 60
+    }
+  },
+  "relay": {
+    "enabled": false,
+    "access": "allow_all",
+    "allow_peers": [],
+    "deny_peers": [],
+    "max_reservations": 64,
+    "max_reservations_per_peer": 1,
+    "reservation_duration_secs": 3600,
+    "max_circuits": 128,
+    "max_circuits_per_peer": 4,
+    "max_circuit_duration_secs": 120,
+    "max_circuit_bytes": 104857600,
+    "reservation_rate_per_peer_per_min": 4,
+    "reservation_rate_per_ip_per_min": 16,
+    "circuit_rate_per_peer_per_min": 16,
+    "circuit_rate_per_ip_per_min": 64,
+    "schedule": {
+      "enabled": false,
+      "windows": []
+    }
+  }
+}
