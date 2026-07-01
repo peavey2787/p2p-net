@@ -6,9 +6,11 @@
 //! - **`common`**: `NetError` and shared helpers.
 //! - **`node`**: Tokio orchestration (`start_node`) and snapshots.
 //! - **`platform`**: storage/runtime adapters for desktop and mobile shells.
+//! - **`bindings`**: JSON/enum-oriented facade for app-shell bindings.
 
 #![forbid(unsafe_code)]
 
+pub mod bindings;
 pub mod common;
 pub mod connectivity;
 pub mod platform;
@@ -17,6 +19,12 @@ pub mod stack;
 
 mod node;
 
+pub use bindings::{
+    binding_support_matrix, node_config_from_json, node_config_to_json,
+    node_snapshot_to_json_string, prepare_binding_start_plan, BindingPlatformRuntime,
+    BindingRuntimeSpec, BindingStartPlan, BindingStorageRequirement, BindingStorageStrategy,
+    BindingSupportMatrix, BindingTarget, BindingTargetInfo,
+};
 pub use common::error::NetError;
 pub use connectivity::discovery::DiscoveryConfig;
 pub use connectivity::dcutr::DcutrPolicy;

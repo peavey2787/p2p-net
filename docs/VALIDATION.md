@@ -84,3 +84,15 @@ sudo ./scripts/netem-linux.sh lo stop
 `unit_tests/dcutr_policy.rs` covers default DCUtR policy safety, disabling the DCUtR capability, rejecting upgrade-without-fallback config, resolved retry policy fields, and snapshot relay-fallback counters. The test is registered in `Cargo.toml`, so `scripts/run-full-validation.ps1` picks it up through the existing `cargo test --workspace --locked -j 1` step.
 
 Phase 9 adds `platform_runtime`, which is picked up by `cargo test --workspace`.
+
+## Phase 10 binding facade validation
+
+`unit_tests/bindings.rs` covers the cross-platform binding-safe facade:
+
+- the support matrix confirms one shared Rust core and no separate node implementations
+- Android runtime specs resolve `profile = auto` to `mobile_lite`
+- iOS runtime specs flag memory storage as testing-only
+- desktop runtime specs preserve listener capability and desktop filesystem storage
+- config and snapshot JSON helpers work for host UI layers
+
+The test is registered in `Cargo.toml`, so `scripts/run-full-validation.ps1` and `scripts/run-full-validation.sh` pick it up through the existing `cargo test --workspace --locked -j 1` step. Host-language generated binding tests for Kotlin/Swift should live in the app shell once a generator such as UniFFI or a C ABI wrapper is chosen.

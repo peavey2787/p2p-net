@@ -68,3 +68,7 @@ Use one P2P core and keep platform-specific work limited to:
 - permissions
 - app shell/UI
 - packaging/bindings
+
+## Binding facade handoff
+
+Phase 10 adds `src/bindings/` as a JSON/enum-oriented facade for app shells. Platform runtimes and storage adapters remain the real boundary; binding hosts should use `prepare_binding_start_plan` to preview the resolved role/capabilities, then call `start_node_with_platform` with a durable `NodeStorage` implementation. See `docs/BINDINGS.md`.
