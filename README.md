@@ -16,6 +16,7 @@
 - JSON snapshot export and Prometheus-style metrics export
 - Dashboard example, security checks, ignored load/soak tests, and fuzz harnesses
 - Profile-driven libp2p behaviour policy, including Kademlia client mode for lite/mobile nodes
+- Relay discovery and selection from configured, cached, and rendezvous candidate sources
 
 DNS support is enabled by default for configured and cached peers through p2p-net's own startup resolver. Peer addresses using `/dns`, `/dns4`, `/dns6`, or `/dnsaddr` are resolved before dialing. WebSocket support in rust-libp2p 0.56 requires the `libp2p-dns` adapter crate, so p2p-net patches that crate to a local no-Hickory implementation instead of using the crates.io resolver path. The unused upstream mDNS adapter crate is policy-patched to a local no-op placeholder so the rejected Hickory DNS line stays out of `Cargo.lock`. `/dnsaddr` uses bounded DNS-over-HTTPS TXT lookup support with a configurable endpoint in p2p-net's own resolver. The default endpoint is Cloudflare for simple out-of-the-box operation; production deployments can point it at an internal/self-hosted DoH resolver or disable `/dnsaddr` entirely. LAN multicast discovery/mDNS is not included.
 
@@ -76,8 +77,9 @@ Important fields:
 - `listen_addresses`: local TCP/QUIC/WebSocket listen multiaddrs. Use concrete `/ip4` or `/ip6` listen addresses, not DNS names.
 - `bootstrap_peers`: trusted `/p2p/<PeerId>` bootstrap multiaddrs. `/dns`, `/dns4`, `/dns6`, and `/dnsaddr` dial addresses are supported by default.
 - `dnsaddr`: `/dnsaddr` DoH policy. Defaults to bounded Cloudflare DoH for simple operation; set `doh_endpoint` to an internal/self-hosted DoH resolver for production, or set `enabled` to `false` to reject `/dnsaddr` in configured peers. See `docs/DNSADDR_DOH.md`.
-- `relay_peers`: relay or mediator peers to dial and reserve through.
-- `reserve_configured_relays`: request `/p2p-circuit` reservations from configured relays.
+- `relay_peers`: operator-pinned relay or mediator peers to dial and reserve through.
+- `discovery.relay_discovery`: select relay candidates from configured relays, cached healthy peers, and rendezvous infrastructure. See `docs/RELAY_DISCOVERY.md`.
+- `reserve_configured_relays`: request `/p2p-circuit` reservations from selected relays.
 - `discovery.rendezvous`: enable rendezvous client/server registration/discovery.
 - `connection_limits`: global, per-peer, and per-IP connection caps.
 - `message_security`: heartbeat size, timestamp, replay, and reputation settings.
@@ -116,3 +118,4 @@ Normally, do not run the individual commands manually. Use `./scripts/run-full-v
 
 - `docs/EVENT_HANDLING.md` documents the Phase 5 single-responsibility swarm event split.
 - `docs/BEHAVIOUR_POLICY.md` documents the Phase 6 profile-driven behaviour construction policy.
+- `docs/RELAY_DISCOVERY.md` documents the Phase 7 relay discovery and selection policy.

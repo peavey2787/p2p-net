@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::relay_discovery::RelayDiscoveryPolicy;
 use super::rendezvous::RendezvousConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,6 +21,9 @@ pub struct DiscoveryConfig {
     /// Rendezvous peers. Full `/p2p/<PeerId>` multiaddrs are required. When the
     /// rendezvous client is enabled, these are used for registration/discovery.
     pub rendezvous_peers: Vec<String>,
+    /// Relay discovery/selection controls for lite/mobile nodes.
+    #[serde(default)]
+    pub relay_discovery: RelayDiscoveryPolicy,
     /// libp2p Rendezvous client/server controls. Disabled by default.
     #[serde(default)]
     pub rendezvous: RendezvousConfig,
@@ -34,6 +38,7 @@ impl Default for DiscoveryConfig {
             peer_cache_max_failures: 3,
             bootstrap_seed_peers: Vec::new(),
             rendezvous_peers: Vec::new(),
+            relay_discovery: RelayDiscoveryPolicy::default(),
             rendezvous: RendezvousConfig::default(),
         }
     }
@@ -49,6 +54,7 @@ impl DiscoveryConfig {
                 "discovery.peer_cache_max_entries must be at least 1",
             ));
         }
+        self.relay_discovery.validate()?;
         self.rendezvous.validate()?;
         Ok(())
     }

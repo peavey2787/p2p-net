@@ -293,6 +293,21 @@ pub struct NodeSnapshot {
     pub relay_client_reservation_attempts: usize,
     /// Relay reservation failures observed locally while setting up configured relays.
     pub relay_client_reservation_failures: usize,
+    /// Whether automatic relay discovery/selection is enabled.
+    pub relay_discovery_enabled: bool,
+    /// Minimum desired relay reservations for lite/mobile nodes.
+    pub relay_discovery_min_reservations: usize,
+    /// Maximum relay candidates/reservation attempts selected at once.
+    pub relay_discovery_max_reservations: usize,
+    /// Relay addresses selected from configured/cache/rendezvous sources.
+    pub relay_discovery_selected_relays: Vec<String>,
+    pub relay_discovery_candidate_count: usize,
+    pub relay_discovery_configured_candidates: usize,
+    pub relay_discovery_cached_candidates: usize,
+    pub relay_discovery_rendezvous_candidates: usize,
+    pub relay_discovery_ignored_candidates: usize,
+    pub relay_discovery_failures: usize,
+    pub relay_discovery_replacements: usize,
     /// Confirmed `/p2p-circuit` listen addresses for this node.
     pub relayed_listen_addresses: Vec<String>,
     /// DCUtR upgrade attempts/events observed.
@@ -336,6 +351,20 @@ impl NodeSnapshot {
         self.relay_client_reservations = relay_state.relay_client_reservations.len();
         self.relay_client_reservation_attempts = relay_state.relay_client_reservation_attempts;
         self.relay_client_reservation_failures = relay_state.relay_client_reservation_failures;
+        self.relay_discovery_selected_relays = relay_state
+            .relay_discovery_selected_relays
+            .iter()
+            .cloned()
+            .collect();
+        self.relay_discovery_candidate_count = relay_state.relay_discovery_candidate_count;
+        self.relay_discovery_configured_candidates =
+            relay_state.relay_discovery_configured_candidates;
+        self.relay_discovery_cached_candidates = relay_state.relay_discovery_cached_candidates;
+        self.relay_discovery_rendezvous_candidates =
+            relay_state.relay_discovery_rendezvous_candidates;
+        self.relay_discovery_ignored_candidates = relay_state.relay_discovery_ignored_candidates;
+        self.relay_discovery_failures = relay_state.relay_discovery_failures;
+        self.relay_discovery_replacements = relay_state.relay_discovery_replacements;
         self.relay_active_circuits = relay_state.active_circuits;
         self.relay_denied_reservations = relay_state.denied_reservations;
         self.relay_denied_circuits = relay_state.denied_circuits;

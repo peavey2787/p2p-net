@@ -7,4 +7,5 @@ pub mod limits;
 pub mod mediator;
 pub mod peer_cache;
 pub mod relay;
+pub mod relay_discovery;
 pub mod rendezvous;

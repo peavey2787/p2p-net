@@ -41,6 +41,16 @@
       "server_max_registrations_per_peer": 16,
       "server_max_registrations_total": 4096,
       "server_max_stored_cookies": 1024
+    },
+    "relay_discovery": {
+      "enabled": true,
+      "use_configured_relays": true,
+      "use_cached_relays": true,
+      "use_rendezvous_relays": true,
+      "min_reservations": 1,
+      "max_reservations": 3,
+      "prefer_configured_relays": true,
+      "replace_failed_relays": true
     }
   },
   "dnsaddr": {

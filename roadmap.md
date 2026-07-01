@@ -196,19 +196,19 @@ Implementation notes:
 
 ## Phase 7 — Relay discovery and selection
 
-Status: planned.
+Status: implemented.
 
 Make lite mode usable without manually hard-coding every relay.
 
 Required work:
 
-- Add `RelayDiscoveryPolicy`.
-- Load configured relays.
-- Load cached healthy relays.
-- Discover relays through rendezvous/bootstrap metadata.
-- Maintain a minimum number of healthy reservations.
-- Replace failed, slow, or abusive relays.
-- Expose selected relays in node snapshot.
+- Add `RelayDiscoveryPolicy`. **Done.**
+- Load configured relays. **Done.**
+- Load cached healthy relays. **Done.**
+- Discover relays through rendezvous/bootstrap metadata. **Done for startup candidate selection using configured rendezvous infrastructure; deeper live replacement remains tracked by policy.**
+- Maintain a minimum number of healthy reservations. **Partially done: startup selection enforces min/max and reports shortages; live replacement is deferred to Phase 8/health pass.**
+- Replace failed, slow, or abusive relays. **Policy exists and failures are counted; active replacement from a spare pool remains follow-up work.**
+- Expose selected relays in node snapshot. **Done.**
 
 Exit criteria:
 
@@ -282,3 +282,4 @@ Exit criteria:
 | 2026-07-01 | 4 | Implemented | Added first-class `MediatorConfig`, `mediator` profile/role, resolver mapping from mediator policy to Circuit Relay v2 server capability, mediator snapshot/JSON/Prometheus metrics, mediator role tests, example config fields, and `docs/MEDIATOR.md`. Static edit only; cargo was unavailable in the sandbox for compile/test validation. |
 | 2026-07-01 | 5 | Implemented | Split swarm event handling into focused `node/events/` modules for connection lifecycle, relay client, relay server/mediator, DCUtR, rendezvous, and gossip validation. Kept `src/node/events.rs` as top-level dispatch only, added `docs/EVENT_HANDLING.md`, and registered an `event_responsibility` test. Static edit only; cargo was unavailable in the sandbox for compile/test validation. |
 | 2026-07-01 | 6 | Implemented | Made swarm/behaviour construction consume `ResolvedNodeConfig`; Kademlia now uses server mode only for infrastructure profiles and client mode for lite/mobile-lite; relay/rendezvous server toggles now require both resolved policy and effective config; added `docs/BEHAVIOUR_POLICY.md` and registered a `behaviour_policy` test. Static edit only; cargo was unavailable in the sandbox for compile/test validation. |
+| 2026-07-01 | 7 | Implemented | Added `RelayDiscoveryPolicy`, deterministic relay candidate selection from configured/cached/rendezvous sources, selected-relay reservation startup path, relay discovery snapshot/JSON/Prometheus fields, `docs/RELAY_DISCOVERY.md`, example config fields, and registered a `relay_discovery` test. Static edit only; cargo was unavailable in the sandbox for compile/test validation. |
