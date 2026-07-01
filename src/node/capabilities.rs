@@ -1,8 +1,8 @@
 //! Central capability resolver for node profiles.
 //!
-//! Phase 3 makes this module the single place that turns raw user config plus
-//! environment facts into runtime capabilities. Runtime code should consume the
-//! returned `ResolvedNodeConfig` instead of re-implementing profile decisions.
+//! This module is the single place that turns raw user config plus environment
+//! facts into runtime capabilities. Runtime code consumes the returned
+//! `ResolvedNodeConfig` instead of re-implementing profile decisions.
 
 use crate::common::error::NetError;
 
@@ -26,9 +26,9 @@ pub fn resolve_node_config(
     Ok(resolved)
 }
 
-/// Apply the central resolver's decisions back onto a raw config clone for the
-/// current single-crate runtime. Later phases should pass `ResolvedNodeConfig`
-/// directly into transport/behaviour construction and remove this adapter.
+/// Apply the central resolver's decisions back onto a raw config clone. This
+/// produces the effective runtime config used by transport, discovery, and
+/// behaviour construction while keeping profile policy centralized.
 pub fn apply_resolved_capabilities(raw: &NodeConfig, resolved: &ResolvedNodeConfig) -> NodeConfig {
     let mut cfg = raw.clone();
     cfg.profile.apply_to(&mut cfg);

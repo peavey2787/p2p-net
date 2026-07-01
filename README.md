@@ -1,6 +1,6 @@
 # p2p-net
 
-`p2p-net` is a standalone all-in-one libp2p node crate for peer discovery, signed heartbeat gossip, NAT traversal, DCUtR hole punching, optional Circuit Relay service, optional rendezvous discovery, operator metrics, and hostile-network testing.
+`p2p-net` is a shared libp2p node core for peer discovery, signed heartbeat gossip, NAT traversal, DCUtR hole punching, relay mediation, rendezvous discovery, operator metrics, platform adapters, binding-safe helpers, and hostile-network testing.
 
 ## Features
 
@@ -21,7 +21,7 @@
 - Platform runtime/storage abstraction for desktop and mobile adapters
 - Binding-safe facade for desktop, Android, iOS/iPadOS, and WASM/WebView shells
 
-DNS support is enabled by default for configured and cached peers through p2p-net's own startup resolver. Peer addresses using `/dns`, `/dns4`, `/dns6`, or `/dnsaddr` are resolved before dialing. WebSocket support in rust-libp2p 0.56 requires the `libp2p-dns` adapter crate, so p2p-net patches that crate to a local no-Hickory implementation instead of using the crates.io resolver path. The unused upstream mDNS adapter crate is policy-patched to a local no-op placeholder so the rejected Hickory DNS line stays out of `Cargo.lock`. `/dnsaddr` uses bounded DNS-over-HTTPS TXT lookup support with a configurable endpoint in p2p-net's own resolver. The default endpoint is Cloudflare for simple out-of-the-box operation; production deployments can point it at an internal/self-hosted DoH resolver or disable `/dnsaddr` entirely. LAN multicast discovery/mDNS is not included.
+DNS support is enabled by default for configured and cached peers through p2p-net's own startup resolver. Peer addresses using `/dns`, `/dns4`, `/dns6`, or `/dnsaddr` are resolved before dialing. WebSocket support in rust-libp2p 0.56 requires the `libp2p-dns` adapter crate, so p2p-net patches that crate to a local no-Hickory implementation instead of using the crates.io resolver path. The disallowed upstream mDNS adapter crate is policy-patched to a local no-op placeholder so the rejected Hickory DNS line stays out of `Cargo.lock`. `/dnsaddr` uses bounded DNS-over-HTTPS TXT lookup support with a configurable endpoint in p2p-net's own resolver. The default endpoint is Cloudflare for simple out-of-the-box operation; production deployments can point it at an internal/self-hosted DoH resolver or disable `/dnsaddr` entirely. LAN multicast discovery/mDNS is not included.
 
 ## Run all stable tests and checks
 
@@ -122,9 +122,10 @@ The crate is intended to be validation-clean under the stable validation script 
 
 Normally, do not run the individual commands manually. Use `./scripts/run-full-validation.ps1`; it is the canonical one-file validation runner for formatting, tests, clippy, security audit, dependency policy, and ignored load/soak tests.
 
-- `docs/EVENT_HANDLING.md` documents the Phase 5 single-responsibility swarm event split.
-- `docs/BEHAVIOUR_POLICY.md` documents the Phase 6 profile-driven behaviour construction policy.
-- `docs/RELAY_DISCOVERY.md` documents the Phase 7 relay discovery and selection policy.
-- `docs/DCUTR_POLICY.md` documents the Phase 8 DCUtR policy and fallback counters.
-- `docs/PLATFORM_RUNTIME.md` documents the Phase 9 platform runtime/storage abstraction.
-- `docs/BINDINGS.md` documents the Phase 10 cross-platform binding facade.
+- `docs/EVENT_HANDLING.md` documents the single-responsibility swarm event split.
+- `docs/BEHAVIOUR_POLICY.md` documents profile-driven behaviour construction.
+- `docs/RELAY_DISCOVERY.md` documents relay discovery and selection.
+- `docs/DCUTR_POLICY.md` documents DCUtR policy and fallback counters.
+- `docs/PLATFORM_RUNTIME.md` documents the platform runtime/storage abstraction.
+- `docs/BINDINGS.md` documents the cross-platform binding facade.
+- `unit_tests/codebase_hygiene.rs` guards against stale transitional docs, duplicate test registration, and profile-decision drift outside the resolver.

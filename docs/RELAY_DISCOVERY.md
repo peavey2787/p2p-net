@@ -1,6 +1,6 @@
 # Relay discovery and selection
 
-Phase 7 adds a first-class relay discovery policy so lite and mobile-lite nodes do not need every relay hard-coded forever.
+A first-class relay discovery policy lets lite and mobile-lite nodes avoid hard-coding every relay forever.
 
 The policy lives at:
 
@@ -35,11 +35,11 @@ All candidates must be identity-bound `/p2p/<PeerId>` multiaddrs with a reachabl
 - Configured relays are preferred when `prefer_configured_relays = true`.
 - Selection stops at `max_reservations`.
 - A warning pulse is emitted when fewer than `min_reservations` candidates are available.
-- Setting `enabled = false` preserves legacy behavior: only configured `relay_peers` are considered.
+- Setting `enabled = false` means only configured `relay_peers` are considered.
 
 ## Runtime behavior
 
-Startup now reserves through the selected relay set instead of only raw `relay_peers`. Automatic cached/rendezvous relay discovery is enabled for lite/mobile-lite roles; full/infrastructure nodes keep legacy configured-relay behavior unless `relay_peers` are explicitly provided.
+Startup reserves through the selected relay set instead of only raw `relay_peers`. Automatic cached/rendezvous relay discovery is enabled for lite/mobile-lite roles; full/infrastructure nodes use configured relay peers only when `relay_peers` are explicitly provided.
 
 When `reserve_configured_relays = true`, selected candidates are converted to `/p2p-circuit` reservation listen addresses. When reservation is disabled, selected candidates are still seeded/dialed so the node can connect to known relay infrastructure without requesting reservations.
 

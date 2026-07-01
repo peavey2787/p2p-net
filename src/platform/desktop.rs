@@ -10,9 +10,9 @@ use crate::PlatformKind;
 use super::{NodeStorage, PlatformRuntime};
 
 /// Default desktop adapter. With `data_dir = None`, config paths are interpreted
-/// exactly as they were before Phase 9, preserving existing behaviour. Embedders
-/// can provide a data directory to keep node state under an application-owned
-/// directory without changing the core node implementation.
+/// relative to the current process, matching the default desktop CLI/runtime
+/// behaviour. Embedders can provide a data directory to keep node state under an
+/// application-owned directory without changing the core node implementation.
 #[derive(Debug, Clone, Default)]
 pub struct DesktopPlatformRuntime {
     data_dir: Option<PathBuf>,

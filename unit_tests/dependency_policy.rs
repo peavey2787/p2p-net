@@ -16,7 +16,7 @@ fn upstream_mdns_is_policy_patched_to_noop_placeholder() {
     let manifest = include_str!("../Cargo.toml");
     assert!(
         manifest.contains("libp2p-mdns = { path = \"vendor/libp2p-mdns-placeholder\" }"),
-        "unused upstream libp2p-mdns must be patched away from crates.io"
+        "disallowed upstream libp2p-mdns must be patched away from crates.io"
     );
 }
 

@@ -6,7 +6,7 @@
 
 - **Full node**: listens for inbound peers, participates directly in discovery/gossip, and can accept direct connections when the environment allows it.
 - **Relay node**: a full/infrastructure node with Circuit Relay v2 server capability enabled for generic relayed traffic.
-- **Mediator node**: a relay-capable full node that is intentionally configured to help lite/mobile peers establish relayed connectivity and then attempt DCUtR hole punching. In Phase 4 this maps onto Circuit Relay v2 server behaviour plus explicit mediator policy and metrics.
+- **Mediator node**: a relay-capable full node that is intentionally configured to help lite/mobile peers establish relayed connectivity and then attempt DCUtR hole punching. This maps onto Circuit Relay v2 server behaviour plus explicit mediator policy and metrics.
 - **Lite node**: outbound-first node for NAT/CGNAT environments. It keeps relay client and DCUtR capability enabled, requests configured relay reservations when available, and avoids infrastructure server roles.
 - **Mobile lite node**: lite node with stricter mobile/tablet assumptions: no public listener requirement, no relay/rendezvous server role, and background/battery-sensitive defaults.
 
@@ -41,7 +41,7 @@ Equivalent explicit mediator config:
 
 ## Authentication policy
 
-Phase 4 maps `mediator.require_authenticated_peers = true` onto the existing relay allow-list policy. If this flag is enabled, `relay.allow_peers` must contain at least one trusted peer ID.
+`mediator.require_authenticated_peers = true` maps onto the relay allow-list policy. If this flag is enabled, `relay.allow_peers` must contain at least one trusted peer ID.
 
 Example:
 
@@ -62,7 +62,7 @@ Current ACL enforcement is connection-level. A peer denied from mediator/relay u
 
 ## Metrics and snapshot fields
 
-Phase 4 exposes mediator-specific fields alongside the existing relay counters:
+Mediator-specific fields are exposed alongside relay counters:
 
 - `mediator_enabled`
 - `mediator_advertise_for_dcutr`
@@ -86,6 +86,6 @@ Prometheus-style metrics include:
 
 ## Current limits
 
-Phase 4 makes mediator intent explicit and maps it to Circuit Relay v2. It does not yet implement automatic relay/mediator discovery. That is Phase 7.
+Mediator intent is explicit and maps to Circuit Relay v2. Automatic relay/mediator selection is handled by relay discovery policy.
 
 Lite nodes can already prefer known mediator-capable relays by putting them in `relay_peers` and leaving `reserve_configured_relays = true`.

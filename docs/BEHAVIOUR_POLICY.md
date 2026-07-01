@@ -1,6 +1,6 @@
 # Profile-driven behaviour policy
 
-Phase 6 makes libp2p behaviour construction consume the central `ResolvedNodeConfig` capability policy instead of re-deciding role behaviour inside the stack builder.
+libp2p behaviour construction consumes the central `ResolvedNodeConfig` capability policy instead of re-deciding role behaviour inside the stack builder.
 
 ## Runtime flow
 
@@ -48,4 +48,4 @@ This keeps snapshots and dashboard output aligned with the actual role policy.
 
 ## DCUtR policy
 
-Phase 8 adds `DcutrPolicy` to the same resolved behaviour path. The DCUtR behaviour is installed only when the resolved behaviour set enables DCUtR. Disabling `dcutr.enabled` removes the behaviour while keeping relay-client fallback available. See `docs/DCUTR_POLICY.md` for fallback and retry semantics.
+`DcutrPolicy` uses the same resolved behaviour path. The DCUtR behaviour is installed only when the resolved behaviour set enables DCUtR. Disabling `dcutr.enabled` removes the behaviour while keeping relay-client fallback available. See `docs/DCUTR_POLICY.md` for fallback and retry semantics.

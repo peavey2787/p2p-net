@@ -1,8 +1,8 @@
 //! Relay discovery and selection policy for lite/mobile nodes.
 //!
-//! Phase 7 keeps relay discovery DRY and deterministic: configured relays,
-//! cached relay candidates, and rendezvous-discovered relay candidates all flow
-//! through one selector before reservation attempts are made.
+//! Relay discovery stays DRY and deterministic: configured relays, cached
+//! relay candidates, and rendezvous-discovered relay candidates all flow through
+//! one selector before reservation attempts are made.
 
 use std::collections::BTreeSet;
 
@@ -17,7 +17,7 @@ use super::relay::{is_p2p_circuit_addr, relay_peer_id};
 #[serde(default)]
 pub struct RelayDiscoveryPolicy {
     /// Master switch for automatic relay discovery/selection. When disabled,
-    /// only legacy `relay_peers` reservation behavior is used.
+    /// only explicitly configured `relay_peers` are considered.
     pub enabled: bool,
     /// Include explicit `relay_peers` from `NodeConfig`. Operators use these to
     /// pin trusted relays for controlled deployments.

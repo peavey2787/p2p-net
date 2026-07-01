@@ -1,13 +1,13 @@
 # Platform runtime abstraction
 
-Phase 9 keeps one shared P2P core while moving platform-specific concerns to thin adapters.
+The platform runtime layer keeps one shared P2P core while moving platform-specific concerns to thin adapters.
 
 The core now has two small boundaries:
 
 - `PlatformRuntime`: advisory platform facts used by environment/profile resolution.
 - `NodeStorage`: persistence for identity keys, peer cache files, and small secrets.
 
-The default `start_node(config)` path still uses the desktop adapter and preserves the previous behavior where `identity_key_path` and `discovery.peer_cache_path` are interpreted as filesystem paths.
+The default `start_node(config)` path uses the desktop adapter, where `identity_key_path` and `discovery.peer_cache_path` are interpreted as filesystem paths.
 
 Embedders that are not plain desktop apps should call:
 
@@ -27,7 +27,7 @@ where `runtime` is an `Arc<dyn PlatformRuntime>` and `storage` is an `Arc<dyn No
 - default lifecycle: not background restricted
 - listen capability: TCP and QUIC allowed
 
-With `DesktopPlatformRuntime::default()`, relative paths behave exactly like the old implementation.
+With `DesktopPlatformRuntime::default()`, relative paths resolve against the current process working directory.
 
 With `DesktopPlatformRuntime::with_data_dir(path)`, relative config paths are resolved under an app-owned data directory.
 
@@ -55,7 +55,7 @@ The storage-aware APIs are:
 - `record_seen_peer_addr_with_storage(...)`
 - `record_peer_addr_failure_with_storage(...)`
 
-The old filesystem helpers remain as compatibility wrappers around the desktop adapter.
+Filesystem-oriented helpers remain as desktop convenience wrappers around the storage-aware APIs.
 
 ## Architecture rule
 
@@ -71,4 +71,4 @@ Use one P2P core and keep platform-specific work limited to:
 
 ## Binding facade handoff
 
-Phase 10 adds `src/bindings/` as a JSON/enum-oriented facade for app shells. Platform runtimes and storage adapters remain the real boundary; binding hosts should use `prepare_binding_start_plan` to preview the resolved role/capabilities, then call `start_node_with_platform` with a durable `NodeStorage` implementation. See `docs/BINDINGS.md`.
+`src/bindings/` is a JSON/enum-oriented facade for app shells. Platform runtimes and storage adapters remain the real boundary; binding hosts should use `prepare_binding_start_plan` to preview the resolved role/capabilities, then call `start_node_with_platform` with a durable `NodeStorage` implementation. See `docs/BINDINGS.md`.

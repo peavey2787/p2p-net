@@ -34,7 +34,7 @@ pub struct NodeConfig {
     pub startup_peer_cache_probe: usize,
     /// Stable libp2p node identity key file. Created on first run and reused after that.
     pub identity_key_path: String,
-    /// Multiaddrs this node should listen on. Missing config uses safe all-in-one defaults.
+    /// Multiaddrs this node should listen on. Missing config uses safe shared-node defaults.
     pub listen_addresses: Vec<String>,
     /// Public bootstrap peers to dial on startup. Full /p2p/<PeerId> multiaddrs are required.
     pub bootstrap_peers: Vec<String>,
@@ -166,24 +166,23 @@ impl NodeConfig {
         Ok(())
     }
 
-    /// Return a clone with phase-1 profile defaults applied. Explicit profiles are
-    /// intentionally centralized here so start-up code does not scatter role rules.
+    /// Return a clone with explicit profile defaults applied. Profile defaults
+    /// are centralized here so startup code does not scatter role rules.
     pub fn with_profile_defaults_applied(&self) -> Self {
         let mut cfg = self.clone();
         cfg.profile.apply_to(&mut cfg);
         cfg
     }
 
-    /// Apply a phase-3 resolved capability policy to a clone of this config. This
-    /// is a compatibility adapter for the current single-crate runtime; later
-    /// phases should pass `ResolvedNodeConfig` directly into behaviour builders.
+    /// Apply a resolved capability policy to a clone of this config. The
+    /// returned config is the effective runtime view used by startup.
     pub fn with_resolved_capabilities_applied(&self, resolved: &ResolvedNodeConfig) -> Self {
         super::capabilities::apply_resolved_capabilities(self, resolved)
     }
 
     /// Resolve the high-level profile into a concrete role and behaviour set.
-    /// This preserves phase-1 compatibility for callers that do not provide
-    /// environment information.
+    /// Callers that do not provide environment information still get a
+    /// deterministic desktop-friendly resolution.
     pub fn resolved(&self) -> ResolvedNodeConfig {
         ResolvedNodeConfig::from_config(self)
     }
@@ -256,7 +255,7 @@ impl NodeConfig {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct NodeSnapshot {
     pub network_id: u32,
     pub network_label: String,

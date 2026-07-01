@@ -3,7 +3,7 @@ name = "p2p-net"
 version = "0.1.0"
 edition = "2021"
 license = "BUSL-1.1"
-description = "Standalone all-in-one libp2p node with discovery, heartbeat gossip, NAT traversal, DCUtR, and optional Circuit Relay service."
+description = "Shared libp2p node core with discovery, heartbeat gossip, NAT traversal, DCUtR, relay mediation, platform adapters, and binding helpers."
 publish = false
 
 [features]
@@ -81,6 +81,10 @@ name = "bindings"
 path = "unit_tests/bindings.rs"
 
 [[test]]
+name = "codebase_hygiene"
+path = "unit_tests/codebase_hygiene.rs"
+
+[[test]]
 name = "relay_client"
 path = "unit_tests/relay_client.rs"
 
@@ -150,7 +154,7 @@ path = "unit_tests/dependency_policy.rs"
 [patch.crates-io]
 
 # rust-libp2p's WebSocket builder expects libp2p-dns when WebSocket support
-# is compiled. Patch libp2p-dns to a local no-Hickory adapter. Patch unused mDNS
+# is compiled. Patch libp2p-dns to a local no-Hickory adapter. Patch disallowed mDNS
 # to a no-op placeholder so the rejected Hickory DNS parser/resolver line cannot
 # enter Cargo.lock through optional metadata. p2p-net /dnsaddr support lives in
 # src/connectivity/dns.rs.
