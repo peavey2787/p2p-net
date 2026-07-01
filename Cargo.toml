@@ -19,7 +19,7 @@ dashboard = ["dep:crossterm", "dep:ratatui"]
 
 [lib]
 name = "p2p_net"
-path = "crates/p2p-net/src/lib.rs"
+path = "crates/lib.rs"
 
 [[example]]
 name = "p2p_node"
@@ -157,6 +157,6 @@ path = "qa/tests/dependency_policy.rs"
 # is compiled. Patch libp2p-dns to a local no-Hickory adapter. Patch disallowed mDNS
 # to a no-op placeholder so the rejected Hickory DNS parser/resolver line cannot
 # enter Cargo.lock through optional metadata. p2p-net /dnsaddr support lives in
-# crates/p2p-net/src/connectivity/dns.rs.
-libp2p-dns = { path = "external/vendor/libp2p-dns" }
-libp2p-mdns = { path = "external/vendor/libp2p-mdns-placeholder" }
+# crates/connectivity/dns.rs.
+libp2p-dns = { path = "external/libp2p-dns" }
+libp2p-mdns = { path = "external/libp2p-mdns-placeholder" }

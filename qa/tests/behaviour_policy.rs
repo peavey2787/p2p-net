@@ -44,12 +44,13 @@ fn infrastructure_profiles_keep_kademlia_server_mode() {
 #[test]
 fn behaviour_builder_uses_resolved_policy_instead_of_hard_coded_server_mode() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let behaviour_rs = fs::read_to_string(manifest_dir.join("crates/p2p-net/src/stack/behaviour.rs"))
+    let behaviour_rs = fs::read_to_string(manifest_dir.join("crates/stack/behaviour.rs"))
         .expect("read behaviour source");
-    let transport_rs = fs::read_to_string(manifest_dir.join("crates/p2p-net/src/stack/transport.rs"))
+    let transport_rs = fs::read_to_string(manifest_dir.join("crates/stack/transport.rs"))
         .expect("read transport source");
 
-    assert!(behaviour_rs.contains("resolved_cfg: &ResolvedNodeConfig"));
+    assert!(behaviour_rs.contains("pub resolved_cfg: &'a ResolvedNodeConfig"));
+    assert!(behaviour_rs.contains("build_behaviour(ctx: BehaviourBuildContext<'_>)"));
     assert!(behaviour_rs.contains("kad::Mode::Client"));
     assert!(!behaviour_rs.contains("kademlia.set_mode(Some(kad::Mode::Server));"));
     assert!(transport_rs.contains("resolved_cfg: &ResolvedNodeConfig"));

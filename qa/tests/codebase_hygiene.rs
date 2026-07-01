@@ -33,9 +33,6 @@ fn runtime_docs_do_not_contain_transitional_phase_language() {
     let mut violations = Vec::new();
     for path in text_files_under(&root, &scan_roots) {
         let rel = path.strip_prefix(&root).unwrap_or(&path);
-        if rel == Path::new("docs/roadmap.md") {
-            continue;
-        }
         let text = fs::read_to_string(&path).expect("read text file");
         for pattern in forbidden {
             if text.contains(pattern) {
@@ -52,7 +49,7 @@ fn runtime_docs_do_not_contain_transitional_phase_language() {
 fn repository_layout_matches_modular_baseline() {
     let root = manifest_dir();
     for dir in [
-        "crates/p2p-net/src",
+        "crates",
         "docs/impl",
         "docs/spec",
         "docs/validation",
@@ -64,7 +61,7 @@ fn repository_layout_matches_modular_baseline() {
         "qa/vectors",
         "qa/tests",
         "examples",
-        "external/vendor",
+        "external",
     ] {
         assert!(root.join(dir).is_dir(), "missing expected directory: {dir}");
     }
@@ -76,7 +73,18 @@ fn repository_layout_matches_modular_baseline() {
         );
     }
 
-    assert!(root.join("docs/roadmap.md").is_file(), "roadmap belongs under docs/");
+    assert!(
+        !root.join("docs/roadmap.md").exists(),
+        "roadmap.md should not exist when there is no active roadmap"
+    );
+    assert!(
+        !root.join(Path::new("crates").join("p2p-net")).exists(),
+        "runtime code must live directly under crates/, without an extra crate-name nesting directory"
+    );
+    assert!(
+        !root.join(Path::new("external").join("vendor")).exists(),
+        "local third-party patches must live directly under external/, without an extra vendor nesting directory"
+    );
     assert!(
         root.join("qa/ci/run-full-validation.ps1").is_file()
             && root.join("qa/ci/run-full-validation.sh").is_file(),
@@ -119,9 +127,9 @@ fn scripts_do_not_use_phase_specific_tooling_names() {
 #[test]
 fn profile_decisions_are_not_duplicated_in_startup_or_stack_layers() {
     let root = manifest_dir();
-    let node_mod = fs::read_to_string(root.join("crates/p2p-net/src/node/mod.rs")).expect("node mod");
-    let behaviour = fs::read_to_string(root.join("crates/p2p-net/src/stack/behaviour.rs")).expect("behaviour");
-    let transport = fs::read_to_string(root.join("crates/p2p-net/src/stack/transport.rs")).expect("transport");
+    let node_mod = fs::read_to_string(root.join("crates/node/mod.rs")).expect("node mod");
+    let behaviour = fs::read_to_string(root.join("crates/stack/behaviour.rs")).expect("behaviour");
+    let transport = fs::read_to_string(root.join("crates/stack/transport.rs")).expect("transport");
 
     assert!(
         node_mod.contains("try_resolved_for_environment"),
@@ -144,8 +152,8 @@ fn profile_decisions_are_not_duplicated_in_startup_or_stack_layers() {
 #[test]
 fn snapshot_json_uses_derived_serialization_instead_of_duplicate_field_mapping() {
     let root = manifest_dir();
-    let node_mod = fs::read_to_string(root.join("crates/p2p-net/src/node/mod.rs")).expect("node mod");
-    let node_types = fs::read_to_string(root.join("crates/p2p-net/src/node/types.rs")).expect("node types");
+    let node_mod = fs::read_to_string(root.join("crates/node/mod.rs")).expect("node mod");
+    let node_types = fs::read_to_string(root.join("crates/node/types.rs")).expect("node types");
 
     assert!(
         node_types.contains("serde::Serialize"),
@@ -166,17 +174,17 @@ fn cargo_test_registrations_are_unique_and_complete() {
     let root = manifest_dir();
     let cargo = fs::read_to_string(root.join("Cargo.toml")).expect("Cargo.toml");
     assert!(
-        cargo.contains("path = \"crates/p2p-net/src/lib.rs\""),
-        "library source must live under crates/p2p-net/src"
+        cargo.contains("path = \"crates/lib.rs\""),
+        "library source must live under crates"
     );
     assert!(
         cargo.contains("path = \"qa/tests/"),
         "integration tests must be registered from qa/tests"
     );
     assert!(
-        cargo.contains("external/vendor/libp2p-dns")
-            && cargo.contains("external/vendor/libp2p-mdns-placeholder"),
-        "local third-party patches must live under external/vendor"
+        cargo.contains("external/libp2p-dns")
+            && cargo.contains("external/libp2p-mdns-placeholder"),
+        "local third-party patches must live under external"
     );
 
     let mut names = BTreeSet::new();
