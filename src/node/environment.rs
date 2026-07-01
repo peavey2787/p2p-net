@@ -1,9 +1,9 @@
 //! Advisory platform and network environment detection for profile resolution.
 //!
-//! Phase 2 keeps detection advisory-only: it lets callers resolve `profile = auto`
-//! against an `EnvironmentReport`, but it does not change live swarm behaviour at
-//! runtime. The detector intentionally combines static config, platform hints,
-//! and later runtime observations into one DRY policy input.
+//! Detection is advisory-only: it lets callers resolve `profile = auto` against
+//! an `EnvironmentReport`, but it does not change live swarm behaviour at
+//! runtime. The detector combines static config, platform hints, and runtime
+//! observations into one DRY policy input.
 
 use serde::{Deserialize, Serialize};
 

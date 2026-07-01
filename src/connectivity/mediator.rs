@@ -2,8 +2,8 @@
 //!
 //! A mediator is a reachable node that intentionally runs Circuit Relay v2 so
 //! lite/mobile peers can establish relayed connectivity and then attempt DCUtR
-//! hole punching. The current runtime maps this policy onto the existing relay
-//! server behaviour while keeping mediator intent visible in config, snapshots,
+//! hole punching. The central resolver maps this policy onto relay-server
+//! behaviour while keeping mediator intent visible in config, snapshots,
 //! metrics, and docs.
 
 use serde::{Deserialize, Serialize};
@@ -17,14 +17,14 @@ pub struct MediatorConfig {
     /// server capability through the central resolver.
     pub enabled: bool,
     /// Advertise this node as suitable for peers that need relayed connectivity
-    /// before attempting DCUtR. Discovery advertisement is implemented in a
-    /// later relay-discovery phase, but the policy bit is available now.
+    /// before attempting DCUtR. Relay discovery and observability use this
+    /// policy bit to distinguish intentional mediators from generic relays.
     pub advertise_for_dcutr: bool,
-    /// Allow relay reservations. If false, Phase 4 disables relay-server startup
+    /// Allow relay reservations. If false, validation rejects mediator startup
     /// because rust-libp2p's stock relay behaviour does not expose separate
     /// runtime switches for reservations and circuits.
     pub allow_reservations: bool,
-    /// Allow relayed circuits. If false, Phase 4 disables relay-server startup
+    /// Allow relayed circuits. If false, validation rejects mediator startup
     /// because accepting reservations without circuits would mislead lite peers.
     pub allow_circuits: bool,
     /// Require peers to be authenticated/trusted before mediation. The current
@@ -99,8 +99,8 @@ impl MediatorConfig {
     }
 
     /// Map mediator intent onto the existing Circuit Relay v2 service config.
-    /// The central resolver still owns the final behaviour policy; this method
-    /// only projects mediator capacity settings onto relay-service limits.
+    /// The central resolver owns the final behaviour policy; this method only
+    /// projects mediator capacity settings onto relay-service limits.
     pub fn apply_to_relay(&self, relay: &mut RelayServiceConfig) {
         if !self.enabled {
             return;

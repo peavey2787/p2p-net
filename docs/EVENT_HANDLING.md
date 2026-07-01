@@ -1,6 +1,6 @@
 # Swarm event handling layout
 
-Phase 5 keeps one node runtime but splits swarm event handling by responsibility.
+The node runtime splits swarm event handling by responsibility.
 The top-level dispatcher remains `src/node/events.rs`; it should only route
 `SwarmEvent<MeshEvent>` values to focused handlers.
 
@@ -24,11 +24,9 @@ The top-level dispatcher remains `src/node/events.rs`; it should only route
 - Do not add protocol-specific logic back into `src/node/events.rs`.
 - Do not make relay handlers update rendezvous state or gossip handlers update
   relay state.
-- Keep `SwarmEventContext` as the shared state boundary until later phases move
-  runtime services into narrower structs.
+- Keep `SwarmEventContext` as the shared state boundary unless runtime services
+  are intentionally moved into narrower structs.
 - New libp2p behaviours should get their own focused event module unless their
   handling is truly only a one-line dispatch to `stack`.
 
-This split is intentionally behavior-preserving. Phase 6 can now replace raw
-config-driven behaviour construction with resolved capability-driven behaviour
-construction without editing one large god file.
+This split is intentionally behavior-preserving. Resolved capability-driven behaviour construction can evolve without editing one large god file.

@@ -1,6 +1,6 @@
 # DCUtR policy and fallback
 
-Phase 8 makes Direct Connection Upgrade through Relay (DCUtR) an explicit node policy instead of an implicit side effect of having the libp2p behaviour installed.
+Direct Connection Upgrade through Relay (DCUtR) is an explicit node policy instead of an implicit side effect of having the libp2p behaviour installed.
 
 DCUtR is used when two peers first have a relayed path and then try to upgrade to a direct connection through hole punching. It still needs a relay/mediator path for discovery and coordination. The safe production strategy is:
 
@@ -32,7 +32,7 @@ Fields:
 - `enabled`: installs the DCUtR behaviour when the resolved node capability set also allows relay-client fallback.
 - `attempt_after_relay_connection`: treats relayed connections as eligible for a direct upgrade. rust-libp2p owns the protocol-level hole punch; p2p-net records the policy and exposes counters.
 - `keep_relay_fallback`: keeps the relay circuit available when an upgrade fails or cannot be attempted. This is required when upgrade-after-relay is enabled.
-- `retry_interval_secs`: minimum future retry spacing for repeated attempts to the same peer. Phase 8 exposes and validates the policy; deeper timer-driven retries can build on it without changing config shape.
+- `retry_interval_secs`: minimum future retry spacing for repeated attempts to the same peer. The policy is exposed and validated; deeper timer-driven retries can build on it without changing config shape.
 - `max_attempts_per_peer`: caps repeated upgrade attempts before relying on relay fallback.
 
 ## Profile resolution
@@ -60,6 +60,6 @@ Snapshots and Prometheus-style metrics expose:
 
 The dashboard also shows DCUtR enabled/attempt/success/failure/fallback/suppression counters.
 
-## What this phase does not do
+## Scope
 
-Phase 8 does not replace rust-libp2p's DCUtR implementation. It adds the product-level policy, validation, resolved capability wiring, safe fallback accounting, and operator-visible counters. Live timer-driven retry scheduling and relay replacement can now be layered on top of the policy without spreading DCUtR decisions through unrelated modules.
+This crate does not replace rust-libp2p's DCUtR implementation. It adds the product-level policy, validation, resolved capability wiring, safe fallback accounting, and operator-visible counters. Live timer-driven retry scheduling and relay replacement can be layered on top of the policy without spreading DCUtR decisions through unrelated modules.

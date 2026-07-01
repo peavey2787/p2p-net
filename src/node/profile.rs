@@ -1,21 +1,20 @@
 //! Profile and capability resolution for the standalone node.
 //!
-//! Phase 1 introduces explicit user-facing profiles and a resolved capability
-//! view without forcing every caller to understand individual libp2p behaviours.
-//! Phase 2 adds advisory environment detection so callers can resolve `Auto`
-//! against platform/reachability information without changing roles mid-run.
+//! User-facing profiles and resolved capability policy for the standalone node.
+//!
+//! Callers choose a high-level `NodeProfile`; the central resolver turns it into
+//! a concrete `NodeRole` and a libp2p-shaped `BehaviourSet`.
 
 use serde::{Deserialize, Serialize};
 
 use super::types::NodeConfig;
 
-/// User-facing node profile. `Auto` preserves the current all-in-one defaults
-/// until the environment detector and capability resolver land in later phases.
+/// User-facing node profile. `Auto` delegates role selection to the central
+/// capability resolver using advisory environment facts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeProfile {
-    /// Preserve current defaults for backward compatibility, then resolve to a
-    /// concrete role using only explicit config flags.
+    /// Resolve to a concrete role from explicit config and environment facts.
     #[default]
     Auto,
     /// Reachable node that listens for inbound peers and participates directly.
@@ -48,8 +47,8 @@ impl NodeProfile {
         }
     }
 
-    /// Apply phase-1 profile defaults to a clone of the raw config. This keeps
-    /// old configs backward-compatible while making explicit profiles meaningful.
+    /// Apply explicit profile defaults to a clone of the raw config before
+    /// capability resolution.
     pub(crate) fn apply_to(self, cfg: &mut NodeConfig) {
         match self {
             Self::Auto | Self::Full | Self::Bootstrap => {}
@@ -154,8 +153,8 @@ impl BehaviourSet {
     }
 }
 
-/// Phase-3 resolved view of user config. Runtime code should consume this
-/// single policy object instead of re-deciding what each profile means.
+/// Resolved view of user config. Runtime code consumes this single policy
+/// object instead of re-deciding what each profile means.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResolvedNodeConfig {
     pub profile: NodeProfile,

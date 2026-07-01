@@ -1,4 +1,4 @@
-//! Standalone all-in-one libp2p node glue.
+//! Shared libp2p node core with profile-driven capabilities.
 //!
 //! - **`stack`**: transport, `MeshBehaviour`, and discovery helpers.
 //! - **`connectivity`**: NAT/relay state and on-disk peer address cache.

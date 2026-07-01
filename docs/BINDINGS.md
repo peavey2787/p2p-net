@@ -1,6 +1,6 @@
 # Cross-platform bindings
 
-Phase 10 keeps one shared Rust P2P core and exposes binding-safe helpers for app shells. The goal is not to create separate Android, iOS, desktop, or web networking implementations. The goal is to make each shell provide only lifecycle, storage, and UI adapters while `p2p-net` owns the node, transport policy, profiles, relay discovery, DCUtR, and event handling.
+The binding layer keeps one shared Rust P2P core and exposes binding-safe helpers for app shells. The goal is not to create separate Android, iOS, desktop, or web networking implementations. Each shell provides only lifecycle, storage, and UI adapters while `p2p-net` owns the node, transport policy, profiles, relay discovery, DCUtR, and event handling.
 
 ## Boundary
 
@@ -24,7 +24,7 @@ Binding hosts are responsible for:
 
 ## Binding facade
 
-`src/bindings/mod.rs` adds JSON/enum-oriented helpers that are easy to wrap from UniFFI, a C ABI, Kotlin JNI, Swift FFI, Tauri, egui, or another host layer:
+`src/bindings/mod.rs` contains JSON/enum-oriented helpers that are easy to wrap from UniFFI, a C ABI, Kotlin JNI, Swift FFI, Tauri, egui, or another host layer:
 
 - `BindingTarget`
 - `BindingRuntimeSpec`
