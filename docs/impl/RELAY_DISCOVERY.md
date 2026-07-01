@@ -26,6 +26,7 @@ Relay candidates are selected through one deterministic pipeline:
 1. **Configured relays** from `relay_peers`. These are operator-pinned and preferred by default.
 2. **Cached relays** from the identity-bound peer cache. Expired, failed, bare, unspecified, and `/p2p-circuit` addresses are filtered out before selection.
 3. **Rendezvous candidates** from configured rendezvous infrastructure. This lets deployments publish likely relay/mediator nodes through their rendezvous/bootstrap layer.
+4. **Public fallback candidates** from `discovery.public_bootstrap.relay_peers` when public fallback policy allows them.
 
 All candidates must be identity-bound `/p2p/<PeerId>` multiaddrs with a reachable transport. Already-relayed `/p2p-circuit` addresses are not used as relay reservation targets.
 
@@ -35,6 +36,7 @@ All candidates must be identity-bound `/p2p/<PeerId>` multiaddrs with a reachabl
 - Configured relays are preferred when `prefer_configured_relays = true`.
 - Selection stops at `max_reservations`.
 - A warning pulse is emitted when fewer than `min_reservations` candidates are available.
+- Public fallback candidates are ordered after operator-owned/cached/rendezvous candidates.
 - Setting `enabled = false` means only configured `relay_peers` are considered.
 
 ## Runtime behavior
@@ -51,9 +53,15 @@ Snapshots and Prometheus-style metrics expose:
 
 - selected relays
 - total candidate count
-- configured/cached/rendezvous candidate counts
+- configured/cached/rendezvous/public candidate counts
 - ignored candidate count
 - discovery failures/warnings
 - replacement counter
 
 These fields let the GUI explain why a lite node has no relay, only one relay, or multiple relay fallback options.
+
+## Public fallback relay candidates
+
+`discovery.public_bootstrap.relay_peers` can add public relay/mediator candidates when public fallback policy allows it. These candidates are tracked separately from configured, cached, and rendezvous candidates so operators can see when the node depended on public infrastructure.
+
+Public fallback relays are selected after operator-owned/cached/rendezvous candidates. They are disabled by default and require explicit config. See `docs/spec/PUBLIC_FALLBACK.md`.

@@ -19,6 +19,8 @@ pub struct StartupDiscoveryPlan {
     pub bootstrap_seed_count: usize,
     pub rendezvous_seed_count: usize,
     pub cached_peer_count: usize,
+    pub public_bootstrap_seed_count: usize,
+    pub public_fallback_used: bool,
 }
 
 pub fn startup_discovery_plan(
@@ -27,11 +29,31 @@ pub fn startup_discovery_plan(
     rendezvous_peers: Vec<Multiaddr>,
     cached_peers: Vec<Multiaddr>,
 ) -> StartupDiscoveryPlan {
+    startup_discovery_plan_with_public(
+        bootstrap_peers,
+        bootstrap_seed_peers,
+        rendezvous_peers,
+        cached_peers,
+        Vec::new(),
+        false,
+    )
+}
+
+pub fn startup_discovery_plan_with_public(
+    bootstrap_peers: Vec<Multiaddr>,
+    bootstrap_seed_peers: Vec<Multiaddr>,
+    rendezvous_peers: Vec<Multiaddr>,
+    cached_peers: Vec<Multiaddr>,
+    public_bootstrap_seed_peers: Vec<Multiaddr>,
+    public_fallback_used: bool,
+) -> StartupDiscoveryPlan {
     let mut plan = StartupDiscoveryPlan {
         bootstrap_peer_count: bootstrap_peers.len(),
         bootstrap_seed_count: bootstrap_seed_peers.len(),
         rendezvous_seed_count: rendezvous_peers.len(),
         cached_peer_count: cached_peers.len(),
+        public_bootstrap_seed_count: public_bootstrap_seed_peers.len(),
+        public_fallback_used,
         dial_addrs: Vec::new(),
     };
 
@@ -40,6 +62,7 @@ pub fn startup_discovery_plan(
         .chain(bootstrap_seed_peers)
         .chain(rendezvous_peers)
         .chain(cached_peers)
+        .chain(public_bootstrap_seed_peers)
     {
         if extract_p2p_peer_id(&addr).is_some() && !plan.dial_addrs.contains(&addr) {
             plan.dial_addrs.push(addr);

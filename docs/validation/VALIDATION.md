@@ -118,3 +118,7 @@ cargo deny check --config qa/ci/deny.toml
 ```
 
 Use `qa/ci/run-full-validation.ps1` or `qa/ci/run-full-validation.sh` for the exact portable flow.
+
+## Public fallback checks
+
+`qa/tests/discovery.rs` and `qa/tests/relay_discovery.rs` cover explicit public bootstrap/relay fallback policy, validation, and source accounting. `qa/tests/observability.rs` verifies public fallback snapshot and metrics fields.

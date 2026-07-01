@@ -57,6 +57,11 @@
       "tags": [],
       "privacy": "hashed",
       "allow_readable_tags": false
+    },
+    "public_bootstrap": {
+      "mode": "disabled",
+      "bootstrap_seed_peers": [],
+      "relay_peers": []
     }
   },
   "dnsaddr": {

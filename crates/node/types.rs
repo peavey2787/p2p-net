@@ -146,6 +146,26 @@ impl NodeConfig {
             &self.dnsaddr,
         )?;
         validate_peer_addrs(
+            "discovery.public_bootstrap.bootstrap_seed_peers",
+            &self.discovery.public_bootstrap.bootstrap_seed_peers,
+            true,
+        )?;
+        validate_dnsaddr_use(
+            "discovery.public_bootstrap.bootstrap_seed_peers",
+            &self.discovery.public_bootstrap.bootstrap_seed_peers,
+            &self.dnsaddr,
+        )?;
+        validate_peer_addrs(
+            "discovery.public_bootstrap.relay_peers",
+            &self.discovery.public_bootstrap.relay_peers,
+            true,
+        )?;
+        validate_dnsaddr_use(
+            "discovery.public_bootstrap.relay_peers",
+            &self.discovery.public_bootstrap.relay_peers,
+            &self.dnsaddr,
+        )?;
+        validate_peer_addrs(
             "discovery.rendezvous_peers",
             &self.discovery.rendezvous_peers,
             true,
@@ -245,6 +265,24 @@ impl NodeConfig {
         )
     }
 
+    pub fn parsed_public_bootstrap_seed_peers(
+        &self,
+    ) -> Result<Vec<Multiaddr>, crate::common::error::NetError> {
+        parse_multiaddrs(
+            "discovery.public_bootstrap.bootstrap_seed_peers",
+            &self.discovery.public_bootstrap.bootstrap_seed_peers,
+        )
+    }
+
+    pub fn parsed_public_relay_peers(
+        &self,
+    ) -> Result<Vec<Multiaddr>, crate::common::error::NetError> {
+        parse_multiaddrs(
+            "discovery.public_bootstrap.relay_peers",
+            &self.discovery.public_bootstrap.relay_peers,
+        )
+    }
+
     pub fn parsed_rendezvous_peers(
         &self,
     ) -> Result<Vec<Multiaddr>, crate::common::error::NetError> {
@@ -278,6 +316,11 @@ pub struct NodeSnapshot {
     pub discovery_namespace_mode: String,
     pub discovery_namespaces: Vec<String>,
     pub discovery_namespace_count: usize,
+    pub public_fallback_mode: String,
+    pub public_fallback_used: bool,
+    pub public_fallback_reason: String,
+    pub public_bootstrap_seed_count: usize,
+    pub public_relay_candidate_count: usize,
     pub connected_peers: usize,
     pub relay_server_enabled: bool,
     pub mediator_enabled: bool,
@@ -329,6 +372,7 @@ pub struct NodeSnapshot {
     pub relay_discovery_configured_candidates: usize,
     pub relay_discovery_cached_candidates: usize,
     pub relay_discovery_rendezvous_candidates: usize,
+    pub relay_discovery_public_candidates: usize,
     pub relay_discovery_ignored_candidates: usize,
     pub relay_discovery_failures: usize,
     pub relay_discovery_replacements: usize,
@@ -402,6 +446,7 @@ impl NodeSnapshot {
         self.relay_discovery_cached_candidates = relay_state.relay_discovery_cached_candidates;
         self.relay_discovery_rendezvous_candidates =
             relay_state.relay_discovery_rendezvous_candidates;
+        self.relay_discovery_public_candidates = relay_state.relay_discovery_public_candidates;
         self.relay_discovery_ignored_candidates = relay_state.relay_discovery_ignored_candidates;
         self.relay_discovery_failures = relay_state.relay_discovery_failures;
         self.relay_discovery_replacements = relay_state.relay_discovery_replacements;

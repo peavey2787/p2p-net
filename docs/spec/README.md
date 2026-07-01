@@ -7,3 +7,4 @@ implementation and validation work must preserve.
 - `DISCOVERY_NAMESPACES.md` — hashed app/contact/group discovery namespace model.
 - `DISCOVERY_RESURRECTION.md` — private-infrastructure-first discovery fallback, peer roles, and CGNAT/DCUtR reality model.
 - `IDENTITY_KEY_BACKUP_ROTATION.md` — identity key backup and rotation rules.
+- `PUBLIC_FALLBACK.md` documents explicit public bootstrap and relay fallback.
