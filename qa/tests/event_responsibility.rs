@@ -5,17 +5,17 @@ use std::path::Path;
 fn swarm_event_handlers_are_split_by_responsibility() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     for relative in [
-        "src/node/events/connection.rs",
-        "src/node/events/relay_client.rs",
-        "src/node/events/relay_server.rs",
-        "src/node/events/dcutr.rs",
-        "src/node/events/rendezvous.rs",
-        "src/node/events/gossip.rs",
+        "crates/p2p-net/src/node/events/connection.rs",
+        "crates/p2p-net/src/node/events/relay_client.rs",
+        "crates/p2p-net/src/node/events/relay_server.rs",
+        "crates/p2p-net/src/node/events/dcutr.rs",
+        "crates/p2p-net/src/node/events/rendezvous.rs",
+        "crates/p2p-net/src/node/events/gossip.rs",
     ] {
         assert!(root.join(relative).exists(), "missing {relative}");
     }
 
-    let dispatcher = fs::read_to_string(root.join("src/node/events.rs"))
+    let dispatcher = fs::read_to_string(root.join("crates/p2p-net/src/node/events.rs"))
         .expect("dispatcher source is readable");
     for module in [
         "mod connection;",

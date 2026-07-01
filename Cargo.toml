@@ -19,7 +19,7 @@ dashboard = ["dep:crossterm", "dep:ratatui"]
 
 [lib]
 name = "p2p_net"
-path = "src/lib.rs"
+path = "crates/p2p-net/src/lib.rs"
 
 [[example]]
 name = "p2p_node"
@@ -30,91 +30,91 @@ bench = false
 
 [[test]]
 name = "windows_build"
-path = "unit_tests/windows_build.rs"
+path = "qa/tests/windows_build.rs"
 
 [[test]]
 name = "swarm_smoke"
-path = "unit_tests/swarm_smoke.rs"
+path = "qa/tests/swarm_smoke.rs"
 
 [[test]]
 name = "pulse_validation"
-path = "unit_tests/pulse_validation.rs"
+path = "qa/tests/pulse_validation.rs"
 
 [[test]]
 name = "config_defaults"
-path = "unit_tests/config_defaults.rs"
+path = "qa/tests/config_defaults.rs"
 
 [[test]]
 name = "environment_detection"
-path = "unit_tests/environment_detection.rs"
+path = "qa/tests/environment_detection.rs"
 
 [[test]]
 name = "capability_resolver"
-path = "unit_tests/capability_resolver.rs"
+path = "qa/tests/capability_resolver.rs"
 
 [[test]]
 name = "mediator_role"
-path = "unit_tests/mediator_role.rs"
+path = "qa/tests/mediator_role.rs"
 
 [[test]]
 name = "event_responsibility"
-path = "unit_tests/event_responsibility.rs"
+path = "qa/tests/event_responsibility.rs"
 
 [[test]]
 name = "behaviour_policy"
-path = "unit_tests/behaviour_policy.rs"
+path = "qa/tests/behaviour_policy.rs"
 
 [[test]]
 name = "relay_discovery"
-path = "unit_tests/relay_discovery.rs"
+path = "qa/tests/relay_discovery.rs"
 
 [[test]]
 name = "dcutr_policy"
-path = "unit_tests/dcutr_policy.rs"
+path = "qa/tests/dcutr_policy.rs"
 
 [[test]]
 name = "platform_runtime"
-path = "unit_tests/platform_runtime.rs"
+path = "qa/tests/platform_runtime.rs"
 
 [[test]]
 name = "bindings"
-path = "unit_tests/bindings.rs"
+path = "qa/tests/bindings.rs"
 
 [[test]]
 name = "codebase_hygiene"
-path = "unit_tests/codebase_hygiene.rs"
+path = "qa/tests/codebase_hygiene.rs"
 
 [[test]]
 name = "relay_client"
-path = "unit_tests/relay_client.rs"
+path = "qa/tests/relay_client.rs"
 
 [[test]]
 name = "relay_server_limits"
-path = "unit_tests/relay_server_limits.rs"
+path = "qa/tests/relay_server_limits.rs"
 
 [[test]]
 name = "message_security"
-path = "unit_tests/message_security.rs"
+path = "qa/tests/message_security.rs"
 
 [[test]]
 name = "discovery"
-path = "unit_tests/discovery.rs"
+path = "qa/tests/discovery.rs"
 
 [[test]]
 name = "rendezvous"
-path = "unit_tests/rendezvous.rs"
+path = "qa/tests/rendezvous.rs"
 
 [[test]]
 name = "observability"
-path = "unit_tests/observability.rs"
+path = "qa/tests/observability.rs"
 
 [[test]]
 name = "hostile_network"
-path = "unit_tests/hostile_network.rs"
+path = "qa/tests/hostile_network.rs"
 
 [[test]]
 name = "multi_node_hostile"
-path = "unit_tests/multi_node_hostile.rs"
+path = "qa/tests/multi_node_hostile.rs"
 
 [dependencies]
 futures = "0.3"
@@ -149,7 +149,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 
 [[test]]
 name = "dependency_policy"
-path = "unit_tests/dependency_policy.rs"
+path = "qa/tests/dependency_policy.rs"
 
 [patch.crates-io]
 
@@ -157,6 +157,6 @@ path = "unit_tests/dependency_policy.rs"
 # is compiled. Patch libp2p-dns to a local no-Hickory adapter. Patch disallowed mDNS
 # to a no-op placeholder so the rejected Hickory DNS parser/resolver line cannot
 # enter Cargo.lock through optional metadata. p2p-net /dnsaddr support lives in
-# src/connectivity/dns.rs.
-libp2p-dns = { path = "vendor/libp2p-dns" }
-libp2p-mdns = { path = "vendor/libp2p-mdns-placeholder" }
+# crates/p2p-net/src/connectivity/dns.rs.
+libp2p-dns = { path = "external/vendor/libp2p-dns" }
+libp2p-mdns = { path = "external/vendor/libp2p-mdns-placeholder" }

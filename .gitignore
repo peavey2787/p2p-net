@@ -124,9 +124,10 @@ node-config.local.json
 # -----------------------------------------------------------------------------
 # Dependency/vendor policy
 # -----------------------------------------------------------------------------
-# Do NOT ignore vendor/. This repo may intentionally patch crates locally.
-!/vendor/
-!/vendor/**
+# Do NOT ignore external/vendor/. This repo may intentionally patch crates locally.
+!/external/
+!/external/vendor/
+!/external/vendor/**
 
 # -----------------------------------------------------------------------------
 # IDE/editor files

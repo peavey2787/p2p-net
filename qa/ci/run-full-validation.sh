@@ -26,7 +26,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
 run_step() {
@@ -134,8 +134,8 @@ run_step "Dependency graph guard" assert_no_rejected_dns_resolver
 run_step "Tests" bash -lc 'export CARGO_TARGET_DIR="$PWD/target/full-validation/tests"; cargo test --workspace --locked -j 1'
 run_step "Dashboard feature tests" bash -lc 'export CARGO_TARGET_DIR="$PWD/target/full-validation/dashboard"; cargo test --features dashboard --locked -j 1'
 run_step "Clippy" bash -lc 'export CARGO_TARGET_DIR="$PWD/target/full-validation/clippy"; cargo clippy --workspace --all-targets --all-features --locked -j 1 -- -D warnings'
-run_step "Security audit" cargo audit
-run_step "Dependency policy" cargo deny check
+run_step "Security audit" cargo audit --config qa/ci/audit.toml
+run_step "Dependency policy" cargo deny --config qa/ci/deny.toml check
 
 if [[ "$SKIP_IGNORED" != "1" ]]; then
   run_step "Ignored load/soak tests" bash -lc 'export CARGO_TARGET_DIR="$PWD/target/full-validation/ignored"; cargo test --test multi_node_hostile --locked -j 1 -- --ignored --nocapture'

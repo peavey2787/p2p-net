@@ -23,12 +23,31 @@
 
 DNS support is enabled by default for configured and cached peers through p2p-net's own startup resolver. Peer addresses using `/dns`, `/dns4`, `/dns6`, or `/dnsaddr` are resolved before dialing. WebSocket support in rust-libp2p 0.56 requires the `libp2p-dns` adapter crate, so p2p-net patches that crate to a local no-Hickory implementation instead of using the crates.io resolver path. The disallowed upstream mDNS adapter crate is policy-patched to a local no-op placeholder so the rejected Hickory DNS line stays out of `Cargo.lock`. `/dnsaddr` uses bounded DNS-over-HTTPS TXT lookup support with a configurable endpoint in p2p-net's own resolver. The default endpoint is Cloudflare for simple out-of-the-box operation; production deployments can point it at an internal/self-hosted DoH resolver or disable `/dnsaddr` entirely. LAN multicast discovery/mDNS is not included.
 
+
+## Repository layout
+
+```text
+crates/p2p-net/src/   Shared Rust P2P core
+docs/impl/            Implementation docs
+docs/spec/            Core specifications
+docs/validation/      Validation docs
+docs/project/         Project/audit notes
+docs/future-work/     Deferred ideas and long-term proposals
+qa/ci/                Canonical validation scripts and CI helpers
+qa/tests/             Global/system/invariant integration tests
+qa/fuzz/              Fuzz targets
+qa/tools/             Internal QA utilities
+qa/vectors/           Protocol fixtures and test vectors
+examples/             Runnable examples and minimal demo configs
+external/vendor/      Local third-party crate patches
+```
+
 ## Run all stable tests and checks
 
 Use the single full-validation script from the crate root:
 
 ```powershell
-.\scripts\run-full-validation.ps1
+.\qa\ci\run-full-validation.ps1
 ```
 
 It cleans stale build artifacts, refreshes the dependency lockfile, auto-formats with `cargo fmt`, then runs tests, dashboard-feature tests, clippy, `cargo audit`, `cargo deny`, and ignored load/soak tests. It uses isolated validation target directories to avoid stale/incomplete `rlib` artifacts on Windows. It uses the stable Rust toolchain pinned by `rust-toolchain.toml`, rejects nightly/beta/dev rustc builds, and installs missing stable-compatible audit/deny tools unless `-NoInstallTools` is used.
@@ -36,18 +55,18 @@ It cleans stale build artifacts, refreshes the dependency lockfile, auto-formats
 Useful options:
 
 ```powershell
-.\scripts\run-full-validation.ps1 -SkipIgnored
-.\scripts\run-full-validation.ps1 -NoInstallTools
-.\scripts\run-full-validation.ps1 -NoClean
+.\qa\ci\run-full-validation.ps1 -SkipIgnored
+.\qa\ci\run-full-validation.ps1 -NoInstallTools
+.\qa\ci\run-full-validation.ps1 -NoClean
 ```
 
 Linux/macOS equivalent:
 
 ```bash
-./scripts/run-full-validation.sh
+./qa/ci/run-full-validation.sh
 ```
 
-Fuzz targets are included under `fuzz/`, but they are not run by the stable one-file validation script. Additional validation and hostile-network notes are in `docs/VALIDATION.md`.
+Fuzz targets are included under `qa/fuzz/`, but they are not run by the stable one-file validation script. Additional validation and hostile-network notes are in `docs/validation/VALIDATION.md`.
 
 ## Start a node
 
@@ -76,20 +95,20 @@ examples/node-config.example.json
 Important fields:
 
 - `profile`: high-level node role selection: `auto`, `full`, `lite`, `relay`, `mediator`, `rendezvous`, `bootstrap`, or `mobile_lite`.
-- `identity_key_path`: stable private node identity; keep this file private and back it up according to `docs/IDENTITY_KEY_BACKUP_ROTATION.md`.
+- `identity_key_path`: stable private node identity; keep this file private and back it up according to `docs/spec/IDENTITY_KEY_BACKUP_ROTATION.md`.
 - `listen_addresses`: local TCP/QUIC/WebSocket listen multiaddrs. Use concrete `/ip4` or `/ip6` listen addresses, not DNS names.
 - `bootstrap_peers`: trusted `/p2p/<PeerId>` bootstrap multiaddrs. `/dns`, `/dns4`, `/dns6`, and `/dnsaddr` dial addresses are supported by default.
-- `dnsaddr`: `/dnsaddr` DoH policy. Defaults to bounded Cloudflare DoH for simple operation; set `doh_endpoint` to an internal/self-hosted DoH resolver for production, or set `enabled` to `false` to reject `/dnsaddr` in configured peers. See `docs/DNSADDR_DOH.md`.
+- `dnsaddr`: `/dnsaddr` DoH policy. Defaults to bounded Cloudflare DoH for simple operation; set `doh_endpoint` to an internal/self-hosted DoH resolver for production, or set `enabled` to `false` to reject `/dnsaddr` in configured peers. See `docs/impl/DNSADDR_DOH.md`.
 - `relay_peers`: operator-pinned relay or mediator peers to dial and reserve through.
-- `discovery.relay_discovery`: select relay candidates from configured relays, cached healthy peers, and rendezvous infrastructure. See `docs/RELAY_DISCOVERY.md`.
-- `dcutr`: direct-connection upgrade policy with relay fallback, retry budget, and observability. See `docs/DCUTR_POLICY.md`.
-- `start_node_with_platform(...)`: embed the shared core with platform runtime/storage adapters. See `docs/PLATFORM_RUNTIME.md`.
-- `bindings`: binding-safe JSON/enum facade for Kotlin, Swift, desktop, and WebView shells. See `docs/BINDINGS.md`.
+- `discovery.relay_discovery`: select relay candidates from configured relays, cached healthy peers, and rendezvous infrastructure. See `docs/impl/RELAY_DISCOVERY.md`.
+- `dcutr`: direct-connection upgrade policy with relay fallback, retry budget, and observability. See `docs/impl/DCUTR_POLICY.md`.
+- `start_node_with_platform(...)`: embed the shared core with platform runtime/storage adapters. See `docs/impl/PLATFORM_RUNTIME.md`.
+- `bindings`: binding-safe JSON/enum facade for Kotlin, Swift, desktop, and WebView shells. See `docs/impl/BINDINGS.md`.
 - `reserve_configured_relays`: request `/p2p-circuit` reservations from selected relays.
 - `discovery.rendezvous`: enable rendezvous client/server registration/discovery.
 - `connection_limits`: global, per-peer, and per-IP connection caps.
 - `message_security`: heartbeat size, timestamp, replay, and reputation settings.
-- `mediator`: first-class DCUtR mediator policy. `profile = "mediator"` enables the underlying relay server capability intentionally for lite/mobile peers. See `docs/MEDIATOR.md`.
+- `mediator`: first-class DCUtR mediator policy. `profile = "mediator"` enables the underlying relay server capability intentionally for lite/mobile peers. See `docs/impl/MEDIATOR.md`.
 - `relay.enabled`: opt-in generic relay server mode. Defaults to `false`.
 - `relay.allow_peers` / `relay.deny_peers`: connection-level relay-node ACLs; deny wins.
 - `relay.schedule`: UTC relay service windows.
@@ -120,12 +139,12 @@ The crate is intended to be validation-clean under the stable validation script 
 
 ## Manual checks
 
-Normally, do not run the individual commands manually. Use `./scripts/run-full-validation.ps1`; it is the canonical one-file validation runner for formatting, tests, clippy, security audit, dependency policy, and ignored load/soak tests.
+Normally, do not run the individual commands manually. Use `./qa/ci/run-full-validation.ps1`; it is the canonical one-file validation runner for formatting, tests, clippy, security audit, dependency policy, and ignored load/soak tests.
 
-- `docs/EVENT_HANDLING.md` documents the single-responsibility swarm event split.
-- `docs/BEHAVIOUR_POLICY.md` documents profile-driven behaviour construction.
-- `docs/RELAY_DISCOVERY.md` documents relay discovery and selection.
-- `docs/DCUTR_POLICY.md` documents DCUtR policy and fallback counters.
-- `docs/PLATFORM_RUNTIME.md` documents the platform runtime/storage abstraction.
-- `docs/BINDINGS.md` documents the cross-platform binding facade.
-- `unit_tests/codebase_hygiene.rs` guards against stale transitional docs, duplicate test registration, and profile-decision drift outside the resolver.
+- `docs/impl/EVENT_HANDLING.md` documents the single-responsibility swarm event split.
+- `docs/impl/BEHAVIOUR_POLICY.md` documents profile-driven behaviour construction.
+- `docs/impl/RELAY_DISCOVERY.md` documents relay discovery and selection.
+- `docs/impl/DCUTR_POLICY.md` documents DCUtR policy and fallback counters.
+- `docs/impl/PLATFORM_RUNTIME.md` documents the platform runtime/storage abstraction.
+- `docs/impl/BINDINGS.md` documents the cross-platform binding facade.
+- `qa/tests/codebase_hygiene.rs` guards against stale transitional docs, duplicate test registration, and profile-decision drift outside the resolver.
