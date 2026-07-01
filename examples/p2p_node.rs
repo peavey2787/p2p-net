@@ -99,7 +99,7 @@ fn draw_dashboard(frame: &mut ratatui::Frame<'_>, snap: &NodeSnapshot) {
     frame.render_widget(transports, chunks[1]);
 
     let mesh = Paragraph::new(format!(
-        "Connected Peers: {}\nRelay Server: {} ({}) | Mediator: {}\nServer Reservations: {} | Client Reservations: {} / attempts {} failures {}\nActive Circuits: {} | Denied Requests: {} | Bytes Fwd: {} | DCUtR: {}/{}",
+        "Connected Peers: {}\nRelay Server: {} ({}) | Mediator: {}\nServer Reservations: {} | Client Reservations: {} / attempts {} failures {}\nRelay Discovery: selected {} / candidates {} failures {}\nActive Circuits: {} | Denied Requests: {} | Bytes Fwd: {} | DCUtR: {}/{}",
         snap.connected_peers,
         snap.relay_server_enabled,
         snap.relay_service_health.as_str(),
@@ -108,6 +108,9 @@ fn draw_dashboard(frame: &mut ratatui::Frame<'_>, snap: &NodeSnapshot) {
         snap.relay_client_reservations,
         snap.relay_client_reservation_attempts,
         snap.relay_client_reservation_failures,
+        snap.relay_discovery_selected_relays.len(),
+        snap.relay_discovery_candidate_count,
+        snap.relay_discovery_failures,
         snap.relay_active_circuits,
         snap.relay_denied_requests,
         snap.relay_bytes_forwarded,

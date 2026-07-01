@@ -6,7 +6,7 @@ mod events;
 mod profile;
 mod types;
 
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -21,7 +21,7 @@ use crate::common::error::NetError;
 use crate::connectivity::limits::ConnectionCapState;
 use crate::connectivity::relay::RelayState;
 use crate::connectivity::rendezvous::RendezvousState;
-use crate::connectivity::{dns, identity, peer_cache};
+use crate::connectivity::{dns, identity, peer_cache, relay_discovery};
 use crate::protocol::pulse::{collect_local_heartbeat, heartbeat_topic, HeartbeatReplayCache};
 use crate::protocol::reputation::ReputationStore;
 use crate::stack::{
@@ -91,11 +91,15 @@ pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
     let relay_peers =
         dns::resolve_configured_multiaddrs("relay_peers", cfg.parsed_relay_peers()?, &cfg.dnsaddr)
             .await?;
-    let cached_peers = dns::resolve_cached_multiaddrs(
-        peer_cache::load_last_addrs(&cfg.discovery, cfg.startup_peer_cache_probe),
-        &cfg.dnsaddr,
-    )
-    .await;
+    let cached_startup_addrs = peer_cache::load_last_addrs(
+        &cfg.discovery,
+        cfg.startup_peer_cache_probe
+            .max(cfg.discovery.relay_discovery.max_reservations),
+    );
+    let cached_peers =
+        dns::resolve_cached_multiaddrs(cached_startup_addrs.clone(), &cfg.dnsaddr).await;
+    let cached_relay_peers =
+        dns::resolve_cached_multiaddrs(cached_startup_addrs, &cfg.dnsaddr).await;
 
     let startup_plan = startup_discovery_plan(
         bootstrap_peers,
@@ -105,11 +109,29 @@ pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
     );
     seed_bootstrap(&mut swarm, &startup_plan.dial_addrs);
 
-    let relay_reservation_plan = if resolved_config.should_reserve_configured_relays {
-        reserve_configured_relays(&mut swarm, &relay_peers)
+    let relay_discovery_policy = if resolved_config.relay_discovery_enabled {
+        cfg.discovery.relay_discovery.clone()
     } else {
-        if resolved_config.should_seed_relay_peers {
-            seed_bootstrap(&mut swarm, &relay_peers);
+        relay_discovery::RelayDiscoveryPolicy {
+            enabled: false,
+            ..cfg.discovery.relay_discovery.clone()
+        }
+    };
+    let relay_selection_plan = relay_discovery::select_startup_relays(
+        &relay_discovery_policy,
+        relay_peers,
+        cached_relay_peers,
+        rendezvous_peers.clone(),
+    );
+
+    let selected_relay_peers = relay_selection_plan.selected_addrs.clone();
+    let relay_reservation_plan = if resolved_config.enabled_behaviours.relay_client
+        && cfg.reserve_configured_relays
+    {
+        reserve_configured_relays(&mut swarm, &selected_relay_peers)
+    } else {
+        if resolved_config.enabled_behaviours.relay_client && !selected_relay_peers.is_empty() {
+            seed_bootstrap(&mut swarm, &selected_relay_peers);
         }
         Default::default()
     };
@@ -167,6 +189,20 @@ pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
         relay_client_reservations: 0,
         relay_client_reservation_attempts: relay_reservation_plan.attempted,
         relay_client_reservation_failures: relay_reservation_plan.errors.len(),
+        relay_discovery_enabled: relay_selection_plan.enabled,
+        relay_discovery_min_reservations: relay_selection_plan.min_reservations,
+        relay_discovery_max_reservations: relay_selection_plan.max_reservations,
+        relay_discovery_selected_relays: relay_selection_plan.selected_strings(),
+        relay_discovery_candidate_count: relay_selection_plan.total_candidates(),
+        relay_discovery_configured_candidates: relay_selection_plan.configured_candidates,
+        relay_discovery_cached_candidates: relay_selection_plan.cached_candidates,
+        relay_discovery_rendezvous_candidates: relay_selection_plan.rendezvous_candidates,
+        relay_discovery_ignored_candidates: relay_selection_plan.ignored_candidates,
+        relay_discovery_failures: relay_selection_plan
+            .errors
+            .len()
+            .saturating_add(relay_reservation_plan.errors.len()),
+        relay_discovery_replacements: 0,
         relayed_listen_addresses: relay_reservation_plan
             .listen_addrs
             .iter()
@@ -205,6 +241,28 @@ pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
                 resolved_config.mediator_enabled
             ),
         );
+    }
+
+    if relay_selection_plan.total_candidates() > 0
+        || !relay_selection_plan.selected_addrs.is_empty()
+        || !relay_selection_plan.errors.is_empty()
+    {
+        let mut guard = snapshot.lock().await;
+        push_pulse(
+            &mut guard.pulses,
+            format!(
+                "relay_discovery selected={} candidates={} configured={} cached={} rendezvous={} ignored={}",
+                relay_selection_plan.selected_addrs.len(),
+                relay_selection_plan.total_candidates(),
+                relay_selection_plan.configured_candidates,
+                relay_selection_plan.cached_candidates,
+                relay_selection_plan.rendezvous_candidates,
+                relay_selection_plan.ignored_candidates
+            ),
+        );
+        for err in &relay_selection_plan.errors {
+            push_pulse(&mut guard.pulses, format!("relay_discovery warning: {err}"));
+        }
     }
 
     if !relay_reservation_plan.listen_addrs.is_empty() || !relay_reservation_plan.errors.is_empty()
@@ -259,6 +317,20 @@ pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
             health: cfg.relay.health_now(),
             relay_client_reservation_attempts: relay_reservation_plan.attempted,
             relay_client_reservation_failures: relay_reservation_plan.errors.len(),
+            relay_discovery_selected_relays: relay_selection_plan
+                .selected_strings()
+                .into_iter()
+                .collect::<BTreeSet<_>>(),
+            relay_discovery_candidate_count: relay_selection_plan.total_candidates(),
+            relay_discovery_configured_candidates: relay_selection_plan.configured_candidates,
+            relay_discovery_cached_candidates: relay_selection_plan.cached_candidates,
+            relay_discovery_rendezvous_candidates: relay_selection_plan.rendezvous_candidates,
+            relay_discovery_ignored_candidates: relay_selection_plan.ignored_candidates,
+            relay_discovery_failures: relay_selection_plan
+                .errors
+                .len()
+                .saturating_add(relay_reservation_plan.errors.len()),
+            relay_discovery_replacements: 0,
             relayed_listen_addrs: relay_reservation_plan
                 .listen_addrs
                 .iter()
@@ -517,6 +589,61 @@ pub fn snapshot_to_json(snapshot: &NodeSnapshot) -> Value {
     );
     insert(
         &mut map,
+        "relay_discovery_enabled",
+        snapshot.relay_discovery_enabled,
+    );
+    insert(
+        &mut map,
+        "relay_discovery_min_reservations",
+        snapshot.relay_discovery_min_reservations,
+    );
+    insert(
+        &mut map,
+        "relay_discovery_max_reservations",
+        snapshot.relay_discovery_max_reservations,
+    );
+    insert(
+        &mut map,
+        "relay_discovery_selected_relays",
+        &snapshot.relay_discovery_selected_relays,
+    );
+    insert(
+        &mut map,
+        "relay_discovery_candidate_count",
+        snapshot.relay_discovery_candidate_count,
+    );
+    insert(
+        &mut map,
+        "relay_discovery_configured_candidates",
+        snapshot.relay_discovery_configured_candidates,
+    );
+    insert(
+        &mut map,
+        "relay_discovery_cached_candidates",
+        snapshot.relay_discovery_cached_candidates,
+    );
+    insert(
+        &mut map,
+        "relay_discovery_rendezvous_candidates",
+        snapshot.relay_discovery_rendezvous_candidates,
+    );
+    insert(
+        &mut map,
+        "relay_discovery_ignored_candidates",
+        snapshot.relay_discovery_ignored_candidates,
+    );
+    insert(
+        &mut map,
+        "relay_discovery_failures",
+        snapshot.relay_discovery_failures,
+    );
+    insert(
+        &mut map,
+        "relay_discovery_replacements",
+        snapshot.relay_discovery_replacements,
+    );
+    insert(
+        &mut map,
         "relayed_listen_addresses",
         &snapshot.relayed_listen_addresses,
     );
@@ -673,6 +800,31 @@ pub fn snapshot_to_prometheus_metrics(snapshot: &NodeSnapshot) -> String {
     line(
         "p2p_relay_bytes_forwarded",
         snapshot.relay_bytes_forwarded,
+        &mut out,
+    );
+    line(
+        "p2p_relay_discovery_enabled",
+        if snapshot.relay_discovery_enabled { 1 } else { 0 },
+        &mut out,
+    );
+    line(
+        "p2p_relay_discovery_selected_relays",
+        snapshot.relay_discovery_selected_relays.len(),
+        &mut out,
+    );
+    line(
+        "p2p_relay_discovery_candidate_count",
+        snapshot.relay_discovery_candidate_count,
+        &mut out,
+    );
+    line(
+        "p2p_relay_discovery_failures",
+        snapshot.relay_discovery_failures,
+        &mut out,
+    );
+    line(
+        "p2p_relay_discovery_replacements",
+        snapshot.relay_discovery_replacements,
         &mut out,
     );
     line("p2p_dcutr_attempts", snapshot.dcutr_attempts, &mut out);

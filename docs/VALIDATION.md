@@ -72,3 +72,8 @@ sudo ./scripts/netem-linux.sh lo stop
 ## Phase 6 behaviour policy
 
 `behaviour_policy` verifies that the stack builder consumes `ResolvedNodeConfig`, that Kademlia server mode is no longer hard-coded for every node, and that lite/mobile-lite profiles resolve to Kademlia client mode while retaining relay-client/DCUtR fallback.
+
+
+## Phase 7 relay discovery validation
+
+`unit_tests/relay_discovery.rs` covers relay candidate filtering, source ordering, duplicate removal, policy validation, and lite-profile resolution. The test is registered in `Cargo.toml`, so `scripts/run-full-validation.ps1` picks it up through the existing `cargo test --workspace --locked -j 1` step.

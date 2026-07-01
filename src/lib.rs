@@ -26,6 +26,10 @@ pub use connectivity::relay::{
     is_p2p_circuit_addr, relay_peer_id, relay_reservation_addr, RelayAccess, RelaySchedule,
     RelayServiceConfig, RelayServiceHealth, RelayWindow,
 };
+pub use connectivity::relay_discovery::{
+    select_startup_relays, RelayCandidate, RelayCandidateSource, RelayDiscoveryPolicy,
+    RelaySelectionPlan,
+};
 pub use connectivity::rendezvous::{RendezvousConfig, RendezvousState};
 pub use libp2p::{Multiaddr, PeerId};
 pub use node::{

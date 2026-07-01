@@ -17,6 +17,7 @@ pub fn resolve_node_config(
     environment: &EnvironmentReport,
 ) -> Result<ResolvedNodeConfig, NetError> {
     let effective = effective_config_for_resolution(raw);
+    effective.discovery.relay_discovery.validate()?;
     effective.mediator.validate(&effective.relay)?;
     let role = resolve_role_for_environment(&effective, environment);
     let resolved = ResolvedNodeConfig::from_effective_config(raw.profile, role, effective);
@@ -120,6 +121,12 @@ fn validate_resolved_config(
     if behaviours.dcutr && !behaviours.relay_client {
         return Err(config_error(
             "DCUtR requires relay client capability for relayed fallback",
+        ));
+    }
+
+    if resolved.relay_discovery_enabled && !behaviours.relay_client {
+        return Err(config_error(
+            "relay discovery requires relay client capability",
         ));
     }
 

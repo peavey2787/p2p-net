@@ -167,6 +167,9 @@ pub struct ResolvedNodeConfig {
     pub should_listen: bool,
     pub listen_addresses: Vec<String>,
     pub relay_peers: Vec<String>,
+    pub relay_discovery_enabled: bool,
+    pub relay_discovery_min_reservations: usize,
+    pub relay_discovery_max_reservations: usize,
     pub relay_server_enabled: bool,
     pub mediator_enabled: bool,
     pub mediator_advertise_for_dcutr: bool,
@@ -206,7 +209,11 @@ impl ResolvedNodeConfig {
     ) -> Self {
         let enabled_behaviours = BehaviourSet::for_role(role, &effective);
         let has_relay_peers = !effective.relay_peers.is_empty();
+        let lite_role = matches!(role, NodeRole::Lite | NodeRole::MobileLite);
         let mobile_lite = matches!(role, NodeRole::MobileLite);
+        let relay_discovery_enabled = effective.discovery.relay_discovery.enabled
+            && enabled_behaviours.relay_client
+            && (lite_role || has_relay_peers);
 
         Self {
             profile,
@@ -226,6 +233,9 @@ impl ResolvedNodeConfig {
             should_listen: !effective.listen_addresses.is_empty() && !mobile_lite,
             listen_addresses: effective.listen_addresses,
             relay_peers: effective.relay_peers,
+            relay_discovery_enabled,
+            relay_discovery_min_reservations: effective.discovery.relay_discovery.min_reservations,
+            relay_discovery_max_reservations: effective.discovery.relay_discovery.max_reservations,
             enabled_behaviours,
         }
     }
