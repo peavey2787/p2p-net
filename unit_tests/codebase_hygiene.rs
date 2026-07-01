@@ -9,7 +9,7 @@ fn manifest_dir() -> PathBuf {
 #[test]
 fn runtime_docs_do_not_contain_transitional_phase_language() {
     let root = manifest_dir();
-    let scan_roots = ["src", "docs", "README.md", "Cargo.toml"];
+    let scan_roots = ["src", "docs", "scripts", "README.md", "Cargo.toml"];
     let forbidden = [
         "Phase 1",
         "Phase 2",
@@ -45,6 +45,38 @@ fn runtime_docs_do_not_contain_transitional_phase_language() {
     }
 
     assert!(violations.is_empty(), "{}", violations.join("\n"));
+}
+
+#[test]
+fn scripts_do_not_use_phase_specific_tooling_names() {
+    let root = manifest_dir();
+    let scripts_dir = root.join("scripts");
+    let mut violations = Vec::new();
+
+    for entry in fs::read_dir(&scripts_dir).expect("scripts dir") {
+        let entry = entry.expect("script entry");
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("script file name");
+        let lower_name = file_name.to_ascii_lowercase();
+        if lower_name.contains("phase")
+            || lower_name.contains("legacy")
+            || lower_name.contains("deprecated")
+        {
+            violations.push(file_name.to_string());
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "phase-specific or legacy script names should not remain: {violations:?}"
+    );
 }
 
 #[test]
