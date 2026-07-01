@@ -9,6 +9,7 @@ use libp2p::{Multiaddr, PeerId};
 use crate::connectivity::discovery::DiscoveryConfig;
 use crate::connectivity::dns::DnsaddrConfig;
 use crate::connectivity::limits::ConnectionLimitsConfig;
+use crate::connectivity::mediator::MediatorConfig;
 use crate::connectivity::relay::{RelayServiceConfig, RelayServiceHealth, RelayState};
 use crate::protocol::pulse::MessageSecurityConfig;
 
@@ -52,6 +53,10 @@ pub struct NodeConfig {
     /// Message validation, replay, and peer scoring controls for heartbeat gossip.
     #[serde(default)]
     pub message_security: MessageSecurityConfig,
+    /// First-class DCUtR mediator policy. Disabled by default; when enabled it maps
+    /// to the Circuit Relay v2 server capability through the central resolver.
+    #[serde(default)]
+    pub mediator: MediatorConfig,
     /// Optional libp2p Circuit Relay v2 server mode. Disabled by default; relay client/DCUtR stay enabled.
     #[serde(default)]
     pub relay: RelayServiceConfig,
@@ -74,6 +79,7 @@ impl Default for NodeConfig {
             reserve_configured_relays: true,
             connection_limits: ConnectionLimitsConfig::default(),
             message_security: MessageSecurityConfig::default(),
+            mediator: MediatorConfig::default(),
             relay: RelayServiceConfig::default(),
         }
     }
@@ -148,6 +154,7 @@ impl NodeConfig {
         self.connection_limits.validate()?;
         self.message_security.validate()?;
         self.relay.validate()?;
+        self.mediator.validate(&self.relay)?;
         Ok(())
     }
 
@@ -249,6 +256,15 @@ pub struct NodeSnapshot {
     pub active_transports: Vec<String>,
     pub connected_peers: usize,
     pub relay_server_enabled: bool,
+    pub mediator_enabled: bool,
+    pub mediator_advertise_for_dcutr: bool,
+    pub mediator_require_authenticated_peers: bool,
+    pub mediator_active_reservations: usize,
+    pub mediator_active_circuits: usize,
+    pub mediator_dcutr_attempts_observed: usize,
+    pub mediator_denied_reservations: usize,
+    pub mediator_denied_circuits: usize,
+    pub mediator_abuse_rate_limit_events: usize,
     pub relay_service_health: RelayServiceHealth,
     /// ACL scope is intentionally connection-level for now because rust-libp2p's stock relay server
     /// does not expose a relay-only reservation hook.
@@ -306,6 +322,16 @@ impl NodeSnapshot {
     pub fn apply_relay_state(&mut self, relay_state: &RelayState) {
         self.relay_server_enabled = relay_state.server_enabled;
         self.relay_service_health = relay_state.health;
+        if self.mediator_enabled {
+            self.mediator_active_reservations = relay_state.accepted_reservations;
+            self.mediator_active_circuits = relay_state.active_circuits;
+            self.mediator_dcutr_attempts_observed = relay_state.dcutr_attempts;
+            self.mediator_denied_reservations = relay_state.denied_reservations;
+            self.mediator_denied_circuits = relay_state.denied_circuits;
+            self.mediator_abuse_rate_limit_events = relay_state
+                .rate_limited_events
+                .saturating_add(relay_state.at_capacity_events);
+        }
         self.relay_reservations_accepted = relay_state.accepted_reservations;
         self.relay_client_reservations = relay_state.relay_client_reservations.len();
         self.relay_client_reservation_attempts = relay_state.relay_client_reservation_attempts;

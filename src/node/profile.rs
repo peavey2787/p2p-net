@@ -22,9 +22,10 @@ pub enum NodeProfile {
     Full,
     /// Outbound-first node intended for NAT/CGNAT environments.
     Lite,
-    /// Full node with Circuit Relay service enabled so it can mediate relayed
-    /// connections and DCUtR attempts for other peers.
+    /// Full node with Circuit Relay service enabled for generic relayed traffic.
     Relay,
+    /// Full node intentionally advertising itself as a DCUtR mediator for lite/mobile peers.
+    Mediator,
     /// Infrastructure node that enables rendezvous server capabilities.
     Rendezvous,
     /// Infrastructure node optimized for stable discovery/bootstrap addressing.
@@ -40,6 +41,7 @@ impl NodeProfile {
             Self::Full => "full",
             Self::Lite => "lite",
             Self::Relay => "relay",
+            Self::Mediator => "mediator",
             Self::Rendezvous => "rendezvous",
             Self::Bootstrap => "bootstrap",
             Self::MobileLite => "mobile_lite",
@@ -58,6 +60,10 @@ impl NodeProfile {
             Self::Relay => {
                 cfg.relay.enabled = true;
             }
+            Self::Mediator => {
+                cfg.mediator.enabled = true;
+                cfg.relay.enabled = true;
+            }
             Self::Rendezvous => {
                 cfg.discovery.rendezvous.client_enabled = true;
                 cfg.discovery.rendezvous.server_enabled = true;
@@ -74,6 +80,7 @@ pub enum NodeRole {
     Full,
     Lite,
     Relay,
+    Mediator,
     Rendezvous,
     Bootstrap,
     MobileLite,
@@ -85,6 +92,7 @@ impl NodeRole {
             Self::Full => "full",
             Self::Lite => "lite",
             Self::Relay => "relay",
+            Self::Mediator => "mediator",
             Self::Rendezvous => "rendezvous",
             Self::Bootstrap => "bootstrap",
             Self::MobileLite => "mobile_lite",
@@ -113,7 +121,7 @@ impl BehaviourSet {
     pub fn for_role(role: NodeRole, cfg: &NodeConfig) -> Self {
         let infrastructure = matches!(
             role,
-            NodeRole::Relay | NodeRole::Rendezvous | NodeRole::Bootstrap
+            NodeRole::Relay | NodeRole::Mediator | NodeRole::Rendezvous | NodeRole::Bootstrap
         );
         let lite = matches!(role, NodeRole::Lite | NodeRole::MobileLite);
 
@@ -124,7 +132,9 @@ impl BehaviourSet {
             autonat: true,
             dcutr: true,
             relay_client: true,
-            relay_server: matches!(role, NodeRole::Relay) || cfg.relay.enabled,
+            relay_server: matches!(role, NodeRole::Relay | NodeRole::Mediator)
+                || cfg.relay.enabled
+                || cfg.mediator.enabled,
             rendezvous_client: cfg.discovery.rendezvous.client_enabled || lite,
             rendezvous_server: matches!(role, NodeRole::Rendezvous)
                 || cfg.discovery.rendezvous.server_enabled,
@@ -158,6 +168,8 @@ pub struct ResolvedNodeConfig {
     pub listen_addresses: Vec<String>,
     pub relay_peers: Vec<String>,
     pub relay_server_enabled: bool,
+    pub mediator_enabled: bool,
+    pub mediator_advertise_for_dcutr: bool,
     pub rendezvous_client_enabled: bool,
     pub rendezvous_server_enabled: bool,
 }
@@ -200,6 +212,8 @@ impl ResolvedNodeConfig {
             profile,
             role,
             relay_server_enabled: enabled_behaviours.relay_server,
+            mediator_enabled: effective.mediator.enabled,
+            mediator_advertise_for_dcutr: effective.mediator.advertise_for_dcutr,
             rendezvous_client_enabled: enabled_behaviours.rendezvous_client,
             rendezvous_server_enabled: enabled_behaviours.rendezvous_server,
             reserve_configured_relays: effective.reserve_configured_relays,

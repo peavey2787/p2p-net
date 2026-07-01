@@ -73,6 +73,16 @@
       "decay_interval_secs": 60
     }
   },
+  "mediator": {
+    "enabled": false,
+    "advertise_for_dcutr": true,
+    "allow_reservations": true,
+    "allow_circuits": true,
+    "require_authenticated_peers": false,
+    "max_mediated_peers": 64,
+    "max_reservations": 64,
+    "max_circuits": 128
+  },
   "relay": {
     "enabled": false,
     "access": "allow_all",

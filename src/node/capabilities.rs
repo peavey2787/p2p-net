@@ -17,6 +17,7 @@ pub fn resolve_node_config(
     environment: &EnvironmentReport,
 ) -> Result<ResolvedNodeConfig, NetError> {
     let effective = effective_config_for_resolution(raw);
+    effective.mediator.validate(&effective.relay)?;
     let role = resolve_role_for_environment(&effective, environment);
     let resolved = ResolvedNodeConfig::from_effective_config(raw.profile, role, effective);
     validate_resolved_config(raw, environment, &resolved)?;
@@ -29,6 +30,8 @@ pub fn resolve_node_config(
 pub fn apply_resolved_capabilities(raw: &NodeConfig, resolved: &ResolvedNodeConfig) -> NodeConfig {
     let mut cfg = raw.clone();
     cfg.profile.apply_to(&mut cfg);
+    let mediator = cfg.mediator.clone();
+    mediator.apply_to_relay(&mut cfg.relay);
 
     cfg.relay.enabled = resolved.enabled_behaviours.relay_server;
     cfg.discovery.rendezvous.client_enabled = resolved.enabled_behaviours.rendezvous_client;
@@ -44,6 +47,8 @@ pub fn apply_resolved_capabilities(raw: &NodeConfig, resolved: &ResolvedNodeConf
 fn effective_config_for_resolution(raw: &NodeConfig) -> NodeConfig {
     let mut effective = raw.clone();
     effective.profile.apply_to(&mut effective);
+    let mediator = effective.mediator.clone();
+    mediator.apply_to_relay(&mut effective.relay);
     effective
 }
 
@@ -53,6 +58,7 @@ fn resolve_role_for_environment(cfg: &NodeConfig, environment: &EnvironmentRepor
         NodeProfile::Full => NodeRole::Full,
         NodeProfile::Lite => NodeRole::Lite,
         NodeProfile::Relay => NodeRole::Relay,
+        NodeProfile::Mediator => NodeRole::Mediator,
         NodeProfile::Rendezvous => NodeRole::Rendezvous,
         NodeProfile::Bootstrap => NodeRole::Bootstrap,
         NodeProfile::MobileLite => NodeRole::MobileLite,
@@ -60,7 +66,9 @@ fn resolve_role_for_environment(cfg: &NodeConfig, environment: &EnvironmentRepor
 }
 
 fn explicit_config_role(cfg: &NodeConfig) -> Option<NodeRole> {
-    if cfg.relay.enabled {
+    if cfg.mediator.enabled {
+        Some(NodeRole::Mediator)
+    } else if cfg.relay.enabled {
         Some(NodeRole::Relay)
     } else if cfg.discovery.rendezvous.server_enabled {
         Some(NodeRole::Rendezvous)
@@ -112,6 +120,18 @@ fn validate_resolved_config(
     if behaviours.dcutr && !behaviours.relay_client {
         return Err(config_error(
             "DCUtR requires relay client capability for relayed fallback",
+        ));
+    }
+
+    if resolved.mediator_enabled && !behaviours.relay_server {
+        return Err(config_error(
+            "mediator capability requires relay server capability",
+        ));
+    }
+
+    if resolved.mediator_enabled && !resolved.mediator_advertise_for_dcutr {
+        return Err(config_error(
+            "mediator.advertise_for_dcutr must be true for mediator role",
         ));
     }
 
