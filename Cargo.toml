@@ -48,6 +48,10 @@ path = "unit_tests/config_defaults.rs"
 name = "environment_detection"
 path = "unit_tests/environment_detection.rs"
 
+[[test]]
+name = "capability_resolver"
+path = "unit_tests/capability_resolver.rs"
+
 
 [[test]]
 name = "relay_client"

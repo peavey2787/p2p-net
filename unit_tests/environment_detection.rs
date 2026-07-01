@@ -97,10 +97,12 @@ fn unknown_platform_preserves_full_compatible_default_when_reachability_unknown(
 }
 
 #[test]
-fn explicit_profile_overrides_environment_detection() {
+fn explicit_profile_overrides_environment_detection_when_capabilities_are_valid() {
     let mut cfg = config_with_environment(EnvironmentConfig {
-        platform_hint: Some(PlatformKind::Android),
-        reachability_hint: Some(NetworkReachability::CgnatLikely),
+        platform_hint: Some(PlatformKind::Linux),
+        reachability_hint: Some(NetworkReachability::PrivateNat),
+        can_listen_tcp: Some(true),
+        background_restricted: Some(false),
         ..EnvironmentConfig::default()
     });
     cfg.profile = NodeProfile::Relay;

@@ -7,16 +7,16 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::environment::{EnvironmentReport, NetworkReachability};
 use super::types::NodeConfig;
 
 /// User-facing node profile. `Auto` preserves the current all-in-one defaults
 /// until the environment detector and capability resolver land in later phases.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeProfile {
     /// Preserve current defaults for backward compatibility, then resolve to a
     /// concrete role using only explicit config flags.
+    #[default]
     Auto,
     /// Reachable node that listens for inbound peers and participates directly.
     Full,
@@ -31,12 +31,6 @@ pub enum NodeProfile {
     Bootstrap,
     /// Lite profile with conservative assumptions for mobile/tablet platforms.
     MobileLite,
-}
-
-impl Default for NodeProfile {
-    fn default() -> Self {
-        Self::Auto
-    }
 }
 
 impl NodeProfile {
@@ -150,14 +144,17 @@ impl BehaviourSet {
     }
 }
 
-/// Phase-1 resolved view of user config. Later phases should make this the only
-/// input to transport/behaviour construction.
+/// Phase-3 resolved view of user config. Runtime code should consume this
+/// single policy object instead of re-deciding what each profile means.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResolvedNodeConfig {
     pub profile: NodeProfile,
     pub role: NodeRole,
     pub enabled_behaviours: BehaviourSet,
     pub reserve_configured_relays: bool,
+    pub should_reserve_configured_relays: bool,
+    pub should_seed_relay_peers: bool,
+    pub should_listen: bool,
     pub listen_addresses: Vec<String>,
     pub relay_peers: Vec<String>,
     pub relay_server_enabled: bool,
@@ -167,21 +164,37 @@ pub struct ResolvedNodeConfig {
 
 impl ResolvedNodeConfig {
     pub fn from_config(cfg: &NodeConfig) -> Self {
-        let mut effective = cfg.clone();
-        effective.profile.apply_to(&mut effective);
-        let role = resolve_role(&effective);
-        Self::from_effective_config(cfg.profile, role, effective)
+        Self::try_from_config(cfg).expect("node config should resolve")
     }
 
-    pub fn from_config_and_environment(cfg: &NodeConfig, environment: &EnvironmentReport) -> Self {
-        let mut effective = cfg.clone();
-        effective.profile.apply_to(&mut effective);
-        let role = resolve_role_for_environment(&effective, environment);
-        Self::from_effective_config(cfg.profile, role, effective)
+    pub fn try_from_config(cfg: &NodeConfig) -> Result<Self, crate::common::error::NetError> {
+        let environment = cfg.environment_report();
+        super::capabilities::resolve_node_config(cfg, &environment)
     }
 
-    fn from_effective_config(profile: NodeProfile, role: NodeRole, effective: NodeConfig) -> Self {
+    pub fn from_config_and_environment(
+        cfg: &NodeConfig,
+        environment: &super::environment::EnvironmentReport,
+    ) -> Self {
+        Self::try_from_config_and_environment(cfg, environment)
+            .expect("node config should resolve")
+    }
+
+    pub fn try_from_config_and_environment(
+        cfg: &NodeConfig,
+        environment: &super::environment::EnvironmentReport,
+    ) -> Result<Self, crate::common::error::NetError> {
+        super::capabilities::resolve_node_config(cfg, environment)
+    }
+
+    pub(crate) fn from_effective_config(
+        profile: NodeProfile,
+        role: NodeRole,
+        effective: NodeConfig,
+    ) -> Self {
         let enabled_behaviours = BehaviourSet::for_role(role, &effective);
+        let has_relay_peers = !effective.relay_peers.is_empty();
+        let mobile_lite = matches!(role, NodeRole::MobileLite);
 
         Self {
             profile,
@@ -190,66 +203,16 @@ impl ResolvedNodeConfig {
             rendezvous_client_enabled: enabled_behaviours.rendezvous_client,
             rendezvous_server_enabled: enabled_behaviours.rendezvous_server,
             reserve_configured_relays: effective.reserve_configured_relays,
+            should_reserve_configured_relays: effective.reserve_configured_relays
+                && has_relay_peers
+                && enabled_behaviours.relay_client,
+            should_seed_relay_peers: !effective.reserve_configured_relays
+                && has_relay_peers
+                && enabled_behaviours.relay_client,
+            should_listen: !effective.listen_addresses.is_empty() && !mobile_lite,
             listen_addresses: effective.listen_addresses,
             relay_peers: effective.relay_peers,
             enabled_behaviours,
         }
     }
-}
-
-pub(crate) fn resolve_role(cfg: &NodeConfig) -> NodeRole {
-    match cfg.profile {
-        NodeProfile::Auto => explicit_config_role(cfg).unwrap_or(NodeRole::Full),
-        NodeProfile::Full => NodeRole::Full,
-        NodeProfile::Lite => NodeRole::Lite,
-        NodeProfile::Relay => NodeRole::Relay,
-        NodeProfile::Rendezvous => NodeRole::Rendezvous,
-        NodeProfile::Bootstrap => NodeRole::Bootstrap,
-        NodeProfile::MobileLite => NodeRole::MobileLite,
-    }
-}
-
-pub(crate) fn resolve_role_for_environment(
-    cfg: &NodeConfig,
-    environment: &EnvironmentReport,
-) -> NodeRole {
-    match cfg.profile {
-        NodeProfile::Auto => explicit_config_role(cfg).unwrap_or_else(|| auto_role(environment)),
-        NodeProfile::Full => NodeRole::Full,
-        NodeProfile::Lite => NodeRole::Lite,
-        NodeProfile::Relay => NodeRole::Relay,
-        NodeProfile::Rendezvous => NodeRole::Rendezvous,
-        NodeProfile::Bootstrap => NodeRole::Bootstrap,
-        NodeProfile::MobileLite => NodeRole::MobileLite,
-    }
-}
-
-fn explicit_config_role(cfg: &NodeConfig) -> Option<NodeRole> {
-    if cfg.relay.enabled {
-        Some(NodeRole::Relay)
-    } else if cfg.discovery.rendezvous.server_enabled {
-        Some(NodeRole::Rendezvous)
-    } else {
-        None
-    }
-}
-
-fn auto_role(environment: &EnvironmentReport) -> NodeRole {
-    if environment.platform.is_mobile() || environment.background_restricted {
-        return NodeRole::MobileLite;
-    }
-    if environment.can_accept_inbound
-        || matches!(environment.reachability, NetworkReachability::Public)
-    {
-        return NodeRole::Full;
-    }
-    if environment.likely_cgnat
-        || matches!(
-            environment.reachability,
-            NetworkReachability::PrivateNat | NetworkReachability::CgnatLikely
-        )
-    {
-        return NodeRole::Lite;
-    }
-    NodeRole::Full
 }
