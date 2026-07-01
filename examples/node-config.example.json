@@ -1,4 +1,5 @@
 {
+  "profile": "auto",
   "network_id": 1,
   "heartbeat_interval_secs": 30,
   "startup_peer_cache_probe": 5,
