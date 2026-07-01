@@ -11,7 +11,13 @@ pub(crate) async fn handle_client_event(
     ev: &rendezvous::client::Event,
     ctx: &mut SwarmEventContext<'_>,
 ) {
-    let line = on_rendezvous_client_event(swarm, ev, ctx.discovery_cfg, ctx.rendezvous_state);
+    let line = on_rendezvous_client_event(
+        swarm,
+        ev,
+        ctx.discovery_cfg,
+        ctx.storage,
+        ctx.rendezvous_state,
+    );
     let mut guard = ctx.snapshot.lock().await;
     sync_rendezvous_snapshot(&mut guard, ctx);
     push_pulse(&mut guard.pulses, line);

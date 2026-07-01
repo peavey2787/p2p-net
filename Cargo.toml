@@ -73,6 +73,10 @@ name = "dcutr_policy"
 path = "unit_tests/dcutr_policy.rs"
 
 [[test]]
+name = "platform_runtime"
+path = "unit_tests/platform_runtime.rs"
+
+[[test]]
 name = "relay_client"
 path = "unit_tests/relay_client.rs"
 

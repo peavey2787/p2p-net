@@ -43,6 +43,11 @@ fn snapshot_json_includes_accurate_relay_fields() {
         dcutr_relay_fallbacks: 4,
         dcutr_upgrade_eligible_connections: 5,
         dcutr_retry_suppressed: 1,
+        platform_runtime: "desktop".to_string(),
+        platform_storage: "desktop_fs".to_string(),
+        platform_default_data_dir: Some("/tmp/p2p-net".to_string()),
+        platform_can_listen_tcp: true,
+        platform_can_listen_quic: true,
         active_transports: vec!["tcp".to_string(), "quic".to_string()],
         ..NodeSnapshot::default()
     };
@@ -73,6 +78,11 @@ fn snapshot_json_includes_accurate_relay_fields() {
     assert_eq!(json["dcutr_relay_fallbacks"], 4);
     assert_eq!(json["dcutr_upgrade_eligible_connections"], 5);
     assert_eq!(json["dcutr_retry_suppressed"], 1);
+    assert_eq!(json["platform_runtime"], "desktop");
+    assert_eq!(json["platform_storage"], "desktop_fs");
+    assert_eq!(json["platform_default_data_dir"], "/tmp/p2p-net");
+    assert_eq!(json["platform_can_listen_tcp"].as_bool(), Some(true));
+    assert_eq!(json["platform_can_listen_quic"].as_bool(), Some(true));
     assert!(json.get("relay_reservations").is_none());
     assert!(json.get("relay_circuits").is_none());
     assert!(json.get("dcutr_events").is_none());
@@ -109,11 +119,15 @@ fn prometheus_metrics_exports_operator_counters() {
         gossip_messages_accepted: 10,
         gossip_messages_ignored: 11,
         gossip_messages_rejected: 12,
+        platform_can_listen_tcp: true,
+        platform_can_listen_quic: true,
         ..NodeSnapshot::default()
     };
 
     let metrics = snapshot_to_prometheus_metrics(&snap);
     assert!(metrics.contains("p2p_connected_peers 7\n"));
+    assert!(metrics.contains("p2p_platform_can_listen_tcp 1\n"));
+    assert!(metrics.contains("p2p_platform_can_listen_quic 1\n"));
     assert!(metrics.contains("p2p_relay_server_enabled 1\n"));
     assert!(metrics.contains("p2p_mediator_enabled 1\n"));
     assert!(metrics.contains("p2p_mediator_active_reservations 2\n"));

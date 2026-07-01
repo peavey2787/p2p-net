@@ -7,6 +7,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::platform::PlatformRuntime;
+
 use super::types::NodeConfig;
 
 /// Optional user/platform hints used by embedders that already know facts the
@@ -162,36 +164,73 @@ pub struct EnvironmentReport {
 }
 
 impl EnvironmentReport {
-    /// Build an advisory report from static config and platform hints.
+    /// Build an advisory report from static config and compile-time platform facts.
     pub fn detect(cfg: &NodeConfig) -> Self {
+        Self::detect_with_optional_runtime(cfg, None)
+    }
+
+    /// Build an advisory report from static config plus a platform runtime adapter.
+    /// Explicit `NodeConfig.environment` fields override runtime-provided hints.
+    pub fn detect_with_runtime(cfg: &NodeConfig, runtime: &dyn PlatformRuntime) -> Self {
+        Self::detect_with_optional_runtime(cfg, Some(runtime))
+    }
+
+    fn detect_with_optional_runtime(
+        cfg: &NodeConfig,
+        runtime: Option<&dyn PlatformRuntime>,
+    ) -> Self {
+        let runtime_hints = runtime.map(|rt| rt.environment_config());
         let hints = &cfg.environment;
-        let platform = hints.platform_hint.unwrap_or_else(PlatformKind::current);
+        let platform = hints
+            .platform_hint
+            .or(runtime_hints.as_ref().and_then(|v| v.platform_hint))
+            .unwrap_or(PlatformKind::current());
         let can_listen_tcp = hints
             .can_listen_tcp
+            .or(runtime_hints.as_ref().and_then(|v| v.can_listen_tcp))
             .unwrap_or(listen_addresses_include(&cfg.listen_addresses, "/tcp/"));
-        let can_listen_quic = hints.can_listen_quic.unwrap_or(
-            cfg.listen_addresses
-                .iter()
-                .any(|addr| addr.contains("/udp/") && addr.contains("/quic")),
-        );
-        let nat_status = hints.nat_hint.unwrap_or(NatKind::Unknown);
+        let can_listen_quic = hints
+            .can_listen_quic
+            .or(runtime_hints.as_ref().and_then(|v| v.can_listen_quic))
+            .unwrap_or(
+                cfg.listen_addresses
+                    .iter()
+                    .any(|addr| addr.contains("/udp/") && addr.contains("/quic")),
+            );
+        let nat_status = hints
+            .nat_hint
+            .or(runtime_hints.as_ref().and_then(|v| v.nat_hint))
+            .unwrap_or(NatKind::Unknown);
+        let reachability_hint = hints
+            .reachability_hint
+            .or(runtime_hints.as_ref().and_then(|v| v.reachability_hint));
         let inferred_cgnat = nat_status.implies_cgnat_or_blocked()
-            || matches!(hints.reachability_hint, Some(NetworkReachability::CgnatLikely));
-        let likely_cgnat = hints.likely_cgnat.unwrap_or(inferred_cgnat);
-        let battery_sensitive = hints.battery_sensitive.unwrap_or(platform.is_mobile());
+            || matches!(reachability_hint, Some(NetworkReachability::CgnatLikely));
+        let likely_cgnat = hints
+            .likely_cgnat
+            .or(runtime_hints.as_ref().and_then(|v| v.likely_cgnat))
+            .unwrap_or(inferred_cgnat);
+        let battery_sensitive = hints
+            .battery_sensitive
+            .or(runtime_hints.as_ref().and_then(|v| v.battery_sensitive))
+            .unwrap_or(platform.is_mobile());
         let background_restricted = hints
             .background_restricted
+            .or(runtime_hints.as_ref().and_then(|v| v.background_restricted))
             .unwrap_or(platform.is_mobile() || matches!(platform, PlatformKind::Wasm));
-        let reachability = hints.reachability_hint.unwrap_or(reachability_from_hints(
+        let reachability = reachability_hint.unwrap_or(reachability_from_hints(
             nat_status,
             likely_cgnat,
             background_restricted,
         ));
-        let can_accept_inbound = hints.can_accept_inbound.unwrap_or(
-            matches!(reachability, NetworkReachability::Public)
-                && (can_listen_tcp || can_listen_quic)
-                && !background_restricted,
-        );
+        let can_accept_inbound = hints
+            .can_accept_inbound
+            .or(runtime_hints.as_ref().and_then(|v| v.can_accept_inbound))
+            .unwrap_or(
+                matches!(reachability, NetworkReachability::Public)
+                    && (can_listen_tcp || can_listen_quic)
+                    && !background_restricted,
+            );
 
         Self {
             platform,

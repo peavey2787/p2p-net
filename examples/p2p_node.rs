@@ -70,7 +70,7 @@ fn draw_dashboard(frame: &mut ratatui::Frame<'_>, snap: &NodeSnapshot) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(4),
+            Constraint::Length(5),
             Constraint::Length(4),
             Constraint::Length(6),
             Constraint::Min(6),
@@ -78,11 +78,14 @@ fn draw_dashboard(frame: &mut ratatui::Frame<'_>, snap: &NodeSnapshot) {
         .split(frame.area());
 
     let status = Paragraph::new(format!(
-        "Network: {}\nPeerID: {}\nNAT/Public: {} / {}",
+        "Network: {}\nPeerID: {}\nNAT/Public: {} / {}\nPlatform: {} runtime={} storage={}",
         snap.network_label,
         snap.peer_id,
         snap.nat_status,
-        snap.public_addr.clone().unwrap_or_else(|| "-".to_string())
+        snap.public_addr.clone().unwrap_or_else(|| "-".to_string()),
+        snap.environment_platform,
+        snap.platform_runtime,
+        snap.platform_storage
     ))
     .block(
         Block::default()

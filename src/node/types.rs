@@ -3,6 +3,8 @@
 use std::collections::VecDeque;
 use std::path::Path;
 
+use crate::platform::PlatformRuntime;
+
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 
@@ -212,6 +214,15 @@ impl NodeConfig {
         EnvironmentReport::detect(self)
     }
 
+    /// Build the advisory environment report with facts supplied by an embedding
+    /// platform runtime. Explicit config hints still override runtime hints.
+    pub fn environment_report_with_runtime(
+        &self,
+        runtime: &dyn PlatformRuntime,
+    ) -> EnvironmentReport {
+        EnvironmentReport::detect_with_runtime(self, runtime)
+    }
+
     pub fn parsed_listen_addresses(
         &self,
     ) -> Result<Vec<Multiaddr>, crate::common::error::NetError> {
@@ -259,6 +270,11 @@ pub struct NodeSnapshot {
     pub environment_likely_cgnat: bool,
     pub environment_battery_sensitive: bool,
     pub environment_background_restricted: bool,
+    pub platform_runtime: String,
+    pub platform_storage: String,
+    pub platform_default_data_dir: Option<String>,
+    pub platform_can_listen_tcp: bool,
+    pub platform_can_listen_quic: bool,
     pub active_transports: Vec<String>,
     pub connected_peers: usize,
     pub relay_server_enabled: bool,
