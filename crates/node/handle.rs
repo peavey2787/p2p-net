@@ -75,7 +75,7 @@ impl NodeHandle {
         Ok(AppSubscription::new(topic, self.messages_tx.subscribe()))
     }
 
-    /// Return peers known to the local node. The current implementation returns connected peers; discovery-backed peers are added through the peer-book roadmap without changing this primitive.
+    /// Return peers known to the local node, including connected, cached, configured, rendezvous-discovered, DHT-provider-discovered, and relay-discovered peers when available.
     pub async fn get_peers(&self) -> Result<Vec<PeerInfo>, NetError> {
         self.request(NodeCommand::GetPeers).await
     }

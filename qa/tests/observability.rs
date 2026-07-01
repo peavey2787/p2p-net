@@ -69,6 +69,8 @@ fn snapshot_json_includes_accurate_relay_fields() {
         public_fallback_reason: "no_operator_or_cached_startup_candidates".to_string(),
         public_bootstrap_seed_count: 2,
         public_relay_candidate_count: 1,
+        peer_book_known_peers: 5,
+        peer_book_discovered_peers: 3,
         app_subscriptions: vec!["chat/general".to_string()],
         app_messages_sent: 13,
         app_messages_received: 14,
@@ -129,6 +131,8 @@ fn snapshot_json_includes_accurate_relay_fields() {
     assert_eq!(json["public_fallback_used"].as_bool(), Some(true));
     assert_eq!(json["public_bootstrap_seed_count"], 2);
     assert_eq!(json["public_relay_candidate_count"], 1);
+    assert_eq!(json["peer_book_known_peers"], 5);
+    assert_eq!(json["peer_book_discovered_peers"], 3);
     assert_eq!(json["app_subscriptions"][0], "chat/general");
     assert_eq!(json["app_messages_sent"], 13);
     assert_eq!(json["app_messages_received"], 14);
@@ -145,6 +149,8 @@ fn snapshot_json_includes_accurate_relay_fields() {
 fn prometheus_metrics_exports_operator_counters() {
     let snap = NodeSnapshot {
         connected_peers: 7,
+        peer_book_known_peers: 5,
+        peer_book_discovered_peers: 3,
         discovery_namespace_count: 2,
         dht_provider_enabled: true,
         dht_provider_announce_attempts: 2,
@@ -199,6 +205,8 @@ fn prometheus_metrics_exports_operator_counters() {
 
     let metrics = snapshot_to_prometheus_metrics(&snap);
     assert!(metrics.contains("p2p_connected_peers 7\n"));
+    assert!(metrics.contains("p2p_peer_book_known_peers 5\n"));
+    assert!(metrics.contains("p2p_peer_book_discovered_peers 3\n"));
     assert!(metrics.contains("p2p_discovery_namespace_count 2\n"));
     assert!(metrics.contains("p2p_dht_provider_enabled 1\n"));
     assert!(metrics.contains("p2p_dht_provider_announce_attempts 2\n"));

@@ -4,8 +4,9 @@ use libp2p::gossipsub::TopicHash;
 use libp2p::{PeerId, Swarm};
 use tokio::sync::Mutex;
 
-use crate::api::{app_ident_topic, encode_app_message, AppMessage, PeerInfo};
+use crate::api::{app_ident_topic, encode_app_message, AppMessage};
 use crate::common::error::NetError;
+use crate::connectivity::peer_book::PeerBook;
 use crate::stack::MeshBehaviour;
 
 use super::handle::NodeCommand;
@@ -18,6 +19,7 @@ pub(crate) async fn handle_node_command(
     network_id: u32,
     app_topic_hashes: &mut Vec<TopicHash>,
     snapshot: &Arc<Mutex<NodeSnapshot>>,
+    peer_book: &mut PeerBook,
 ) {
     let (success, sent_app_message) = match command {
         NodeCommand::ConnectPeer { addr, reply } => {
@@ -73,17 +75,18 @@ pub(crate) async fn handle_node_command(
             (success, false)
         }
         NodeCommand::GetPeers(reply) => {
-            let peers = swarm
-                .connected_peers()
-                .copied()
-                .map(PeerInfo::connected)
-                .collect::<Vec<_>>();
+            for peer in swarm.connected_peers().copied() {
+                peer_book.record_connected(peer, None);
+            }
+            let peers = peer_book.peers();
             let _ = reply.send(Ok(peers));
             (true, false)
         }
     };
 
     let mut guard = snapshot.lock().await;
+    guard.peer_book_known_peers = peer_book.len();
+    guard.peer_book_discovered_peers = peer_book.discovered_count();
     guard.api_commands_processed = guard.api_commands_processed.saturating_add(1);
     if !success {
         guard.api_command_failures = guard.api_command_failures.saturating_add(1);

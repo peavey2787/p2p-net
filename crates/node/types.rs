@@ -333,6 +333,8 @@ pub struct NodeSnapshot {
     pub public_bootstrap_seed_count: usize,
     pub public_relay_candidate_count: usize,
     pub connected_peers: usize,
+    pub peer_book_known_peers: usize,
+    pub peer_book_discovered_peers: usize,
     pub relay_server_enabled: bool,
     pub mediator_enabled: bool,
     pub mediator_advertise_for_dcutr: bool,

@@ -8,6 +8,7 @@ pub mod identity;
 pub mod limits;
 pub mod mediator;
 pub mod namespace;
+pub mod peer_book;
 pub mod peer_cache;
 pub mod public_fallback;
 pub mod relay;

@@ -90,7 +90,7 @@ impl DiscoveryNamespaceConfig {
         network_id: u32,
     ) -> Result<Vec<DiscoveryNamespace>, crate::common::error::NetError> {
         self.validate()?;
-        let mut namespaces = Vec::new();
+        let mut namespaces: Vec<DiscoveryNamespace> = Vec::new();
         for tag in &self.tags {
             let namespace = build_discovery_namespace(
                 network_id,
@@ -99,7 +99,7 @@ impl DiscoveryNamespaceConfig {
                 self.privacy,
                 self.allow_readable_tags,
             )?;
-            if !namespaces.iter().any(|known| known.namespace == namespace.namespace) {
+            if !namespaces.iter().any(|known| known.namespace == namespace.namespace.as_str()) {
                 namespaces.push(namespace);
             }
         }

@@ -9,6 +9,7 @@ use crate::connectivity::dht::DhtProviderState;
 use crate::connectivity::discovery::DiscoveryConfig;
 use crate::connectivity::dcutr::DcutrPolicy;
 use crate::connectivity::limits::ConnectionCapState;
+use crate::connectivity::peer_book::PeerBook;
 use crate::connectivity::relay::{RelayServiceConfig, RelayState};
 use crate::connectivity::rendezvous::RendezvousState;
 use crate::platform::NodeStorage;
@@ -36,6 +37,7 @@ pub(crate) struct SwarmEventContext<'a> {
     pub(crate) relay_state: &'a mut RelayState,
     pub(crate) rendezvous_state: &'a mut RendezvousState,
     pub(crate) dht_state: &'a mut DhtProviderState,
+    pub(crate) peer_book: &'a mut PeerBook,
     pub(crate) connection_caps: &'a mut ConnectionCapState,
     pub(crate) relay_cfg: &'a RelayServiceConfig,
     pub(crate) dcutr_policy: &'a DcutrPolicy,
@@ -76,8 +78,12 @@ pub(crate) async fn handle_swarm_event(
             )
             .await;
         }
-        SwarmEvent::ConnectionClosed { connection_id, .. } => {
-            connection::handle_connection_closed(connection_id, swarm, ctx).await;
+        SwarmEvent::ConnectionClosed {
+            peer_id,
+            connection_id,
+            ..
+        } => {
+            connection::handle_connection_closed(peer_id, connection_id, swarm, ctx).await;
         }
         SwarmEvent::IncomingConnectionError { error, peer_id, .. } => {
             connection::handle_incoming_connection_error(
@@ -156,7 +162,7 @@ pub(crate) async fn handle_swarm_event(
             .await;
         }
         SwarmEvent::Behaviour(ev) => {
-            on_mesh_event(swarm, &ev, ctx.discovery_cfg, ctx.storage);
+            on_mesh_event(swarm, &ev, ctx.discovery_cfg, ctx.storage, ctx.peer_book);
         }
         _ => {}
     }

@@ -3,6 +3,8 @@ use libp2p::{identify, Multiaddr, PeerId};
 use libp2p_rendezvous as rendezvous;
 
 use crate::connectivity::discovery::DiscoveryConfig;
+use crate::api::PeerSource;
+use crate::connectivity::peer_book::PeerBook;
 use crate::connectivity::peer_cache;
 use crate::connectivity::relay::{relay_reservation_addr, RelayReservationPlan};
 use crate::connectivity::rendezvous::{
@@ -221,9 +223,10 @@ pub fn on_mesh_event(
     event: &MeshEvent,
     discovery_cfg: &DiscoveryConfig,
     storage: &dyn NodeStorage,
+    peer_book: &mut PeerBook,
 ) {
     match event {
-        MeshEvent::Identify(ev) => on_identify_event(swarm, ev, discovery_cfg, storage),
+        MeshEvent::Identify(ev) => on_identify_event(swarm, ev, discovery_cfg, storage, peer_book),
         _ => {}
     }
 }
@@ -384,6 +387,7 @@ fn on_identify_event(
     event: &identify::Event,
     discovery_cfg: &DiscoveryConfig,
     storage: &dyn NodeStorage,
+    peer_book: &mut PeerBook,
 ) {
     match event {
         identify::Event::Received { peer_id, info, .. }
@@ -396,6 +400,7 @@ fn on_identify_event(
                     addr,
                     storage,
                 );
+                peer_book.record_addr(peer_id.to_owned(), addr.clone(), PeerSource::Connected);
             }
         }
         _ => {}

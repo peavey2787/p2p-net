@@ -48,16 +48,16 @@ Status: complete.
 - Added provider lookup for hashed namespace keys when rendezvous peers are absent by default.
 - Added an explicit option to run DHT provider lookup alongside rendezvous peers.
 - Added DHT provider state, snapshot fields, metrics, docs, and QA coverage.
-- Provider results are recorded in DHT provider state; peer-book-backed `get_peers()` integration remains Phase 5.
+- Provider results are recorded in DHT provider state and feed the peer book used by `get_peers()`.
 - DHT discovery is internal; the public API remains the six primitives.
 
 ## Phase 5 — Peer book
 
-Status: planned.
+Status: complete.
 
-- Add a single internal peer book for connected, cached, rendezvous, DHT provider, relay, bootstrap, and manual peer records.
-- Track addresses, sources, namespaces, capability hints, last-seen timestamps, connection state, and failures.
-- Make `get_peers()` read from the peer book instead of only the live swarm connection set.
+- Added a single internal peer book for connected, cached, rendezvous, DHT provider, relay, bootstrap, and manual-style startup peer records.
+- Peer records track addresses, sources, namespaces, capability hints, last-seen timestamps, connection state, and failures.
+- `get_peers()` now reads from the peer book instead of only the live swarm connection set.
 
 ## Phase 6 — Connection strategy planner
 

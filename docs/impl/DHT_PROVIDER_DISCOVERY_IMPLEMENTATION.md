@@ -40,4 +40,4 @@ Snapshots and metrics expose:
 
 ## Boundary
 
-This phase records provider results in `DhtProviderState`. A dedicated peer book is the next phase and will make `get_peers()` return connected, cached, rendezvous-discovered, and DHT-provider-discovered peers through one normalized view.
+Provider results are recorded in `DhtProviderState` and mirrored into the peer book so `get_peers()` can return DHT-provider-discovered peers through the same normalized view used for connected, cached, rendezvous, relay, and configured peers.

@@ -126,3 +126,5 @@ Use `qa/ci/run-full-validation.ps1` or `qa/ci/run-full-validation.sh` for the ex
 ## DHT provider-discovery checks
 
 `qa/tests/dht_provider_discovery.rs` covers Kademlia provider-record discovery policy, deterministic namespace record-key derivation, startup/event wiring, and DHT provider snapshot/metric coverage. The test is registered in `Cargo.toml`, so the canonical validation script picks it up automatically.
+
+- `peer_book` verifies merged discovery-source peer metadata for `get_peers()`.

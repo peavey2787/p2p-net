@@ -14,13 +14,15 @@ use std::time::Duration;
 
 use futures::StreamExt;
 use libp2p::gossipsub::IdentTopic;
-use libp2p::{PeerId, Swarm};
+use libp2p::{Multiaddr, PeerId, Swarm};
 use serde_json::Value;
 use tokio::sync::{broadcast, mpsc, Mutex};
 
+use crate::api::PeerSource;
 use crate::common::error::NetError;
 use crate::connectivity::dht::{start_dht_namespace_discovery, DhtProviderState};
 use crate::connectivity::limits::ConnectionCapState;
+use crate::connectivity::peer_book::PeerBook;
 use crate::connectivity::relay::RelayState;
 use crate::connectivity::rendezvous::RendezvousState;
 use crate::connectivity::{dns, identity, peer_cache, relay_discovery};
@@ -29,7 +31,7 @@ use crate::protocol::pulse::{collect_local_heartbeat, heartbeat_topic, Heartbeat
 use crate::protocol::reputation::ReputationStore;
 use crate::stack::{
     build_swarm, refresh_rendezvous, reserve_configured_relays, seed_bootstrap,
-    startup_discovery_plan, startup_discovery_plan_with_public, MeshBehaviour,
+    extract_p2p_peer_id, startup_discovery_plan, startup_discovery_plan_with_public, MeshBehaviour,
 };
 
 pub use capabilities::{apply_resolved_capabilities, resolve_node_config};
@@ -130,18 +132,31 @@ pub async fn start_node_with_platform(
         .public_bootstrap
         .bootstrap_decision(owned_startup_candidate_count);
     let startup_plan = startup_discovery_plan_with_public(
-        bootstrap_peers,
-        bootstrap_seed_peers,
+        bootstrap_peers.clone(),
+        bootstrap_seed_peers.clone(),
         rendezvous_peers.clone(),
-        cached_peers,
+        cached_peers.clone(),
         if public_bootstrap_decision.used {
-            public_bootstrap_seed_peers
+            public_bootstrap_seed_peers.clone()
         } else {
             Vec::new()
         },
         public_bootstrap_decision.used,
     );
     seed_bootstrap(&mut swarm, &startup_plan.dial_addrs);
+
+    let mut peer_book = PeerBook::default();
+    record_peer_book_addrs(&mut peer_book, &bootstrap_peers, PeerSource::Bootstrap);
+    record_peer_book_addrs(&mut peer_book, &bootstrap_seed_peers, PeerSource::BootstrapSeed);
+    record_peer_book_addrs(&mut peer_book, &rendezvous_peers, PeerSource::Rendezvous);
+    record_peer_book_addrs(&mut peer_book, &cached_peers, PeerSource::PeerCache);
+    if public_bootstrap_decision.used {
+        record_peer_book_addrs(
+            &mut peer_book,
+            &public_bootstrap_seed_peers,
+            PeerSource::BootstrapSeed,
+        );
+    }
 
     let relay_discovery_policy = if resolved_config.relay_discovery_enabled {
         cfg.discovery.relay_discovery.clone()
@@ -178,6 +193,7 @@ pub async fn start_node_with_platform(
     };
 
     let selected_relay_peers = relay_selection_plan.selected_addrs.clone();
+    record_peer_book_addrs(&mut peer_book, &selected_relay_peers, PeerSource::RelayDiscovery);
     let relay_reservation_plan = if resolved_config.enabled_behaviours.relay_client
         && cfg.reserve_configured_relays
     {
@@ -276,6 +292,8 @@ pub async fn start_node_with_platform(
         public_bootstrap_seed_count: startup_plan.public_bootstrap_seed_count,
         public_relay_candidate_count: relay_selection_plan.public_candidates,
         connected_peers: 0,
+        peer_book_known_peers: peer_book.len(),
+        peer_book_discovered_peers: peer_book.discovered_count(),
         relay_server_enabled: cfg.relay.is_active_now(),
         mediator_enabled: resolved_config.mediator_enabled,
         mediator_advertise_for_dcutr: resolved_config.mediator_advertise_for_dcutr,
@@ -512,6 +530,7 @@ pub async fn start_node_with_platform(
         };
         let mut rendezvous_state = rendezvous_state;
         let mut dht_state = dht_state;
+        let mut peer_book = peer_book;
         let mut connection_caps = ConnectionCapState::new(&cfg.connection_limits);
         let mut app_topic_hashes = Vec::new();
         let started_at = std::time::Instant::now();
@@ -543,6 +562,7 @@ pub async fn start_node_with_platform(
                             cfg.network_id,
                             &mut app_topic_hashes,
                             &task_snapshot,
+                            &mut peer_book,
                         ).await;
                     } else {
                         break;
@@ -555,6 +575,7 @@ pub async fn start_node_with_platform(
                         relay_state: &mut relay_state,
                         rendezvous_state: &mut rendezvous_state,
                         dht_state: &mut dht_state,
+                        peer_book: &mut peer_book,
                         connection_caps: &mut connection_caps,
                         relay_cfg: &cfg.relay,
                         dcutr_policy: &cfg.dcutr,
@@ -583,6 +604,15 @@ pub async fn start_node_with_platform(
         shutdown_tx,
         task: Arc::new(Mutex::new(Some(task))),
     })
+}
+
+
+fn record_peer_book_addrs(peer_book: &mut PeerBook, addrs: &[Multiaddr], source: PeerSource) {
+    for addr in addrs {
+        if let Some(peer) = extract_p2p_peer_id(addr) {
+            peer_book.record_addr(peer, addr.clone(), source);
+        }
+    }
 }
 
 async fn publish_heartbeat(
@@ -629,6 +659,8 @@ pub fn snapshot_to_prometheus_metrics(snapshot: &NodeSnapshot) -> String {
 
     let mut out = String::new();
     line("p2p_connected_peers", snapshot.connected_peers, &mut out);
+    line("p2p_peer_book_known_peers", snapshot.peer_book_known_peers, &mut out);
+    line("p2p_peer_book_discovered_peers", snapshot.peer_book_discovered_peers, &mut out);
     line("p2p_discovery_namespace_count", snapshot.discovery_namespace_count, &mut out);
     line(
         "p2p_dht_provider_enabled",
