@@ -1,3 +1,4 @@
+#[cfg(test)]
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -6,6 +7,7 @@ use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
 
 use super::discovery::DiscoveryConfig;
+use crate::platform::{DesktopPlatformRuntime, NodeStorage};
 
 const CACHE_VERSION: u32 = 1;
 
@@ -31,7 +33,15 @@ pub struct CachedPeerAddr {
 }
 
 pub fn load_last_addrs(cfg: &DiscoveryConfig, limit: usize) -> Vec<Multiaddr> {
-    load_entries(cfg)
+    load_last_addrs_with_storage(cfg, limit, &DesktopPlatformRuntime::default())
+}
+
+pub fn load_last_addrs_with_storage(
+    cfg: &DiscoveryConfig,
+    limit: usize,
+    storage: &dyn NodeStorage,
+) -> Vec<Multiaddr> {
+    load_entries_with_storage(cfg, storage)
         .into_iter()
         .filter_map(|entry| entry.addr.parse::<Multiaddr>().ok())
         .take(limit)
@@ -39,7 +49,18 @@ pub fn load_last_addrs(cfg: &DiscoveryConfig, limit: usize) -> Vec<Multiaddr> {
 }
 
 pub fn load_entries(cfg: &DiscoveryConfig) -> Vec<CachedPeerAddr> {
-    let raw = match fs::read_to_string(&cfg.peer_cache_path) {
+    load_entries_with_storage(cfg, &DesktopPlatformRuntime::default())
+}
+
+pub fn load_entries_with_storage(
+    cfg: &DiscoveryConfig,
+    storage: &dyn NodeStorage,
+) -> Vec<CachedPeerAddr> {
+    let raw = match storage.read(&cfg.peer_cache_path) {
+        Ok(Some(v)) => v,
+        Ok(None) | Err(_) => return Vec::new(),
+    };
+    let raw = match String::from_utf8(raw) {
         Ok(v) => v,
         Err(_) => return Vec::new(),
     };
@@ -76,6 +97,15 @@ pub fn load_entries(cfg: &DiscoveryConfig) -> Vec<CachedPeerAddr> {
 }
 
 pub fn record_seen_peer_addr(cfg: &DiscoveryConfig, peer: &PeerId, addr: &Multiaddr) {
+    record_seen_peer_addr_with_storage(cfg, peer, addr, &DesktopPlatformRuntime::default());
+}
+
+pub fn record_seen_peer_addr_with_storage(
+    cfg: &DiscoveryConfig,
+    peer: &PeerId,
+    addr: &Multiaddr,
+    storage: &dyn NodeStorage,
+) {
     let Some(cache_addr) = normalize_peer_addr(peer, addr) else {
         return;
     };
@@ -83,7 +113,7 @@ pub fn record_seen_peer_addr(cfg: &DiscoveryConfig, peer: &PeerId, addr: &Multia
         return;
     }
 
-    let mut entries = load_entries(cfg);
+    let mut entries = load_entries_with_storage(cfg, storage);
     let addr_s = cache_addr.to_string();
     let peer_s = peer.to_string();
     entries.retain(|entry| entry.addr != addr_s && entry.peer_id != peer_s);
@@ -97,11 +127,19 @@ pub fn record_seen_peer_addr(cfg: &DiscoveryConfig, peer: &PeerId, addr: &Multia
         },
     );
     entries.truncate(cfg.peer_cache_max_entries);
-    write_entries(&cfg.peer_cache_path, entries);
+    write_entries_with_storage(&cfg.peer_cache_path, entries, storage);
 }
 
 pub fn record_peer_addr_failure(cfg: &DiscoveryConfig, peer: &PeerId) {
-    let mut entries = load_entries(cfg);
+    record_peer_addr_failure_with_storage(cfg, peer, &DesktopPlatformRuntime::default());
+}
+
+pub fn record_peer_addr_failure_with_storage(
+    cfg: &DiscoveryConfig,
+    peer: &PeerId,
+    storage: &dyn NodeStorage,
+) {
+    let mut entries = load_entries_with_storage(cfg, storage);
     let peer_s = peer.to_string();
     for entry in &mut entries {
         if entry.peer_id == peer_s {
@@ -111,7 +149,7 @@ pub fn record_peer_addr_failure(cfg: &DiscoveryConfig, peer: &PeerId) {
     entries.retain(|entry| {
         cfg.peer_cache_max_failures == 0 || entry.failures < cfg.peer_cache_max_failures
     });
-    write_entries(&cfg.peer_cache_path, entries);
+    write_entries_with_storage(&cfg.peer_cache_path, entries, storage);
 }
 
 pub fn is_cacheable_peer_addr(addr: &Multiaddr, expected_peer: Option<&PeerId>) -> bool {
@@ -170,14 +208,18 @@ fn load_raw_entries_for_tests(path: impl AsRef<std::path::Path>) -> Vec<CachedPe
         .unwrap_or_default()
 }
 
-fn write_entries(path: &str, entries: Vec<CachedPeerAddr>) {
+fn write_entries_with_storage(
+    path: &str,
+    entries: Vec<CachedPeerAddr>,
+    storage: &dyn NodeStorage,
+) {
     let payload = PeerCacheFile {
         version: CACHE_VERSION,
         entries,
         addrs: Vec::new(),
     };
     if let Ok(text) = serde_json::to_string_pretty(&payload) {
-        let _ = fs::write(path, text);
+        let _ = storage.write_public(path, text.as_bytes());
     }
 }
 

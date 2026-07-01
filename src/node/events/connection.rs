@@ -16,7 +16,12 @@ pub(crate) async fn handle_connection_established(
     swarm: &mut Swarm<MeshBehaviour>,
     ctx: &mut SwarmEventContext<'_>,
 ) {
-    peer_cache::record_seen_peer_addr(ctx.discovery_cfg, &peer_id, &remote_addr);
+    peer_cache::record_seen_peer_addr_with_storage(
+        ctx.discovery_cfg,
+        &peer_id,
+        &remote_addr,
+        ctx.storage,
+    );
 
     if ctx.relay_cfg.enabled && !ctx.relay_cfg.schedule.is_open_now_utc() {
         let _ = swarm.close_connection(connection_id);
@@ -139,7 +144,7 @@ pub(crate) async fn handle_outgoing_connection_error(
     ctx: &mut SwarmEventContext<'_>,
 ) {
     if let Some(peer) = peer_id.as_ref() {
-        peer_cache::record_peer_addr_failure(ctx.discovery_cfg, peer);
+        peer_cache::record_peer_addr_failure_with_storage(ctx.discovery_cfg, peer, ctx.storage);
     }
     let mut guard = ctx.snapshot.lock().await;
     guard.connection_limit_events = guard.connection_limit_events.saturating_add(1);

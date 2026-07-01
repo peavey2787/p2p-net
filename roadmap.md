@@ -236,16 +236,16 @@ Exit criteria:
 
 ## Phase 9 — Platform runtime abstraction
 
-Status: planned.
+Status: implemented.
 
 Keep one P2P core while isolating desktop/mobile platform differences.
 
 Required work:
 
-- Add `NodeStorage` for identities, peer cache, and secrets.
-- Add `PlatformRuntime` for platform kind, data directory, background limits, and listen capability.
-- Add desktop implementation using standard filesystem and Tokio runtime.
-- Add mobile implementation hooks for Android/iOS storage and lifecycle.
+- Add `NodeStorage` for identities, peer cache, and secrets. **Done.**
+- Add `PlatformRuntime` for platform kind, data directory, background limits, and listen capability. **Done.**
+- Add desktop implementation using standard filesystem-compatible storage and runtime hints. **Done.**
+- Add mobile implementation hooks for Android/iOS lifecycle/runtime policy and storage injection. **Done.**
 
 Exit criteria:
 
@@ -284,3 +284,4 @@ Exit criteria:
 | 2026-07-01 | 6 | Implemented | Made swarm/behaviour construction consume `ResolvedNodeConfig`; Kademlia now uses server mode only for infrastructure profiles and client mode for lite/mobile-lite; relay/rendezvous server toggles now require both resolved policy and effective config; added `docs/BEHAVIOUR_POLICY.md` and registered a `behaviour_policy` test. Static edit only; cargo was unavailable in the sandbox for compile/test validation. |
 | 2026-07-01 | 7 | Implemented | Added `RelayDiscoveryPolicy`, deterministic relay candidate selection from configured/cached/rendezvous sources, selected-relay reservation startup path, relay discovery snapshot/JSON/Prometheus fields, `docs/RELAY_DISCOVERY.md`, example config fields, and registered a `relay_discovery` test. Static edit only; cargo was unavailable in the sandbox for compile/test validation. |
 | 2026-07-01 | 8 | Implemented | Fixed clippy `unnecessary_lazy_evaluations` in environment detection, added `DcutrPolicy`, wired DCUtR through the central resolver and behaviour construction, added relayed-fallback/attempt/success/failure/suppression counters, exposed DCUtR JSON/Prometheus/dashboard fields, added `docs/DCUTR_POLICY.md`, example config fields, and registered a `dcutr_policy` test. Static edit only; cargo was unavailable in the sandbox for compile/test validation. |
+| 2026-07-01 | 9 | Implemented | Added `PlatformRuntime`, `NodeStorage`, `DesktopPlatformRuntime`, `MobilePlatformRuntime`, and `MemoryNodeStorage`; wired startup, identity persistence, peer-cache reads/writes, environment detection, snapshots, JSON/Prometheus output, dashboard display, and docs through platform/runtime boundaries; registered a `platform_runtime` test. Static edit only; cargo was unavailable in the sandbox for compile/test validation. |

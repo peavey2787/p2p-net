@@ -22,6 +22,7 @@ use crate::connectivity::limits::ConnectionCapState;
 use crate::connectivity::relay::RelayState;
 use crate::connectivity::rendezvous::RendezvousState;
 use crate::connectivity::{dns, identity, peer_cache, relay_discovery};
+use crate::platform::{DesktopPlatformRuntime, NodeStorage, PlatformRuntime};
 use crate::protocol::pulse::{collect_local_heartbeat, heartbeat_topic, HeartbeatReplayCache};
 use crate::protocol::reputation::ReputationStore;
 use crate::stack::{
@@ -57,12 +58,29 @@ impl NodeHandle {
 }
 
 pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
+    let desktop = Arc::new(DesktopPlatformRuntime::default());
+    let runtime: Arc<dyn PlatformRuntime> = desktop.clone();
+    let storage: Arc<dyn NodeStorage> = desktop;
+    start_node_with_platform(cfg, runtime, storage).await
+}
+
+/// Start a node with platform-supplied runtime hints and storage. This keeps the
+/// P2P core shared while allowing Android/iOS/Desktop shells to adapt storage,
+/// data directories, and lifecycle restrictions without separate node logic.
+pub async fn start_node_with_platform(
+    cfg: NodeConfig,
+    platform_runtime: Arc<dyn PlatformRuntime>,
+    storage: Arc<dyn NodeStorage>,
+) -> Result<NodeHandle, NetError> {
     cfg.validate()?;
-    let environment_report = cfg.environment_report();
+    let environment_report = cfg.environment_report_with_runtime(platform_runtime.as_ref());
     let resolved_config = cfg.try_resolved_for_environment(&environment_report)?;
     let cfg = cfg.with_resolved_capabilities_applied(&resolved_config);
     cfg.validate()?;
-    let local_key = identity::load_or_create_identity_key(&cfg.identity_key_path)?;
+    let local_key = identity::load_or_create_identity_key_with_storage(
+        &cfg.identity_key_path,
+        storage.as_ref(),
+    )?;
     let local_peer = PeerId::from(local_key.public());
     let (mut swarm, transport_plan) = build_swarm(local_key, &cfg, &resolved_config).await?;
 
@@ -91,10 +109,11 @@ pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
     let relay_peers =
         dns::resolve_configured_multiaddrs("relay_peers", cfg.parsed_relay_peers()?, &cfg.dnsaddr)
             .await?;
-    let cached_startup_addrs = peer_cache::load_last_addrs(
+    let cached_startup_addrs = peer_cache::load_last_addrs_with_storage(
         &cfg.discovery,
         cfg.startup_peer_cache_probe
             .max(cfg.discovery.relay_discovery.max_reservations),
+        storage.as_ref(),
     );
     let cached_peers =
         dns::resolve_cached_multiaddrs(cached_startup_addrs.clone(), &cfg.dnsaddr).await;
@@ -157,6 +176,13 @@ pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
         environment_likely_cgnat: environment_report.likely_cgnat,
         environment_battery_sensitive: environment_report.battery_sensitive,
         environment_background_restricted: environment_report.background_restricted,
+        platform_runtime: platform_runtime.runtime_name().to_string(),
+        platform_storage: storage.storage_kind().to_string(),
+        platform_default_data_dir: platform_runtime
+            .default_data_dir()
+            .map(|path| path.display().to_string()),
+        platform_can_listen_tcp: platform_runtime.can_listen_tcp(),
+        platform_can_listen_quic: platform_runtime.can_listen_quic(),
         active_transports: transport_plan
             .active
             .iter()
@@ -242,8 +268,10 @@ pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
         push_pulse(
             &mut guard.pulses,
             format!(
-                "environment detected platform={} reachability={} nat={} advisory_role={} mediator_enabled={}",
+                "environment detected platform={} runtime={} storage={} reachability={} nat={} advisory_role={} mediator_enabled={}",
                 environment_report.platform.as_str(),
+                platform_runtime.runtime_name(),
+                storage.storage_kind(),
                 environment_report.reachability.as_str(),
                 environment_report.nat_status.as_str(),
                 resolved_config.role.as_str(),
@@ -316,6 +344,7 @@ pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
     let task_snapshot = Arc::clone(&snapshot);
     let rendezvous_peers_for_task = rendezvous_peers.clone();
+    let storage_for_task = Arc::clone(&storage);
     let task = tokio::spawn(async move {
         let heartbeat_interval = Duration::from_secs(cfg.heartbeat_interval_secs.max(1));
         let mut ticker = tokio::time::interval(heartbeat_interval);
@@ -380,6 +409,7 @@ pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
                         relay_cfg: &cfg.relay,
                         dcutr_policy: &cfg.dcutr,
                         discovery_cfg: &cfg.discovery,
+                        storage: storage_for_task.as_ref(),
                         rendezvous_peers: &rendezvous_peers_for_task,
                         message_security: &cfg.message_security,
                         replay_cache: &mut replay_cache,
@@ -473,6 +503,23 @@ pub fn snapshot_to_json(snapshot: &NodeSnapshot) -> Value {
         &mut map,
         "environment_background_restricted",
         snapshot.environment_background_restricted,
+    );
+    insert(&mut map, "platform_runtime", &snapshot.platform_runtime);
+    insert(&mut map, "platform_storage", &snapshot.platform_storage);
+    insert(
+        &mut map,
+        "platform_default_data_dir",
+        &snapshot.platform_default_data_dir,
+    );
+    insert(
+        &mut map,
+        "platform_can_listen_tcp",
+        snapshot.platform_can_listen_tcp,
+    );
+    insert(
+        &mut map,
+        "platform_can_listen_quic",
+        snapshot.platform_can_listen_quic,
     );
     insert(&mut map, "active_transports", &snapshot.active_transports);
     insert(&mut map, "connected_peers", snapshot.connected_peers);
@@ -785,6 +832,16 @@ pub fn snapshot_to_prometheus_metrics(snapshot: &NodeSnapshot) -> String {
 
     let mut out = String::new();
     line("p2p_connected_peers", snapshot.connected_peers, &mut out);
+    line(
+        "p2p_platform_can_listen_tcp",
+        if snapshot.platform_can_listen_tcp { 1 } else { 0 },
+        &mut out,
+    );
+    line(
+        "p2p_platform_can_listen_quic",
+        if snapshot.platform_can_listen_quic { 1 } else { 0 },
+        &mut out,
+    );
     line(
         "p2p_relay_server_enabled",
         if snapshot.relay_server_enabled { 1 } else { 0 },

@@ -10,6 +10,7 @@ use crate::connectivity::dcutr::DcutrPolicy;
 use crate::connectivity::limits::ConnectionCapState;
 use crate::connectivity::relay::{RelayServiceConfig, RelayState};
 use crate::connectivity::rendezvous::RendezvousState;
+use crate::platform::NodeStorage;
 use crate::protocol::pulse::{HeartbeatReplayCache, MessageSecurityConfig};
 use crate::protocol::reputation::ReputationStore;
 use crate::stack::{on_mesh_event, MeshBehaviour, MeshEvent};
@@ -34,6 +35,7 @@ pub(crate) struct SwarmEventContext<'a> {
     pub(crate) relay_cfg: &'a RelayServiceConfig,
     pub(crate) dcutr_policy: &'a DcutrPolicy,
     pub(crate) discovery_cfg: &'a DiscoveryConfig,
+    pub(crate) storage: &'a dyn NodeStorage,
     pub(crate) rendezvous_peers: &'a [Multiaddr],
     pub(crate) message_security: &'a MessageSecurityConfig,
     pub(crate) replay_cache: &'a mut HeartbeatReplayCache,
@@ -135,7 +137,7 @@ pub(crate) async fn handle_swarm_event(
             .await;
         }
         SwarmEvent::Behaviour(ev) => {
-            on_mesh_event(swarm, &ev, ctx.discovery_cfg);
+            on_mesh_event(swarm, &ev, ctx.discovery_cfg, ctx.storage);
         }
         _ => {}
     }

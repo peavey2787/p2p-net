@@ -6,6 +6,7 @@ use crate::connectivity::discovery::DiscoveryConfig;
 use crate::connectivity::peer_cache;
 use crate::connectivity::relay::{relay_reservation_addr, RelayReservationPlan};
 use crate::connectivity::rendezvous::{peer_record_addrs, RendezvousActionPlan, RendezvousState};
+use crate::platform::NodeStorage;
 
 use super::behaviour::{MeshBehaviour, MeshEvent};
 
@@ -172,9 +173,10 @@ pub fn on_mesh_event(
     swarm: &mut Swarm<MeshBehaviour>,
     event: &MeshEvent,
     discovery_cfg: &DiscoveryConfig,
+    storage: &dyn NodeStorage,
 ) {
     match event {
-        MeshEvent::Identify(ev) => on_identify_event(swarm, ev, discovery_cfg),
+        MeshEvent::Identify(ev) => on_identify_event(swarm, ev, discovery_cfg, storage),
         MeshEvent::Kademlia(_) => {}
         _ => {}
     }
@@ -184,6 +186,7 @@ pub fn on_rendezvous_client_event(
     swarm: &mut Swarm<MeshBehaviour>,
     event: &rendezvous::client::Event,
     discovery_cfg: &DiscoveryConfig,
+    storage: &dyn NodeStorage,
     state: &mut RendezvousState,
 ) -> String {
     match event {
@@ -224,7 +227,12 @@ pub fn on_rendezvous_client_event(
                 let mut dialed_peer = false;
                 for addr in peer_record_addrs(registration) {
                     add_peer_address_to_discovery(swarm, peer, addr.clone());
-                    peer_cache::record_seen_peer_addr(discovery_cfg, &peer, &addr);
+                    peer_cache::record_seen_peer_addr_with_storage(
+                        discovery_cfg,
+                        &peer,
+                        &addr,
+                        storage,
+                    );
                     if !dialed_peer {
                         let _ = swarm.dial(addr.clone());
                         dialed_peer = true;
@@ -323,13 +331,19 @@ fn on_identify_event(
     swarm: &mut Swarm<MeshBehaviour>,
     event: &identify::Event,
     discovery_cfg: &DiscoveryConfig,
+    storage: &dyn NodeStorage,
 ) {
     match event {
         identify::Event::Received { peer_id, info, .. }
         | identify::Event::Pushed { peer_id, info, .. } => {
             for addr in &info.listen_addrs {
                 add_peer_address_to_discovery(swarm, peer_id.to_owned(), addr.clone());
-                peer_cache::record_seen_peer_addr(discovery_cfg, peer_id, addr);
+                peer_cache::record_seen_peer_addr_with_storage(
+                    discovery_cfg,
+                    peer_id,
+                    addr,
+                    storage,
+                );
             }
         }
         _ => {}
