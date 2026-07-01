@@ -52,3 +52,9 @@ The implemented public fallback policy lives under `discovery.public_bootstrap`.
 DHT provider discovery lets a node announce and query hashed application namespace keys through Kademlia provider records. This is not a public API surface; it is fallback discovery plumbing behind the six primitives.
 
 Startup uses DHT provider records after deriving the same hashed namespaces used by rendezvous discovery. Provider lookups run when rendezvous peers are absent by default, or alongside rendezvous when explicitly configured. See `docs/spec/DHT_PROVIDER_DISCOVERY.md`.
+
+## Resilience validation
+
+The `network_resurrection` QA suite covers the recovery path that matters to applications: two users deriving the same hashed contact namespace, rediscovering a not-yet-connected peer from rendezvous/DHT-style metadata, exposing that peer through the peer-book view used by `get_peers()`, and feeding stored addresses into the `connect_peer(...)` planner.
+
+The same suite also checks that public bootstrap/relay fallback does not participate unless the operator policy explicitly allows it.

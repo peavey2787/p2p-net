@@ -127,6 +127,10 @@ name = "connection_strategy"
 path = "qa/tests/connection_strategy.rs"
 
 [[test]]
+name = "network_resurrection"
+path = "qa/tests/network_resurrection.rs"
+
+[[test]]
 name = "rendezvous"
 path = "qa/tests/rendezvous.rs"
 
