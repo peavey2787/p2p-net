@@ -12,10 +12,16 @@ use crate::connectivity::limits::ConnectionLimitsConfig;
 use crate::connectivity::relay::{RelayServiceConfig, RelayServiceHealth, RelayState};
 use crate::protocol::pulse::MessageSecurityConfig;
 
+use super::profile::{NodeProfile, ResolvedNodeConfig};
+
 /// Swarm + heartbeat configuration for a standalone P2P network instance.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct NodeConfig {
+    /// High-level node profile. `auto` preserves current all-in-one behaviour until
+    /// environment-aware resolution is implemented.
+    #[serde(default)]
+    pub profile: NodeProfile,
     pub network_id: u32,
     pub heartbeat_interval_secs: u64,
     pub startup_peer_cache_probe: usize,
@@ -51,6 +57,7 @@ pub struct NodeConfig {
 impl Default for NodeConfig {
     fn default() -> Self {
         Self {
+            profile: NodeProfile::Auto,
             network_id: 1,
             heartbeat_interval_secs: 30,
             startup_peer_cache_probe: 5,
@@ -138,6 +145,19 @@ impl NodeConfig {
         self.message_security.validate()?;
         self.relay.validate()?;
         Ok(())
+    }
+
+    /// Return a clone with phase-1 profile defaults applied. Explicit profiles are
+    /// intentionally centralized here so start-up code does not scatter role rules.
+    pub fn with_profile_defaults_applied(&self) -> Self {
+        let mut cfg = self.clone();
+        cfg.profile.apply_to(&mut cfg);
+        cfg
+    }
+
+    /// Resolve the high-level profile into a concrete role and behaviour set.
+    pub fn resolved(&self) -> ResolvedNodeConfig {
+        ResolvedNodeConfig::from_config(self)
     }
 
     pub fn parsed_listen_addresses(

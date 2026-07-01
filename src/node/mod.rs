@@ -1,6 +1,7 @@
 //! Standalone node: libp2p swarm + heartbeat loop, split into `types` and `events`.
 
 mod events;
+mod profile;
 mod types;
 
 use std::collections::VecDeque;
@@ -26,6 +27,7 @@ use crate::stack::{
     startup_discovery_plan, MeshBehaviour,
 };
 
+pub use profile::{BehaviourSet, NodeProfile, NodeRole, ResolvedNodeConfig};
 pub use types::{NodeConfig, NodeSnapshot};
 
 use types::network_label;
@@ -49,6 +51,8 @@ impl NodeHandle {
 }
 
 pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
+    cfg.validate()?;
+    let cfg = cfg.with_profile_defaults_applied();
     cfg.validate()?;
     let local_key = identity::load_or_create_identity_key(&cfg.identity_key_path)?;
     let local_peer = PeerId::from(local_key.public());

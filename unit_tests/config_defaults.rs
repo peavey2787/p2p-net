@@ -1,6 +1,8 @@
 use std::fs;
 
-use p2p_net::{DnsaddrConfig, NodeConfig, RelayAccess, RelayServiceConfig};
+use p2p_net::{
+    DnsaddrConfig, NodeConfig, NodeProfile, NodeRole, RelayAccess, RelayServiceConfig,
+};
 
 #[test]
 fn relay_disabled_by_default() {
@@ -8,6 +10,78 @@ fn relay_disabled_by_default() {
     assert!(!cfg.relay.enabled);
     assert!(!cfg.relay.is_active_now());
     cfg.validate().expect("default config validates");
+}
+
+#[test]
+fn default_profile_is_auto_and_resolves_to_current_full_role() {
+    let cfg = NodeConfig::default();
+    assert_eq!(cfg.profile, NodeProfile::Auto);
+    let resolved = cfg.resolved();
+    assert_eq!(resolved.role, NodeRole::Full);
+    assert!(resolved.enabled_behaviours.gossipsub);
+    assert!(resolved.enabled_behaviours.kademlia_server);
+    assert!(resolved.enabled_behaviours.relay_client);
+    assert!(resolved.enabled_behaviours.dcutr);
+    assert!(!resolved.enabled_behaviours.relay_server);
+}
+
+#[test]
+fn explicit_lite_profile_disables_infrastructure_behaviours() {
+    let cfg = NodeConfig {
+        profile: NodeProfile::Lite,
+        relay: RelayServiceConfig {
+            enabled: true,
+            ..RelayServiceConfig::default()
+        },
+        ..NodeConfig::default()
+    };
+
+    let effective = cfg.with_profile_defaults_applied();
+    assert!(!effective.relay.enabled);
+
+    let resolved = effective.resolved();
+    assert_eq!(resolved.role, NodeRole::Lite);
+    assert!(resolved.enabled_behaviours.relay_client);
+    assert!(resolved.enabled_behaviours.dcutr);
+    assert!(!resolved.enabled_behaviours.kademlia_server);
+    assert!(!resolved.enabled_behaviours.relay_server);
+}
+
+#[test]
+fn explicit_relay_profile_enables_mediator_capability() {
+    let cfg = NodeConfig {
+        profile: NodeProfile::Relay,
+        relay: RelayServiceConfig {
+            enabled: false,
+            ..RelayServiceConfig::default()
+        },
+        ..NodeConfig::default()
+    };
+
+    let effective = cfg.with_profile_defaults_applied();
+    assert!(effective.relay.enabled);
+
+    let resolved = effective.resolved();
+    assert_eq!(resolved.role, NodeRole::Relay);
+    assert!(resolved.enabled_behaviours.relay_server);
+    assert!(resolved.enabled_behaviours.kademlia_server);
+}
+
+#[test]
+fn explicit_rendezvous_profile_enables_client_and_server_flags() {
+    let cfg = NodeConfig {
+        profile: NodeProfile::Rendezvous,
+        ..NodeConfig::default()
+    };
+
+    let effective = cfg.with_profile_defaults_applied();
+    assert!(effective.discovery.rendezvous.client_enabled);
+    assert!(effective.discovery.rendezvous.server_enabled);
+
+    let resolved = effective.resolved();
+    assert_eq!(resolved.role, NodeRole::Rendezvous);
+    assert!(resolved.enabled_behaviours.rendezvous_client);
+    assert!(resolved.enabled_behaviours.rendezvous_server);
 }
 
 #[test]
