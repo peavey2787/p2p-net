@@ -58,7 +58,7 @@ When disabled, configured `/dnsaddr` peer addresses fail validation with a clear
 
 ## Resolver consistency
 
-The configured `dnsaddr` policy is applied by the startup pre-resolver in `src/connectivity/dns.rs`, which resolves configured and cached peers before dialing. WebSocket support in rust-libp2p 0.56 expects the `libp2p-dns` adapter crate, so p2p-net patches that adapter to a local no-Hickory implementation. The adapter resolves ordinary `/dns`, `/dns4`, and `/dns6` names through Tokio's OS resolver and rejects `/dnsaddr`; `/dnsaddr` is handled only by p2p-net's configurable pre-resolver. The disallowed upstream mDNS adapter is patched to a local no-op placeholder.
+The configured `dnsaddr` policy is applied by the startup pre-resolver in `crates/p2p-net/src/connectivity/dns.rs`, which resolves configured and cached peers before dialing. WebSocket support in rust-libp2p 0.56 expects the `libp2p-dns` adapter crate, so p2p-net patches that adapter to a local no-Hickory implementation. The adapter resolves ordinary `/dns`, `/dns4`, and `/dns6` names through Tokio's OS resolver and rejects `/dnsaddr`; `/dnsaddr` is handled only by p2p-net's configurable pre-resolver. The disallowed upstream mDNS adapter is patched to a local no-op placeholder.
 
 The crate enables libp2p's DNS feature only to satisfy rust-libp2p's WebSocket builder, but the crates.io DNS adapter is replaced with p2p-net's local no-Hickory adapter. `/dnsaddr` is not resolved inside that adapter. The tradeoff is explicit and documented: runtime-discovered `/dnsaddr` multiaddrs are only useful after they are stored and passed back through p2p-net's configured/cache resolution path, or after another discovery layer provides concrete `/ip4` or `/ip6` addresses.
 

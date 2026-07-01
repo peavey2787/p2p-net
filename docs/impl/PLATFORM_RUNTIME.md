@@ -71,4 +71,4 @@ Use one P2P core and keep platform-specific work limited to:
 
 ## Binding facade handoff
 
-`src/bindings/` is a JSON/enum-oriented facade for app shells. Platform runtimes and storage adapters remain the real boundary; binding hosts should use `prepare_binding_start_plan` to preview the resolved role/capabilities, then call `start_node_with_platform` with a durable `NodeStorage` implementation. See `docs/BINDINGS.md`.
+`crates/p2p-net/src/bindings/` is a JSON/enum-oriented facade for app shells. Platform runtimes and storage adapters remain the real boundary; binding hosts should use `prepare_binding_start_plan` to preview the resolved role/capabilities, then call `start_node_with_platform` with a durable `NodeStorage` implementation. See `docs/impl/BINDINGS.md`.

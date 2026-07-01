@@ -6,7 +6,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$Root = Resolve-Path (Join-Path $PSScriptRoot "..")
+$Root = Resolve-Path (Join-Path $PSScriptRoot "../..")
 Set-Location $Root
 
 function Run-Step {
@@ -146,12 +146,12 @@ Run-Step "Clippy" {
 
 Run-Step "Security audit" {
     Clear-Validation-Target
-    cargo audit
+    cargo audit --config qa/ci/audit.toml
 }
 
 Run-Step "Dependency policy" {
     Clear-Validation-Target
-    cargo deny check
+    cargo deny --config qa/ci/deny.toml check
 }
 
 if (-not $SkipIgnored) {

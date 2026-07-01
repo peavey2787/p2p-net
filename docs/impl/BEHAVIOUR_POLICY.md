@@ -48,4 +48,4 @@ This keeps snapshots and dashboard output aligned with the actual role policy.
 
 ## DCUtR policy
 
-`DcutrPolicy` uses the same resolved behaviour path. The DCUtR behaviour is installed only when the resolved behaviour set enables DCUtR. Disabling `dcutr.enabled` removes the behaviour while keeping relay-client fallback available. See `docs/DCUTR_POLICY.md` for fallback and retry semantics.
+`DcutrPolicy` uses the same resolved behaviour path. The DCUtR behaviour is installed only when the resolved behaviour set enables DCUtR. Disabling `dcutr.enabled` removes the behaviour while keeping relay-client fallback available. See `docs/impl/DCUTR_POLICY.md` for fallback and retry semantics.

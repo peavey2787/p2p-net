@@ -9,7 +9,7 @@ fn manifest_dir() -> PathBuf {
 #[test]
 fn runtime_docs_do_not_contain_transitional_phase_language() {
     let root = manifest_dir();
-    let scan_roots = ["src", "docs", "scripts", "README.md", "Cargo.toml"];
+    let scan_roots = ["crates", "docs", "qa/ci", "README.md", "Cargo.toml"];
     let forbidden = [
         "Phase 1",
         "Phase 2",
@@ -33,7 +33,7 @@ fn runtime_docs_do_not_contain_transitional_phase_language() {
     let mut violations = Vec::new();
     for path in text_files_under(&root, &scan_roots) {
         let rel = path.strip_prefix(&root).unwrap_or(&path);
-        if rel == Path::new("roadmap.md") {
+        if rel == Path::new("docs/roadmap.md") {
             continue;
         }
         let text = fs::read_to_string(&path).expect("read text file");
@@ -47,10 +47,47 @@ fn runtime_docs_do_not_contain_transitional_phase_language() {
     assert!(violations.is_empty(), "{}", violations.join("\n"));
 }
 
+
+#[test]
+fn repository_layout_matches_modular_baseline() {
+    let root = manifest_dir();
+    for dir in [
+        "crates/p2p-net/src",
+        "docs/impl",
+        "docs/spec",
+        "docs/validation",
+        "docs/project",
+        "docs/future-work",
+        "qa/ci",
+        "qa/fuzz",
+        "qa/tools",
+        "qa/vectors",
+        "qa/tests",
+        "examples",
+        "external/vendor",
+    ] {
+        assert!(root.join(dir).is_dir(), "missing expected directory: {dir}");
+    }
+
+    for old_dir in ["src", "unit_tests", "scripts", "fuzz", "vendor"] {
+        assert!(
+            !root.join(old_dir).exists(),
+            "old top-level directory should not remain: {old_dir}"
+        );
+    }
+
+    assert!(root.join("docs/roadmap.md").is_file(), "roadmap belongs under docs/");
+    assert!(
+        root.join("qa/ci/run-full-validation.ps1").is_file()
+            && root.join("qa/ci/run-full-validation.sh").is_file(),
+        "canonical validation scripts belong under qa/ci/"
+    );
+}
+
 #[test]
 fn scripts_do_not_use_phase_specific_tooling_names() {
     let root = manifest_dir();
-    let scripts_dir = root.join("scripts");
+    let scripts_dir = root.join("qa/ci");
     let mut violations = Vec::new();
 
     for entry in fs::read_dir(&scripts_dir).expect("scripts dir") {
@@ -82,9 +119,9 @@ fn scripts_do_not_use_phase_specific_tooling_names() {
 #[test]
 fn profile_decisions_are_not_duplicated_in_startup_or_stack_layers() {
     let root = manifest_dir();
-    let node_mod = fs::read_to_string(root.join("src/node/mod.rs")).expect("node mod");
-    let behaviour = fs::read_to_string(root.join("src/stack/behaviour.rs")).expect("behaviour");
-    let transport = fs::read_to_string(root.join("src/stack/transport.rs")).expect("transport");
+    let node_mod = fs::read_to_string(root.join("crates/p2p-net/src/node/mod.rs")).expect("node mod");
+    let behaviour = fs::read_to_string(root.join("crates/p2p-net/src/stack/behaviour.rs")).expect("behaviour");
+    let transport = fs::read_to_string(root.join("crates/p2p-net/src/stack/transport.rs")).expect("transport");
 
     assert!(
         node_mod.contains("try_resolved_for_environment"),
@@ -107,8 +144,8 @@ fn profile_decisions_are_not_duplicated_in_startup_or_stack_layers() {
 #[test]
 fn snapshot_json_uses_derived_serialization_instead_of_duplicate_field_mapping() {
     let root = manifest_dir();
-    let node_mod = fs::read_to_string(root.join("src/node/mod.rs")).expect("node mod");
-    let node_types = fs::read_to_string(root.join("src/node/types.rs")).expect("node types");
+    let node_mod = fs::read_to_string(root.join("crates/p2p-net/src/node/mod.rs")).expect("node mod");
+    let node_types = fs::read_to_string(root.join("crates/p2p-net/src/node/types.rs")).expect("node types");
 
     assert!(
         node_types.contains("serde::Serialize"),
@@ -128,6 +165,20 @@ fn snapshot_json_uses_derived_serialization_instead_of_duplicate_field_mapping()
 fn cargo_test_registrations_are_unique_and_complete() {
     let root = manifest_dir();
     let cargo = fs::read_to_string(root.join("Cargo.toml")).expect("Cargo.toml");
+    assert!(
+        cargo.contains("path = \"crates/p2p-net/src/lib.rs\""),
+        "library source must live under crates/p2p-net/src"
+    );
+    assert!(
+        cargo.contains("path = \"qa/tests/"),
+        "integration tests must be registered from qa/tests"
+    );
+    assert!(
+        cargo.contains("external/vendor/libp2p-dns")
+            && cargo.contains("external/vendor/libp2p-mdns-placeholder"),
+        "local third-party patches must live under external/vendor"
+    );
+
     let mut names = BTreeSet::new();
     let mut paths = BTreeSet::new();
     let mut duplicate_names = Vec::new();
@@ -147,7 +198,7 @@ fn cargo_test_registrations_are_unique_and_complete() {
     assert!(duplicate_names.is_empty(), "duplicate test names: {duplicate_names:?}");
     assert!(duplicate_paths.is_empty(), "duplicate test paths: {duplicate_paths:?}");
 
-    for entry in fs::read_dir(root.join("unit_tests")).expect("unit_tests dir") {
+    for entry in fs::read_dir(root.join("qa/tests")).expect("qa/tests dir") {
         let entry = entry.expect("unit test entry");
         let path = entry.path();
         if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {

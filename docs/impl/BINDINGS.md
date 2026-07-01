@@ -24,7 +24,7 @@ Binding hosts are responsible for:
 
 ## Binding facade
 
-`src/bindings/mod.rs` contains JSON/enum-oriented helpers that are easy to wrap from UniFFI, a C ABI, Kotlin JNI, Swift FFI, Tauri, egui, or another host layer:
+`crates/p2p-net/src/bindings/mod.rs` contains JSON/enum-oriented helpers that are easy to wrap from UniFFI, a C ABI, Kotlin JNI, Swift FFI, Tauri, egui, or another host layer:
 
 - `BindingTarget`
 - `BindingRuntimeSpec`
@@ -78,7 +78,7 @@ These defaults are advisory. Hosts can override listen/background hints in `Bind
 
 ## Validation
 
-`unit_tests/bindings.rs` checks that:
+`qa/tests/bindings.rs` checks that:
 
 - all app shells use one shared Rust core
 - Android/iOS resolve `profile = auto` to `mobile_lite`
