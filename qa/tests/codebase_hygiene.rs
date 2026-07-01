@@ -33,6 +33,9 @@ fn runtime_docs_do_not_contain_transitional_phase_language() {
     let mut violations = Vec::new();
     for path in text_files_under(&root, &scan_roots) {
         let rel = path.strip_prefix(&root).unwrap_or(&path);
+        if rel == Path::new("docs/roadmap.md") {
+            continue;
+        }
         let text = fs::read_to_string(&path).expect("read text file");
         for pattern in forbidden {
             if text.contains(pattern) {
@@ -74,8 +77,8 @@ fn repository_layout_matches_modular_baseline() {
     }
 
     assert!(
-        !root.join("docs/roadmap.md").exists(),
-        "roadmap.md should not exist when there is no active roadmap"
+        root.join("docs/roadmap.md").is_file(),
+        "active discovery roadmap should live at docs/roadmap.md"
     );
     assert!(
         !root.join(Path::new("crates").join("p2p-net")).exists(),
