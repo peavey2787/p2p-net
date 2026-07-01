@@ -104,6 +104,21 @@ assert_no_rejected_dns_resolver() {
   done
 }
 
+run_cargo_audit_with_repo_config() {
+  local cargo_dir="$ROOT/.cargo"
+  local staged_audit_config="$cargo_dir/audit.toml"
+  local status
+  mkdir -p "$cargo_dir"
+  cp "$ROOT/qa/ci/audit.toml" "$staged_audit_config"
+  set +e
+  cargo audit
+  status=$?
+  set -e
+  rm -f "$staged_audit_config"
+  rmdir "$cargo_dir" 2>/dev/null || true
+  return "$status"
+}
+
 echo "p2p-net full stable validation"
 echo "Root: $ROOT"
 echo "SkipIgnored: $SKIP_IGNORED"
@@ -134,8 +149,8 @@ run_step "Dependency graph guard" assert_no_rejected_dns_resolver
 run_step "Tests" bash -lc 'export CARGO_TARGET_DIR="$PWD/target/full-validation/tests"; cargo test --workspace --locked -j 1'
 run_step "Dashboard feature tests" bash -lc 'export CARGO_TARGET_DIR="$PWD/target/full-validation/dashboard"; cargo test --features dashboard --locked -j 1'
 run_step "Clippy" bash -lc 'export CARGO_TARGET_DIR="$PWD/target/full-validation/clippy"; cargo clippy --workspace --all-targets --all-features --locked -j 1 -- -D warnings'
-run_step "Security audit" cargo audit --config qa/ci/audit.toml
-run_step "Dependency policy" cargo deny --config qa/ci/deny.toml check
+run_step "Security audit" run_cargo_audit_with_repo_config
+run_step "Dependency policy" cargo deny check --config qa/ci/deny.toml
 
 if [[ "$SKIP_IGNORED" != "1" ]]; then
   run_step "Ignored load/soak tests" bash -lc 'export CARGO_TARGET_DIR="$PWD/target/full-validation/ignored"; cargo test --test multi_node_hostile --locked -j 1 -- --ignored --nocapture'

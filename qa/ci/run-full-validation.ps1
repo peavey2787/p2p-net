@@ -93,6 +93,24 @@ function Assert-No-Rejected-Dns-Resolver {
     }
 }
 
+function Invoke-CargoAuditWithRepoConfig {
+    $cargoDir = Join-Path $Root ".cargo"
+    $stagedAuditConfig = Join-Path $cargoDir "audit.toml"
+    $sourceAuditConfig = Join-Path $Root "qa\ci\audit.toml"
+
+    New-Item -ItemType Directory -Force $cargoDir | Out-Null
+    Copy-Item -Force $sourceAuditConfig $stagedAuditConfig
+    try {
+        cargo audit
+    } finally {
+        Remove-Item $stagedAuditConfig -Force -ErrorAction SilentlyContinue
+        $remainingCargoConfig = Get-ChildItem $cargoDir -Force -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ((Test-Path $cargoDir) -and ($null -eq $remainingCargoConfig)) {
+            Remove-Item $cargoDir -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 Write-Host "p2p-net full stable validation" -ForegroundColor Green
 Write-Host "Root: $Root"
 Write-Host "SkipIgnored: $SkipIgnored"
@@ -146,12 +164,12 @@ Run-Step "Clippy" {
 
 Run-Step "Security audit" {
     Clear-Validation-Target
-    cargo audit --config qa/ci/audit.toml
+    Invoke-CargoAuditWithRepoConfig
 }
 
 Run-Step "Dependency policy" {
     Clear-Validation-Target
-    cargo deny --config qa/ci/deny.toml check
+    cargo deny check --config qa/ci/deny.toml
 }
 
 if (-not $SkipIgnored) {

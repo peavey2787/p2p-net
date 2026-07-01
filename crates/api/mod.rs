@@ -20,12 +20,60 @@ pub const APP_TOPIC_PREFIX: &str = "p2p-net/app";
 pub const MAX_APP_TOPIC_LEN: usize = 128;
 pub const MAX_APP_MESSAGE_BYTES: usize = 1024 * 1024;
 
+/// How the local node learned about a peer.
+///
+/// These sources let applications distinguish directly connected peers from
+/// peers learned through bootstrap, rendezvous, relay discovery, DHT provider
+/// lookup, or local cache. The public primitive remains `get_peers`; this enum
+/// makes the returned metadata useful for connection planning without exposing
+/// libp2p internals.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PeerSource {
+    Connected,
+    Bootstrap,
+    BootstrapSeed,
+    Rendezvous,
+    DhtProvider,
+    RelayDiscovery,
+    PeerCache,
+    Manual,
+}
+
+impl PeerSource {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Connected => "connected",
+            Self::Bootstrap => "bootstrap",
+            Self::BootstrapSeed => "bootstrap_seed",
+            Self::Rendezvous => "rendezvous",
+            Self::DhtProvider => "dht_provider",
+            Self::RelayDiscovery => "relay_discovery",
+            Self::PeerCache => "peer_cache",
+            Self::Manual => "manual",
+        }
+    }
+}
+
 /// A peer visible through the app-facing API.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PeerInfo {
     pub peer_id: String,
     pub connected: bool,
     pub addresses: Vec<String>,
+    #[serde(default)]
+    pub sources: Vec<PeerSource>,
+    #[serde(default)]
+    pub supports_relay: Option<bool>,
+    #[serde(default)]
+    pub supports_rendezvous: Option<bool>,
+    #[serde(default)]
+    pub supports_dcutr: Option<bool>,
+    #[serde(default)]
+    pub last_seen_unix_secs: Option<u64>,
+    #[serde(default)]
+    pub namespace: Option<String>,
 }
 
 impl PeerInfo {
@@ -35,7 +83,43 @@ impl PeerInfo {
             peer_id: peer_id.to_string(),
             connected: true,
             addresses: Vec::new(),
+            sources: vec![PeerSource::Connected],
+            supports_relay: None,
+            supports_rendezvous: None,
+            supports_dcutr: None,
+            last_seen_unix_secs: None,
+            namespace: None,
         }
+    }
+
+    #[must_use]
+    pub fn discovered(
+        peer_id: PeerId,
+        source: PeerSource,
+        addresses: impl IntoIterator<Item = String>,
+    ) -> Self {
+        Self {
+            peer_id: peer_id.to_string(),
+            connected: false,
+            addresses: addresses.into_iter().collect(),
+            sources: vec![source],
+            supports_relay: None,
+            supports_rendezvous: None,
+            supports_dcutr: None,
+            last_seen_unix_secs: None,
+            namespace: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_namespace(mut self, namespace: impl Into<String>) -> Self {
+        self.namespace = Some(namespace.into());
+        self
+    }
+
+    #[must_use]
+    pub fn has_source(&self, source: PeerSource) -> bool {
+        self.sources.contains(&source)
     }
 }
 

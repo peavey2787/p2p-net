@@ -21,6 +21,7 @@
 - Platform runtime/storage abstraction for desktop and mobile adapters
 - Binding-safe facade for desktop, Android, iOS/iPadOS, and WASM/WebView shells
 - Six stable application primitives exposed on `NodeHandle`: `connect_peer`, `disconnect_peer`, `send_message`, `broadcast`, `subscribe`, and `get_peers`
+- Discovery resurrection roadmap for private-infrastructure-first fallback to public bootstrap/relay resources
 
 DNS support is enabled by default for configured and cached peers through p2p-net's own startup resolver. Peer addresses using `/dns`, `/dns4`, `/dns6`, or `/dnsaddr` are resolved before dialing. WebSocket support in rust-libp2p 0.56 requires the `libp2p-dns` adapter crate, so p2p-net patches that crate to a local no-Hickory implementation instead of using the crates.io resolver path. The disallowed upstream mDNS adapter crate is policy-patched to a local no-op placeholder so the rejected Hickory DNS line stays out of `Cargo.lock`. `/dnsaddr` uses bounded DNS-over-HTTPS TXT lookup support with a configurable endpoint in p2p-net's own resolver. The default endpoint is Cloudflare for simple out-of-the-box operation; production deployments can point it at an internal/self-hosted DoH resolver or disable `/dnsaddr` entirely. LAN multicast discovery/mDNS is not included.
 
@@ -34,6 +35,7 @@ docs/spec/          Core specifications
 docs/validation/    Validation docs
 docs/project/       Project/audit notes
 docs/future-work/   Deferred ideas and long-term proposals
+docs/roadmap.md      Active roadmap, when one exists
 qa/ci/              Canonical validation scripts and CI helpers
 qa/tests/           Global/system/invariant integration tests
 qa/fuzz/            Fuzz targets
@@ -166,5 +168,6 @@ Normally, do not run the individual commands manually. Use `.\qa\ci\run-full-val
 - `docs/impl/PLATFORM_RUNTIME.md` documents the platform runtime/storage abstraction.
 - `docs/impl/BINDINGS.md` documents the cross-platform binding facade.
 - `docs/spec/API_PRIMITIVES.md` documents the six primitive application API.
+- `docs/spec/DISCOVERY_RESURRECTION.md` documents private-infrastructure-first discovery fallback and peer roles.
 - `docs/impl/API_IMPLEMENTATION.md` documents API command routing and message delivery.
 - `qa/tests/codebase_hygiene.rs` guards against stale transitional docs, duplicate test registration, and profile-decision drift outside the resolver.

@@ -4,7 +4,7 @@ use std::path::Path;
 use libp2p::PeerId;
 use p2p_net::{
     app_topic_name, decode_app_message, encode_app_message, normalize_app_topic, AppMessage,
-    MAX_APP_MESSAGE_BYTES,
+    PeerInfo, PeerSource, MAX_APP_MESSAGE_BYTES,
 };
 
 #[test]
@@ -53,6 +53,32 @@ fn app_payload_size_is_bounded() {
     let source = PeerId::random();
     let oversized = vec![0u8; MAX_APP_MESSAGE_BYTES + 1];
     assert!(AppMessage::broadcast(1, "oversized", source, oversized).is_err());
+}
+
+#[test]
+fn peer_info_exposes_discovery_sources_and_capability_hints() {
+    let peer = PeerId::random();
+    let connected = PeerInfo::connected(peer);
+    assert!(connected.connected);
+    assert!(connected.has_source(PeerSource::Connected));
+    assert_eq!(PeerSource::DhtProvider.as_str(), "dht_provider");
+
+    let discovered = PeerInfo::discovered(
+        peer,
+        PeerSource::Rendezvous,
+        ["/ip4/127.0.0.1/tcp/4001/p2p/example".to_string()],
+    )
+    .with_namespace("p2p-net/1/hydra-msg/tag-hash");
+    assert!(!discovered.connected);
+    assert!(discovered.has_source(PeerSource::Rendezvous));
+    assert_eq!(
+        discovered.namespace.as_deref(),
+        Some("p2p-net/1/hydra-msg/tag-hash")
+    );
+
+    let json = serde_json::to_string(&discovered).expect("serialize peer info");
+    assert!(json.contains("rendezvous"));
+    assert!(json.contains("p2p-net/1/hydra-msg/tag-hash"));
 }
 
 #[test]
