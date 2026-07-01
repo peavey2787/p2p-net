@@ -77,7 +77,7 @@ impl NodeHandle {
 
     /// Return peers currently connected to the local swarm.
     pub async fn get_peers(&self) -> Result<Vec<PeerInfo>, NetError> {
-        self.request(|reply| NodeCommand::GetPeers(reply)).await
+        self.request(NodeCommand::GetPeers).await
     }
 
     /// Request shutdown and wait for the swarm task to exit.
