@@ -8,6 +8,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use libp2p::{Multiaddr, PeerId};
+
 use crate::api::{PeerInfo, PeerSource};
 
 /// One normalized peer record in the local peer book.
@@ -21,6 +22,7 @@ pub struct PeerRecord {
     pub supports_relay: Option<bool>,
     pub supports_rendezvous: Option<bool>,
     pub supports_dcutr: Option<bool>,
+    pub relay_preferred: bool,
     pub last_seen_unix_secs: Option<u64>,
     pub failures: u32,
 }
@@ -37,6 +39,7 @@ impl PeerRecord {
             supports_relay: None,
             supports_rendezvous: None,
             supports_dcutr: None,
+            relay_preferred: false,
             last_seen_unix_secs: None,
             failures: 0,
         }
@@ -126,6 +129,38 @@ impl PeerBook {
         record.mark_seen();
     }
 
+    pub fn record_capabilities(
+        &mut self,
+        peer_id: PeerId,
+        supports_relay: Option<bool>,
+        supports_rendezvous: Option<bool>,
+        supports_dcutr: Option<bool>,
+    ) {
+        let record = self
+            .peers
+            .entry(peer_id)
+            .or_insert_with(|| PeerRecord::new(peer_id));
+        if supports_relay.is_some() {
+            record.supports_relay = supports_relay;
+        }
+        if supports_rendezvous.is_some() {
+            record.supports_rendezvous = supports_rendezvous;
+        }
+        if supports_dcutr.is_some() {
+            record.supports_dcutr = supports_dcutr;
+        }
+        record.mark_seen();
+    }
+
+    pub fn record_relay_preferred(&mut self, peer_id: PeerId, relay_preferred: bool) {
+        let record = self
+            .peers
+            .entry(peer_id)
+            .or_insert_with(|| PeerRecord::new(peer_id));
+        record.relay_preferred = relay_preferred;
+        record.mark_seen();
+    }
+
     pub fn record_disconnected(&mut self, peer_id: PeerId) {
         let record = self
             .peers
@@ -142,6 +177,11 @@ impl PeerBook {
             .or_insert_with(|| PeerRecord::new(peer_id));
         record.failures = record.failures.saturating_add(1);
         record.mark_seen();
+    }
+
+    #[must_use]
+    pub fn record(&self, peer_id: &PeerId) -> Option<&PeerRecord> {
+        self.peers.get(peer_id)
     }
 
     #[must_use]
@@ -187,6 +227,8 @@ mod tests {
         book.record_peer(peer, PeerSource::Bootstrap);
         book.record_addr(peer, addr, PeerSource::PeerCache);
         book.record_namespace(peer, "p2p-net/1/app/tag", PeerSource::DhtProvider);
+        book.record_capabilities(peer, Some(true), None, Some(true));
+        book.record_relay_preferred(peer, true);
         book.record_connected(peer, None);
 
         let peers = book.peers();
@@ -196,5 +238,8 @@ mod tests {
         assert!(peers[0].has_source(PeerSource::PeerCache));
         assert!(peers[0].has_source(PeerSource::DhtProvider));
         assert_eq!(peers[0].namespace.as_deref(), Some("p2p-net/1/app/tag"));
+        assert_eq!(peers[0].supports_relay, Some(true));
+        assert_eq!(peers[0].supports_dcutr, Some(true));
+        assert!(book.record(&peer).expect("record").relay_preferred);
     }
 }

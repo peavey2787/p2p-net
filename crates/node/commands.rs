@@ -4,10 +4,14 @@ use libp2p::gossipsub::TopicHash;
 use libp2p::{PeerId, Swarm};
 use tokio::sync::Mutex;
 
-use crate::api::{app_ident_topic, encode_app_message, AppMessage};
+use crate::api::{app_ident_topic, encode_app_message, AppMessage, PeerSource};
 use crate::common::error::NetError;
+use crate::connectivity::connection_strategy::{
+    build_connection_plan, ConnectionAttempt, ConnectionPlan, PendingConnectionPlans,
+};
+use crate::connectivity::dcutr::DcutrPolicy;
 use crate::connectivity::peer_book::PeerBook;
-use crate::stack::MeshBehaviour;
+use crate::stack::{extract_p2p_peer_id, MeshBehaviour};
 
 use super::handle::NodeCommand;
 use super::types::NodeSnapshot;
@@ -20,13 +24,16 @@ pub(crate) async fn handle_node_command(
     app_topic_hashes: &mut Vec<TopicHash>,
     snapshot: &Arc<Mutex<NodeSnapshot>>,
     peer_book: &mut PeerBook,
+    pending_connections: &mut PendingConnectionPlans,
+    dcutr_policy: &DcutrPolicy,
 ) {
     let (success, sent_app_message) = match command {
         NodeCommand::ConnectPeer { addr, reply } => {
-            let result = swarm.dial(addr.clone()).map_err(|err| NetError::Dial {
-                target: addr.to_string(),
-                reason: err.to_string(),
-            });
+            if let Some(peer) = extract_p2p_peer_id(&addr) {
+                peer_book.record_addr(peer, addr.clone(), PeerSource::Manual);
+            }
+            let plan = build_connection_plan(addr, peer_book, dcutr_policy);
+            let result = dial_connection_plan(swarm, pending_connections, &plan);
             let success = result.is_ok();
             let _ = reply.send(result);
             (success, false)
@@ -146,4 +153,45 @@ async fn subscribe_app_topic(
         guard.app_subscriptions.push(topic);
     }
     Ok(())
+}
+
+
+fn dial_connection_plan(
+    swarm: &mut Swarm<MeshBehaviour>,
+    pending_connections: &mut PendingConnectionPlans,
+    plan: &ConnectionPlan,
+) -> Result<(), NetError> {
+    let mut errors = Vec::new();
+    for attempt in &plan.attempts {
+        match dial_connection_attempt(swarm, attempt) {
+            Ok(()) => {
+                pending_connections.track_remaining(plan, attempt);
+                return Ok(());
+            }
+            Err(err) => errors.push(err),
+        }
+    }
+
+    Err(NetError::Dial {
+        target: plan
+            .target_peer
+            .as_ref()
+            .map(ToString::to_string)
+            .unwrap_or_else(|| "<unknown>".to_string()),
+        reason: if errors.is_empty() {
+            format!("connection plan had no dial attempts: {}", plan.describe())
+        } else {
+            errors.join("; ")
+        },
+    })
+}
+
+fn dial_connection_attempt(
+    swarm: &mut Swarm<MeshBehaviour>,
+    attempt: &ConnectionAttempt,
+) -> Result<(), String> {
+    swarm
+        .dial(attempt.addr.clone())
+        .map(|_| ())
+        .map_err(|err| format!("{} {} failed immediately: {}", attempt.kind.as_str(), attempt.addr, err))
 }

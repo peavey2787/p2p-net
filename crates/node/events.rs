@@ -5,6 +5,7 @@ use libp2p::swarm::SwarmEvent;
 use libp2p::{Multiaddr, PeerId, Swarm};
 use tokio::sync::{broadcast, Mutex};
 
+use crate::connectivity::connection_strategy::PendingConnectionPlans;
 use crate::connectivity::dht::DhtProviderState;
 use crate::connectivity::discovery::DiscoveryConfig;
 use crate::connectivity::dcutr::DcutrPolicy;
@@ -38,6 +39,7 @@ pub(crate) struct SwarmEventContext<'a> {
     pub(crate) rendezvous_state: &'a mut RendezvousState,
     pub(crate) dht_state: &'a mut DhtProviderState,
     pub(crate) peer_book: &'a mut PeerBook,
+    pub(crate) pending_connections: &'a mut PendingConnectionPlans,
     pub(crate) connection_caps: &'a mut ConnectionCapState,
     pub(crate) relay_cfg: &'a RelayServiceConfig,
     pub(crate) dcutr_policy: &'a DcutrPolicy,
@@ -94,7 +96,7 @@ pub(crate) async fn handle_swarm_event(
             .await;
         }
         SwarmEvent::OutgoingConnectionError { error, peer_id, .. } => {
-            connection::handle_outgoing_connection_error(peer_id, format!("{error:?}"), ctx)
+            connection::handle_outgoing_connection_error(peer_id, format!("{error:?}"), swarm, ctx)
                 .await;
         }
         SwarmEvent::NewListenAddr { address, .. } => {
