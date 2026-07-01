@@ -52,10 +52,60 @@ pub(crate) async fn handle_connection_established(
     guard.connected_peers = swarm.connected_peers().count();
     guard.connection_cap_disconnects = ctx.connection_caps.cap_disconnects;
     if is_p2p_circuit_addr(&remote_addr) {
-        push_pulse(
-            &mut guard.pulses,
-            format!("relay_fallback connection established via {remote_addr}"),
-        );
+        if ctx.dcutr_policy.keep_relay_fallback {
+            ctx.relay_state.dcutr_relay_fallbacks = ctx
+                .relay_state
+                .dcutr_relay_fallbacks
+                .saturating_add(1);
+        }
+
+        if ctx.dcutr_policy.enabled && ctx.dcutr_policy.attempt_after_relay_connection {
+            let max_attempts = ctx.dcutr_policy.max_attempts_per_peer;
+            let attempt_budget = {
+                let attempts = ctx
+                    .relay_state
+                    .dcutr_attempts_by_peer
+                    .entry(peer_id.to_owned())
+                    .or_insert(0);
+                if *attempts >= max_attempts {
+                    None
+                } else {
+                    *attempts = attempts.saturating_add(1);
+                    Some(*attempts)
+                }
+            };
+
+            if let Some(attempt_budget) = attempt_budget {
+                ctx.relay_state.dcutr_upgrade_eligible_connections = ctx
+                    .relay_state
+                    .dcutr_upgrade_eligible_connections
+                    .saturating_add(1);
+                push_pulse(
+                    &mut guard.pulses,
+                    format!(
+                        "dcutr upgrade eligible for {peer_id} via relay fallback {remote_addr}; attempt_budget={attempt_budget}/{max_attempts}",
+                    ),
+                );
+            } else {
+                ctx.relay_state.dcutr_retry_suppressed = ctx
+                    .relay_state
+                    .dcutr_retry_suppressed
+                    .saturating_add(1);
+                push_pulse(
+                    &mut guard.pulses,
+                    format!(
+                        "dcutr retry suppressed for {peer_id}; max_attempts_per_peer={max_attempts} reached; relay fallback retained via {remote_addr}",
+                    ),
+                );
+            }
+        } else {
+            push_pulse(
+                &mut guard.pulses,
+                format!("relay_fallback connection established via {remote_addr}"),
+            );
+        }
+
+        guard.apply_relay_state(ctx.relay_state);
     }
 }
 

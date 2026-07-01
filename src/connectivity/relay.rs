@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::num::NonZeroU32;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -58,8 +58,14 @@ pub struct RelayState {
     pub relay_discovery_replacements: usize,
     pub relayed_listen_addrs: BTreeSet<String>,
     pub relay_bytes_forwarded: u64,
+    pub dcutr_enabled: bool,
     pub dcutr_attempts: usize,
     pub dcutr_successes: usize,
+    pub dcutr_failures: usize,
+    pub dcutr_relay_fallbacks: usize,
+    pub dcutr_upgrade_eligible_connections: usize,
+    pub dcutr_retry_suppressed: usize,
+    pub dcutr_attempts_by_peer: HashMap<PeerId, u32>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

@@ -6,6 +6,7 @@ use libp2p::{Multiaddr, Swarm};
 use tokio::sync::Mutex;
 
 use crate::connectivity::discovery::DiscoveryConfig;
+use crate::connectivity::dcutr::DcutrPolicy;
 use crate::connectivity::limits::ConnectionCapState;
 use crate::connectivity::relay::{RelayServiceConfig, RelayState};
 use crate::connectivity::rendezvous::RendezvousState;
@@ -31,6 +32,7 @@ pub(crate) struct SwarmEventContext<'a> {
     pub(crate) rendezvous_state: &'a mut RendezvousState,
     pub(crate) connection_caps: &'a mut ConnectionCapState,
     pub(crate) relay_cfg: &'a RelayServiceConfig,
+    pub(crate) dcutr_policy: &'a DcutrPolicy,
     pub(crate) discovery_cfg: &'a DiscoveryConfig,
     pub(crate) rendezvous_peers: &'a [Multiaddr],
     pub(crate) message_security: &'a MessageSecurityConfig,
@@ -97,7 +99,7 @@ pub(crate) async fn handle_swarm_event(
             relay_server::handle_event(ev, ctx.snapshot, ctx.relay_state).await;
         }
         SwarmEvent::Behaviour(MeshEvent::Dcutr(ev)) => {
-            dcutr::handle_event(ev, ctx.snapshot, ctx.relay_state).await;
+            dcutr::handle_event(ev, ctx.snapshot, ctx.relay_state, ctx.dcutr_policy).await;
         }
         SwarmEvent::Behaviour(MeshEvent::RendezvousClient(ev)) => {
             rendezvous::handle_client_event(swarm, &ev, ctx).await;

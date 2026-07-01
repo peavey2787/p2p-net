@@ -168,12 +168,12 @@ impl EnvironmentReport {
         let platform = hints.platform_hint.unwrap_or_else(PlatformKind::current);
         let can_listen_tcp = hints
             .can_listen_tcp
-            .unwrap_or_else(|| listen_addresses_include(&cfg.listen_addresses, "/tcp/"));
-        let can_listen_quic = hints.can_listen_quic.unwrap_or_else(|| {
+            .unwrap_or(listen_addresses_include(&cfg.listen_addresses, "/tcp/"));
+        let can_listen_quic = hints.can_listen_quic.unwrap_or(
             cfg.listen_addresses
                 .iter()
-                .any(|addr| addr.contains("/udp/") && addr.contains("/quic"))
-        });
+                .any(|addr| addr.contains("/udp/") && addr.contains("/quic")),
+        );
         let nat_status = hints.nat_hint.unwrap_or(NatKind::Unknown);
         let inferred_cgnat = nat_status.implies_cgnat_or_blocked()
             || matches!(hints.reachability_hint, Some(NetworkReachability::CgnatLikely));
@@ -182,14 +182,16 @@ impl EnvironmentReport {
         let background_restricted = hints
             .background_restricted
             .unwrap_or(platform.is_mobile() || matches!(platform, PlatformKind::Wasm));
-        let reachability = hints.reachability_hint.unwrap_or_else(|| {
-            reachability_from_hints(nat_status, likely_cgnat, background_restricted)
-        });
-        let can_accept_inbound = hints.can_accept_inbound.unwrap_or_else(|| {
+        let reachability = hints.reachability_hint.unwrap_or(reachability_from_hints(
+            nat_status,
+            likely_cgnat,
+            background_restricted,
+        ));
+        let can_accept_inbound = hints.can_accept_inbound.unwrap_or(
             matches!(reachability, NetworkReachability::Public)
                 && (can_listen_tcp || can_listen_quic)
-                && !background_restricted
-        });
+                && !background_restricted,
+        );
 
         Self {
             platform,

@@ -206,7 +206,7 @@ Required work:
 - Load configured relays. **Done.**
 - Load cached healthy relays. **Done.**
 - Discover relays through rendezvous/bootstrap metadata. **Done for startup candidate selection using configured rendezvous infrastructure; deeper live replacement remains tracked by policy.**
-- Maintain a minimum number of healthy reservations. **Partially done: startup selection enforces min/max and reports shortages; live replacement is deferred to Phase 8/health pass.**
+- Maintain a minimum number of healthy reservations. **Partially done: startup selection enforces min/max and reports shortages; live replacement remains a later health pass.**
 - Replace failed, slow, or abusive relays. **Policy exists and failures are counted; active replacement from a spare pool remains follow-up work.**
 - Expose selected relays in node snapshot. **Done.**
 
@@ -217,18 +217,18 @@ Exit criteria:
 
 ## Phase 8 — DCUtR policy and fallback
 
-Status: planned.
+Status: implemented.
 
 Turn DCUtR into a clear connection-upgrade policy.
 
 Required work:
 
-- Add `DcutrPolicy`.
-- Attempt DCUtR after a relayed connection when policy allows it.
-- Prefer direct connection when hole punching succeeds.
-- Keep relay fallback when hole punching fails.
-- Add retry/backoff and max-attempt controls.
-- Add metrics for attempt, success, failure, and fallback.
+- Add `DcutrPolicy`. **Done.**
+- Attempt DCUtR after a relayed connection when policy allows it. **Done at policy/observability level; rust-libp2p owns the protocol-level hole punch.**
+- Prefer direct connection when hole punching succeeds. **Supported through DCUtR behaviour; success counters now exposed.**
+- Keep relay fallback when hole punching fails. **Done with required fallback policy and counters.**
+- Add retry/backoff and max-attempt controls. **Done as validated policy and per-peer suppression budget; timer-driven retries can build on it.**
+- Add metrics for attempt, success, failure, and fallback. **Done.**
 
 Exit criteria:
 
@@ -283,3 +283,4 @@ Exit criteria:
 | 2026-07-01 | 5 | Implemented | Split swarm event handling into focused `node/events/` modules for connection lifecycle, relay client, relay server/mediator, DCUtR, rendezvous, and gossip validation. Kept `src/node/events.rs` as top-level dispatch only, added `docs/EVENT_HANDLING.md`, and registered an `event_responsibility` test. Static edit only; cargo was unavailable in the sandbox for compile/test validation. |
 | 2026-07-01 | 6 | Implemented | Made swarm/behaviour construction consume `ResolvedNodeConfig`; Kademlia now uses server mode only for infrastructure profiles and client mode for lite/mobile-lite; relay/rendezvous server toggles now require both resolved policy and effective config; added `docs/BEHAVIOUR_POLICY.md` and registered a `behaviour_policy` test. Static edit only; cargo was unavailable in the sandbox for compile/test validation. |
 | 2026-07-01 | 7 | Implemented | Added `RelayDiscoveryPolicy`, deterministic relay candidate selection from configured/cached/rendezvous sources, selected-relay reservation startup path, relay discovery snapshot/JSON/Prometheus fields, `docs/RELAY_DISCOVERY.md`, example config fields, and registered a `relay_discovery` test. Static edit only; cargo was unavailable in the sandbox for compile/test validation. |
+| 2026-07-01 | 8 | Implemented | Fixed clippy `unnecessary_lazy_evaluations` in environment detection, added `DcutrPolicy`, wired DCUtR through the central resolver and behaviour construction, added relayed-fallback/attempt/success/failure/suppression counters, exposed DCUtR JSON/Prometheus/dashboard fields, added `docs/DCUTR_POLICY.md`, example config fields, and registered a `dcutr_policy` test. Static edit only; cargo was unavailable in the sandbox for compile/test validation. |

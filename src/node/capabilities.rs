@@ -18,6 +18,7 @@ pub fn resolve_node_config(
 ) -> Result<ResolvedNodeConfig, NetError> {
     let effective = effective_config_for_resolution(raw);
     effective.discovery.relay_discovery.validate()?;
+    effective.dcutr.validate()?;
     effective.mediator.validate(&effective.relay)?;
     let role = resolve_role_for_environment(&effective, environment);
     let resolved = ResolvedNodeConfig::from_effective_config(raw.profile, role, effective);
@@ -35,6 +36,7 @@ pub fn apply_resolved_capabilities(raw: &NodeConfig, resolved: &ResolvedNodeConf
     mediator.apply_to_relay(&mut cfg.relay);
 
     cfg.relay.enabled = resolved.enabled_behaviours.relay_server;
+    cfg.dcutr.enabled = resolved.dcutr_enabled;
     cfg.discovery.rendezvous.client_enabled = resolved.enabled_behaviours.rendezvous_client;
     cfg.discovery.rendezvous.server_enabled = resolved.enabled_behaviours.rendezvous_server;
     cfg.reserve_configured_relays = resolved.reserve_configured_relays;
@@ -55,7 +57,7 @@ fn effective_config_for_resolution(raw: &NodeConfig) -> NodeConfig {
 
 fn resolve_role_for_environment(cfg: &NodeConfig, environment: &EnvironmentReport) -> NodeRole {
     match cfg.profile {
-        NodeProfile::Auto => explicit_config_role(cfg).unwrap_or_else(|| auto_role(environment)),
+        NodeProfile::Auto => explicit_config_role(cfg).unwrap_or(auto_role(environment)),
         NodeProfile::Full => NodeRole::Full,
         NodeProfile::Lite => NodeRole::Lite,
         NodeProfile::Relay => NodeRole::Relay,
@@ -121,6 +123,18 @@ fn validate_resolved_config(
     if behaviours.dcutr && !behaviours.relay_client {
         return Err(config_error(
             "DCUtR requires relay client capability for relayed fallback",
+        ));
+    }
+
+    if resolved.dcutr_enabled && !resolved.dcutr_keep_relay_fallback {
+        return Err(config_error(
+            "DCUtR policy must keep relay fallback enabled for production-safe lite connectivity",
+        ));
+    }
+
+    if resolved.dcutr_enabled && resolved.dcutr_max_attempts_per_peer == 0 {
+        return Err(config_error(
+            "DCUtR max attempts per peer must be at least 1 when enabled",
         ));
     }
 

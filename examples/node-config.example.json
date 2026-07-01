@@ -83,6 +83,13 @@
       "decay_interval_secs": 60
     }
   },
+  "dcutr": {
+    "enabled": true,
+    "attempt_after_relay_connection": true,
+    "keep_relay_fallback": true,
+    "retry_interval_secs": 60,
+    "max_attempts_per_peer": 3
+  },
   "mediator": {
     "enabled": false,
     "advertise_for_dcutr": true,
