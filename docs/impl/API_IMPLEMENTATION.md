@@ -1,0 +1,33 @@
+# Application API implementation
+
+The general-purpose API is implemented without exposing libp2p internals to embedders.
+
+## Public surface
+
+`NodeHandle` exposes:
+
+```rust
+connect_peer(addr)
+disconnect_peer(peer_id)
+send_message(peer_id, topic, payload)
+broadcast(topic, payload)
+subscribe(topic)
+get_peers()
+```
+
+## Internal flow
+
+1. Public methods send a `NodeCommand` through the node command channel.
+2. The swarm task processes commands on the same Tokio task that owns `Swarm<MeshBehaviour>`.
+3. App messages are encoded as `AppMessage` envelopes and published through app-topic gossipsub topics.
+4. Subscribed app topics are tracked by topic hash, separate from heartbeat gossip.
+5. Incoming app-topic messages are decoded by `node/events/app.rs` and sent through the local delivery bus only when they match the local network id and target peer id.
+6. `NodeSnapshot` exposes API/app counters for observability.
+
+This preserves SRP:
+
+- `crates/api/` owns public envelope/topic types.
+- `crates/node/handle.rs` owns public primitive methods and command types.
+- `crates/node/commands.rs` owns command execution against the swarm.
+- `crates/node/events/app.rs` owns incoming app-message delivery.
+- `crates/stack/` remains transport/behaviour construction only.

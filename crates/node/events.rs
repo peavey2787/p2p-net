@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use libp2p::gossipsub::TopicHash;
 use libp2p::swarm::SwarmEvent;
-use libp2p::{Multiaddr, Swarm};
-use tokio::sync::Mutex;
+use libp2p::{Multiaddr, PeerId, Swarm};
+use tokio::sync::{broadcast, Mutex};
 
 use crate::connectivity::discovery::DiscoveryConfig;
 use crate::connectivity::dcutr::DcutrPolicy;
@@ -11,12 +11,14 @@ use crate::connectivity::limits::ConnectionCapState;
 use crate::connectivity::relay::{RelayServiceConfig, RelayState};
 use crate::connectivity::rendezvous::RendezvousState;
 use crate::platform::NodeStorage;
+use crate::api::AppMessage;
 use crate::protocol::pulse::{HeartbeatReplayCache, MessageSecurityConfig};
 use crate::protocol::reputation::ReputationStore;
 use crate::stack::{on_mesh_event, MeshBehaviour, MeshEvent};
 
 use super::types::NodeSnapshot;
 
+mod app;
 mod connection;
 mod dcutr;
 mod gossip;
@@ -40,6 +42,10 @@ pub(crate) struct SwarmEventContext<'a> {
     pub(crate) message_security: &'a MessageSecurityConfig,
     pub(crate) replay_cache: &'a mut HeartbeatReplayCache,
     pub(crate) heartbeat_topic_hash: &'a TopicHash,
+    pub(crate) app_topic_hashes: &'a [TopicHash],
+    pub(crate) app_messages: &'a broadcast::Sender<AppMessage>,
+    pub(crate) local_peer: PeerId,
+    pub(crate) network_id: u32,
 }
 
 /// Top-level swarm dispatch only. Responsibility-specific event handling lives in
@@ -122,6 +128,13 @@ pub(crate) async fn handle_swarm_event(
                 ctx,
             )
             .await;
+        }
+        SwarmEvent::Behaviour(MeshEvent::Gossipsub(libp2p::gossipsub::Event::Message {
+            propagation_source: _,
+            message,
+            ..
+        })) if ctx.app_topic_hashes.iter().any(|topic| topic == &message.topic) => {
+            app::handle_app_message(message.data, ctx).await;
         }
         SwarmEvent::Behaviour(MeshEvent::Gossipsub(libp2p::gossipsub::Event::Message {
             propagation_source,
