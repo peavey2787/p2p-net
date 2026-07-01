@@ -23,6 +23,7 @@
 - Six stable application primitives exposed on `NodeHandle`: `connect_peer`, `disconnect_peer`, `send_message`, `broadcast`, `subscribe`, and `get_peers`
 - Private-infrastructure-first fallback to explicitly configured public bootstrap/relay resources
 - Hashed application discovery namespaces for contact/group tags without raw tag publication
+- Kademlia provider-record discovery for hashed namespaces when rendezvous is unavailable
 
 DNS support is enabled by default for configured and cached peers through p2p-net's own startup resolver. Peer addresses using `/dns`, `/dns4`, `/dns6`, or `/dnsaddr` are resolved before dialing. WebSocket support in rust-libp2p 0.56 requires the `libp2p-dns` adapter crate, so p2p-net patches that crate to a local no-Hickory implementation instead of using the crates.io resolver path. The disallowed upstream mDNS adapter crate is policy-patched to a local no-op placeholder so the rejected Hickory DNS line stays out of `Cargo.lock`. `/dnsaddr` uses bounded DNS-over-HTTPS TXT lookup support with a configurable endpoint in p2p-net's own resolver. The default endpoint is Cloudflare for simple out-of-the-box operation; production deployments can point it at an internal/self-hosted DoH resolver or disable `/dnsaddr` entirely. LAN multicast discovery/mDNS is not included.
 
@@ -122,6 +123,7 @@ Important fields:
 - `relay_peers`: operator-pinned relay or mediator peers to dial and reserve through.
 - `discovery.namespace`: derive hashed app/contact/group discovery namespaces from `network_id`, `app_id`, and tags. See `docs/spec/DISCOVERY_NAMESPACES.md`.
 - `discovery.public_bootstrap`: opt-in public bootstrap and relay fallback with `disabled`, `fallback_only`, or `always` mode. See `docs/spec/PUBLIC_FALLBACK.md`.
+- `discovery.dht`: announce and query hashed app namespaces through Kademlia provider records. See `docs/spec/DHT_PROVIDER_DISCOVERY.md`.
 - `discovery.relay_discovery`: select relay candidates from configured relays, cached healthy peers, and rendezvous infrastructure. See `docs/impl/RELAY_DISCOVERY.md`.
 - `dcutr`: direct-connection upgrade policy with relay fallback, retry budget, and observability. See `docs/impl/DCUTR_POLICY.md`.
 - `start_node_with_platform(...)`: embed the shared core with platform runtime/storage adapters. See `docs/impl/PLATFORM_RUNTIME.md`.
@@ -174,6 +176,8 @@ Normally, do not run the individual commands manually. Use `.\qa\ci\run-full-val
 - `docs/spec/DISCOVERY_RESURRECTION.md` documents private-infrastructure-first discovery fallback and peer roles.
 - `docs/spec/DISCOVERY_NAMESPACES.md` documents hashed app discovery namespace derivation.
 - `docs/spec/PUBLIC_FALLBACK.md` documents explicit public bootstrap and relay fallback.
+- `docs/spec/DHT_PROVIDER_DISCOVERY.md` documents DHT provider-record namespace discovery.
+- `docs/impl/DHT_PROVIDER_DISCOVERY_IMPLEMENTATION.md` documents DHT provider wiring and observability.
 - `docs/impl/PUBLIC_FALLBACK_IMPLEMENTATION.md` documents the startup wiring for public fallback.
 - `docs/impl/API_IMPLEMENTATION.md` documents API command routing and message delivery.
 - `qa/tests/codebase_hygiene.rs` guards against stale transitional docs, duplicate test registration, and profile-decision drift outside the resolver.

@@ -35,6 +35,10 @@ pub use bindings::{
 pub use common::error::NetError;
 pub use connectivity::discovery::DiscoveryConfig;
 pub use connectivity::dcutr::DcutrPolicy;
+pub use connectivity::dht::{
+    dht_record_key, start_dht_namespace_discovery, DhtDiscoveryConfig, DhtNamespacePlan,
+    DhtProviderState,
+};
 pub use connectivity::dns::{
     DnsaddrConfig, DEFAULT_DNSADDR_DOH_ENDPOINT, DEFAULT_DNSADDR_TIMEOUT_SECS,
 };

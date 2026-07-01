@@ -3,6 +3,7 @@
 use libp2p_rendezvous as rendezvous;
 use serde::{Deserialize, Serialize};
 
+use super::dht::DhtDiscoveryConfig;
 use super::namespace::{DiscoveryNamespace, DiscoveryNamespaceConfig};
 use super::public_fallback::PublicBootstrapConfig;
 use super::relay_discovery::RelayDiscoveryPolicy;
@@ -30,6 +31,9 @@ pub struct DiscoveryConfig {
     /// Explicit public bootstrap/relay fallback. Disabled by default; operator-owned infra is preferred.
     #[serde(default)]
     pub public_bootstrap: PublicBootstrapConfig,
+    /// Kademlia provider-record discovery for hashed app namespaces.
+    #[serde(default)]
+    pub dht: DhtDiscoveryConfig,
     /// Relay discovery/selection controls for lite/mobile nodes.
     #[serde(default)]
     pub relay_discovery: RelayDiscoveryPolicy,
@@ -49,6 +53,7 @@ impl Default for DiscoveryConfig {
             rendezvous_peers: Vec::new(),
             namespace: DiscoveryNamespaceConfig::default(),
             public_bootstrap: PublicBootstrapConfig::default(),
+            dht: DhtDiscoveryConfig::default(),
             relay_discovery: RelayDiscoveryPolicy::default(),
             rendezvous: RendezvousConfig::default(),
         }
@@ -67,6 +72,7 @@ impl DiscoveryConfig {
         }
         self.namespace.validate()?;
         self.public_bootstrap.validate()?;
+        self.dht.validate()?;
         self.relay_discovery.validate()?;
         self.rendezvous.validate()?;
         for ns in self.rendezvous_namespaces(0)? {

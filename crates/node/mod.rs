@@ -19,6 +19,7 @@ use serde_json::Value;
 use tokio::sync::{broadcast, mpsc, Mutex};
 
 use crate::common::error::NetError;
+use crate::connectivity::dht::{start_dht_namespace_discovery, DhtProviderState};
 use crate::connectivity::limits::ConnectionCapState;
 use crate::connectivity::relay::RelayState;
 use crate::connectivity::rendezvous::RendezvousState;
@@ -219,6 +220,15 @@ pub async fn start_node_with_platform(
         &mut rendezvous_state,
     );
 
+    let mut dht_state = DhtProviderState::default();
+    let dht_plan = start_dht_namespace_discovery(
+        &mut swarm,
+        cfg.network_id,
+        &cfg.discovery,
+        rendezvous_peers.len(),
+        &mut dht_state,
+    );
+
     let snapshot = Arc::new(Mutex::new(NodeSnapshot {
         network_id: cfg.network_id,
         network_label: network_label(cfg.network_id),
@@ -243,6 +253,17 @@ pub async fn start_node_with_platform(
         discovery_namespace_mode,
         discovery_namespace_count: discovery_namespaces.len(),
         discovery_namespaces,
+        dht_provider_enabled: cfg.discovery.dht.enabled,
+        dht_provider_announce_enabled: cfg.discovery.dht.announce,
+        dht_provider_discover_enabled: cfg.discovery.dht.discover,
+        dht_provider_namespaces_announced: dht_state.namespaces_announced.len(),
+        dht_provider_announce_attempts: dht_state.announce_attempts,
+        dht_provider_announce_failures: dht_state.announce_failures,
+        dht_provider_queries: dht_state.provider_queries,
+        dht_provider_query_failures: dht_state.provider_query_failures,
+        dht_provider_records_found: dht_state.provider_records_found,
+        dht_provider_queries_finished: dht_state.provider_queries_finished,
+        dht_provider_peers_discovered: dht_state.provider_peer_count(),
         public_fallback_mode: cfg.discovery.public_bootstrap.mode.as_str().to_string(),
         public_fallback_used: public_bootstrap_decision.used || public_relay_decision.used,
         public_fallback_reason: if public_bootstrap_decision.used {
@@ -431,6 +452,24 @@ pub async fn start_node_with_platform(
         }
     }
 
+    if dht_plan.enabled || !dht_plan.errors.is_empty() {
+        let mut guard = snapshot.lock().await;
+        for err in &dht_plan.errors {
+            push_pulse(&mut guard.pulses, format!("dht provider startup error: {err}"));
+        }
+        if dht_plan.announce_attempts > 0 || dht_plan.provider_queries > 0 {
+            push_pulse(
+                &mut guard.pulses,
+                format!(
+                    "dht provider startup namespaces={} announce_attempts={} provider_queries={}",
+                    dht_plan.namespace_count,
+                    dht_plan.announce_attempts,
+                    dht_plan.provider_queries
+                ),
+            );
+        }
+    }
+
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
     let (command_tx, mut command_rx) = mpsc::channel(128);
     let (messages_tx, _) = broadcast::channel(256);
@@ -472,6 +511,7 @@ pub async fn start_node_with_platform(
             ..RelayState::default()
         };
         let mut rendezvous_state = rendezvous_state;
+        let mut dht_state = dht_state;
         let mut connection_caps = ConnectionCapState::new(&cfg.connection_limits);
         let mut app_topic_hashes = Vec::new();
         let started_at = std::time::Instant::now();
@@ -514,6 +554,7 @@ pub async fn start_node_with_platform(
                         rep: &mut rep,
                         relay_state: &mut relay_state,
                         rendezvous_state: &mut rendezvous_state,
+                        dht_state: &mut dht_state,
                         connection_caps: &mut connection_caps,
                         relay_cfg: &cfg.relay,
                         dcutr_policy: &cfg.dcutr,
@@ -589,6 +630,42 @@ pub fn snapshot_to_prometheus_metrics(snapshot: &NodeSnapshot) -> String {
     let mut out = String::new();
     line("p2p_connected_peers", snapshot.connected_peers, &mut out);
     line("p2p_discovery_namespace_count", snapshot.discovery_namespace_count, &mut out);
+    line(
+        "p2p_dht_provider_enabled",
+        if snapshot.dht_provider_enabled { 1 } else { 0 },
+        &mut out,
+    );
+    line(
+        "p2p_dht_provider_announce_attempts",
+        snapshot.dht_provider_announce_attempts,
+        &mut out,
+    );
+    line(
+        "p2p_dht_provider_announce_failures",
+        snapshot.dht_provider_announce_failures,
+        &mut out,
+    );
+    line("p2p_dht_provider_queries", snapshot.dht_provider_queries, &mut out);
+    line(
+        "p2p_dht_provider_query_failures",
+        snapshot.dht_provider_query_failures,
+        &mut out,
+    );
+    line(
+        "p2p_dht_provider_records_found",
+        snapshot.dht_provider_records_found,
+        &mut out,
+    );
+    line(
+        "p2p_dht_provider_queries_finished",
+        snapshot.dht_provider_queries_finished,
+        &mut out,
+    );
+    line(
+        "p2p_dht_provider_peers_discovered",
+        snapshot.dht_provider_peers_discovered,
+        &mut out,
+    );
     line(
         "p2p_public_fallback_used",
         if snapshot.public_fallback_used { 1 } else { 0 },

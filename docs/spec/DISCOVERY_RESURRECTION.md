@@ -46,3 +46,9 @@ Two nodes that are both behind CGNAT usually still need a reachable third-party 
 ## Public fallback policy
 
 The implemented public fallback policy lives under `discovery.public_bootstrap`. It is disabled by default and has no hidden public seed list. Operators can configure public bootstrap seeds and public relay/mediator candidates with `mode = "fallback_only"` or `mode = "always"`. See `docs/spec/PUBLIC_FALLBACK.md`.
+
+## DHT provider fallback
+
+DHT provider discovery lets a node announce and query hashed application namespace keys through Kademlia provider records. This is not a public API surface; it is fallback discovery plumbing behind the six primitives.
+
+Startup uses DHT provider records after deriving the same hashed namespaces used by rendezvous discovery. Provider lookups run when rendezvous peers are absent by default, or alongside rendezvous when explicitly configured. See `docs/spec/DHT_PROVIDER_DISCOVERY.md`.

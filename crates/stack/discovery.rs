@@ -224,7 +224,6 @@ pub fn on_mesh_event(
 ) {
     match event {
         MeshEvent::Identify(ev) => on_identify_event(swarm, ev, discovery_cfg, storage),
-        MeshEvent::Kademlia(_) => {}
         _ => {}
     }
 }

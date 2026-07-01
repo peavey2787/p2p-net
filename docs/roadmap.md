@@ -42,12 +42,14 @@ Status: complete.
 
 ## Phase 4 — DHT provider-record namespace discovery
 
-Status: planned.
+Status: complete.
 
-- Announce hashed namespace keys through Kademlia provider records.
-- Query providers for hashed namespace keys when rendezvous peers are unavailable or empty.
-- Populate the peer book with DHT-provider results.
-- Keep DHT discovery internal; the public API remains the six primitives.
+- Added Kademlia provider-record announcement for hashed discovery namespaces.
+- Added provider lookup for hashed namespace keys when rendezvous peers are absent by default.
+- Added an explicit option to run DHT provider lookup alongside rendezvous peers.
+- Added DHT provider state, snapshot fields, metrics, docs, and QA coverage.
+- Provider results are recorded in DHT provider state; peer-book-backed `get_peers()` integration remains Phase 5.
+- DHT discovery is internal; the public API remains the six primitives.
 
 ## Phase 5 — Peer book
 

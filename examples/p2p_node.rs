@@ -102,7 +102,7 @@ fn draw_dashboard(frame: &mut ratatui::Frame<'_>, snap: &NodeSnapshot) {
     frame.render_widget(transports, chunks[1]);
 
     let mesh = Paragraph::new(format!(
-        "Connected Peers: {}\nRelay Server: {} ({}) | Mediator: {}\nServer Reservations: {} | Client Reservations: {} / attempts {} failures {}\nRelay Discovery: selected {} / candidates {} failures {}\nActive Circuits: {} | Denied Requests: {} | Bytes Fwd: {} | DCUtR: enabled={} attempts={} successes={} failures={} fallback={} suppressed={}",
+        "Connected Peers: {}\nRelay Server: {} ({}) | Mediator: {}\nServer Reservations: {} | Client Reservations: {} / attempts {} failures {}\nRelay Discovery: selected {} / candidates {} failures {}\nDHT Provider: enabled={} announced={} queries={} found={} peers={}\nActive Circuits: {} | Denied Requests: {} | Bytes Fwd: {} | DCUtR: enabled={} attempts={} successes={} failures={} fallback={} suppressed={}",
         snap.connected_peers,
         snap.relay_server_enabled,
         snap.relay_service_health.as_str(),
@@ -114,6 +114,11 @@ fn draw_dashboard(frame: &mut ratatui::Frame<'_>, snap: &NodeSnapshot) {
         snap.relay_discovery_selected_relays.len(),
         snap.relay_discovery_candidate_count,
         snap.relay_discovery_failures,
+        snap.dht_provider_enabled,
+        snap.dht_provider_namespaces_announced,
+        snap.dht_provider_queries,
+        snap.dht_provider_records_found,
+        snap.dht_provider_peers_discovered,
         snap.relay_active_circuits,
         snap.relay_denied_requests,
         snap.relay_bytes_forwarded,

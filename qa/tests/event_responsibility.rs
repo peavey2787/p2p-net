@@ -10,6 +10,7 @@ fn swarm_event_handlers_are_split_by_responsibility() {
         "crates/node/events/relay_server.rs",
         "crates/node/events/dcutr.rs",
         "crates/node/events/rendezvous.rs",
+        "crates/node/events/kademlia.rs",
         "crates/node/events/gossip.rs",
     ] {
         assert!(root.join(relative).exists(), "missing {relative}");
@@ -23,6 +24,7 @@ fn swarm_event_handlers_are_split_by_responsibility() {
         "mod relay_server;",
         "mod dcutr;",
         "mod rendezvous;",
+        "mod kademlia;",
         "mod gossip;",
     ] {
         assert!(dispatcher.contains(module), "dispatcher missing {module}");

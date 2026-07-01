@@ -53,6 +53,17 @@ fn snapshot_json_includes_accurate_relay_fields() {
         discovery_namespace_mode: "hashed".to_string(),
         discovery_namespaces: vec!["p2p-net/1/hydra-msg/hash".to_string()],
         discovery_namespace_count: 1,
+        dht_provider_enabled: true,
+        dht_provider_announce_enabled: true,
+        dht_provider_discover_enabled: true,
+        dht_provider_namespaces_announced: 1,
+        dht_provider_announce_attempts: 2,
+        dht_provider_announce_failures: 1,
+        dht_provider_queries: 3,
+        dht_provider_query_failures: 1,
+        dht_provider_records_found: 4,
+        dht_provider_queries_finished: 2,
+        dht_provider_peers_discovered: 2,
         public_fallback_mode: "fallback_only".to_string(),
         public_fallback_used: true,
         public_fallback_reason: "no_operator_or_cached_startup_candidates".to_string(),
@@ -103,6 +114,17 @@ fn snapshot_json_includes_accurate_relay_fields() {
     assert_eq!(json["discovery_namespace_mode"], "hashed");
     assert_eq!(json["discovery_namespace_count"], 1);
     assert_eq!(json["discovery_namespaces"][0], "p2p-net/1/hydra-msg/hash");
+    assert_eq!(json["dht_provider_enabled"].as_bool(), Some(true));
+    assert_eq!(json["dht_provider_announce_enabled"].as_bool(), Some(true));
+    assert_eq!(json["dht_provider_discover_enabled"].as_bool(), Some(true));
+    assert_eq!(json["dht_provider_namespaces_announced"], 1);
+    assert_eq!(json["dht_provider_announce_attempts"], 2);
+    assert_eq!(json["dht_provider_announce_failures"], 1);
+    assert_eq!(json["dht_provider_queries"], 3);
+    assert_eq!(json["dht_provider_query_failures"], 1);
+    assert_eq!(json["dht_provider_records_found"], 4);
+    assert_eq!(json["dht_provider_queries_finished"], 2);
+    assert_eq!(json["dht_provider_peers_discovered"], 2);
     assert_eq!(json["public_fallback_mode"], "fallback_only");
     assert_eq!(json["public_fallback_used"].as_bool(), Some(true));
     assert_eq!(json["public_bootstrap_seed_count"], 2);
@@ -124,6 +146,14 @@ fn prometheus_metrics_exports_operator_counters() {
     let snap = NodeSnapshot {
         connected_peers: 7,
         discovery_namespace_count: 2,
+        dht_provider_enabled: true,
+        dht_provider_announce_attempts: 2,
+        dht_provider_announce_failures: 1,
+        dht_provider_queries: 3,
+        dht_provider_query_failures: 1,
+        dht_provider_records_found: 4,
+        dht_provider_queries_finished: 2,
+        dht_provider_peers_discovered: 2,
         public_fallback_used: true,
         public_bootstrap_seed_count: 2,
         public_relay_candidate_count: 1,
@@ -170,6 +200,14 @@ fn prometheus_metrics_exports_operator_counters() {
     let metrics = snapshot_to_prometheus_metrics(&snap);
     assert!(metrics.contains("p2p_connected_peers 7\n"));
     assert!(metrics.contains("p2p_discovery_namespace_count 2\n"));
+    assert!(metrics.contains("p2p_dht_provider_enabled 1\n"));
+    assert!(metrics.contains("p2p_dht_provider_announce_attempts 2\n"));
+    assert!(metrics.contains("p2p_dht_provider_announce_failures 1\n"));
+    assert!(metrics.contains("p2p_dht_provider_queries 3\n"));
+    assert!(metrics.contains("p2p_dht_provider_query_failures 1\n"));
+    assert!(metrics.contains("p2p_dht_provider_records_found 4\n"));
+    assert!(metrics.contains("p2p_dht_provider_queries_finished 2\n"));
+    assert!(metrics.contains("p2p_dht_provider_peers_discovered 2\n"));
     assert!(metrics.contains("p2p_public_fallback_used 1\n"));
     assert!(metrics.contains("p2p_public_bootstrap_seed_count 2\n"));
     assert!(metrics.contains("p2p_public_relay_candidate_count 1\n"));
