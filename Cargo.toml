@@ -115,6 +115,10 @@ name = "discovery_namespace"
 path = "qa/tests/discovery_namespace.rs"
 
 [[test]]
+name = "dht_provider_discovery"
+path = "qa/tests/dht_provider_discovery.rs"
+
+[[test]]
 name = "rendezvous"
 path = "qa/tests/rendezvous.rs"
 

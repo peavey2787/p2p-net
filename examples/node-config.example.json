@@ -58,6 +58,13 @@
       "privacy": "hashed",
       "allow_readable_tags": false
     },
+    "dht": {
+      "enabled": true,
+      "announce": true,
+      "discover": true,
+      "discover_with_rendezvous_peers": false,
+      "max_namespaces_per_refresh": 16
+    },
     "public_bootstrap": {
       "mode": "disabled",
       "bootstrap_seed_peers": [],

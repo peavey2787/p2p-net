@@ -5,6 +5,7 @@ use libp2p::swarm::SwarmEvent;
 use libp2p::{Multiaddr, PeerId, Swarm};
 use tokio::sync::{broadcast, Mutex};
 
+use crate::connectivity::dht::DhtProviderState;
 use crate::connectivity::discovery::DiscoveryConfig;
 use crate::connectivity::dcutr::DcutrPolicy;
 use crate::connectivity::limits::ConnectionCapState;
@@ -22,6 +23,7 @@ mod app;
 mod connection;
 mod dcutr;
 mod gossip;
+mod kademlia;
 mod relay_client;
 mod relay_server;
 mod rendezvous;
@@ -33,6 +35,7 @@ pub(crate) struct SwarmEventContext<'a> {
     pub(crate) rep: &'a mut ReputationStore,
     pub(crate) relay_state: &'a mut RelayState,
     pub(crate) rendezvous_state: &'a mut RendezvousState,
+    pub(crate) dht_state: &'a mut DhtProviderState,
     pub(crate) connection_caps: &'a mut ConnectionCapState,
     pub(crate) relay_cfg: &'a RelayServiceConfig,
     pub(crate) dcutr_policy: &'a DcutrPolicy,
@@ -114,6 +117,9 @@ pub(crate) async fn handle_swarm_event(
         }
         SwarmEvent::Behaviour(MeshEvent::RendezvousServer(ev)) => {
             rendezvous::handle_server_event(&ev, ctx).await;
+        }
+        SwarmEvent::Behaviour(MeshEvent::Kademlia(ev)) => {
+            kademlia::handle_event(swarm, &ev, ctx).await;
         }
         SwarmEvent::Behaviour(MeshEvent::Gossipsub(libp2p::gossipsub::Event::Message {
             propagation_source,

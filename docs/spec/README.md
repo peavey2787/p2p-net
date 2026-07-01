@@ -6,5 +6,6 @@ implementation and validation work must preserve.
 - `API_PRIMITIVES.md` — the six public application primitives and app message envelope.
 - `DISCOVERY_NAMESPACES.md` — hashed app/contact/group discovery namespace model.
 - `DISCOVERY_RESURRECTION.md` — private-infrastructure-first discovery fallback, peer roles, and CGNAT/DCUtR reality model.
+- `DHT_PROVIDER_DISCOVERY.md` — Kademlia provider-record discovery for hashed app namespaces.
 - `IDENTITY_KEY_BACKUP_ROTATION.md` — identity key backup and rotation rules.
 - `PUBLIC_FALLBACK.md` documents explicit public bootstrap and relay fallback.

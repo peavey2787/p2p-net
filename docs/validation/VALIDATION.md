@@ -122,3 +122,7 @@ Use `qa/ci/run-full-validation.ps1` or `qa/ci/run-full-validation.sh` for the ex
 ## Public fallback checks
 
 `qa/tests/discovery.rs` and `qa/tests/relay_discovery.rs` cover explicit public bootstrap/relay fallback policy, validation, and source accounting. `qa/tests/observability.rs` verifies public fallback snapshot and metrics fields.
+
+## DHT provider-discovery checks
+
+`qa/tests/dht_provider_discovery.rs` covers Kademlia provider-record discovery policy, deterministic namespace record-key derivation, startup/event wiring, and DHT provider snapshot/metric coverage. The test is registered in `Cargo.toml`, so the canonical validation script picks it up automatically.

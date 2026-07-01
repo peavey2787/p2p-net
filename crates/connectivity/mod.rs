@@ -3,6 +3,7 @@
 pub mod discovery;
 pub mod dns;
 pub mod dcutr;
+pub mod dht;
 pub mod identity;
 pub mod limits;
 pub mod mediator;

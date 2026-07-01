@@ -16,6 +16,8 @@ The top-level dispatcher remains `crates/node/events.rs`; it should only route
 - `crates/node/events/dcutr.rs` handles DCUtR attempt/success accounting.
 - `crates/node/events/rendezvous.rs` handles rendezvous client/server event snapshot
   synchronization.
+- `crates/node/events/kademlia.rs` handles DHT provider-record announcements,
+  provider lookups, routing updates, and provider-discovery metrics.
 - `crates/node/events/gossip.rs` handles heartbeat gossip validation, replay
   decisions, reputation changes, and explicit gossipsub validation reporting.
 - `crates/node/events/app.rs` handles incoming application-message envelopes for
