@@ -71,13 +71,13 @@ Status: complete.
 
 ## Phase 7 — Network resurrection tests
 
-Status: planned.
+Status: complete.
 
-- Add QA tests for a Joe/Alice namespace-discovery flow.
-- Verify public fallback is used only when policy allows it.
-- Verify raw tags are not published by default.
-- Verify discovered-but-not-connected peers appear in `get_peers()`.
-- Verify `connect_peer(...)` can consume peer-book records through the connection planner.
+- Added QA tests for a Joe/Alice namespace-discovery flow.
+- Verified public fallback is used only when policy allows it.
+- Verified raw tags are not published by default.
+- Verified discovered-but-not-connected peers appear in the peer list returned by the peer book used by `get_peers()`.
+- Verified `connect_peer(...)` planning can consume peer-book records through the connection planner.
 
 ## Phase 8 — Operator docs and examples
 

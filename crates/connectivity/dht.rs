@@ -118,7 +118,7 @@ impl DhtProviderState {
 }
 
 pub fn dht_record_key(namespace: &str) -> kad::RecordKey {
-    kad::RecordKey::new(namespace)
+    kad::RecordKey::new(&namespace.as_bytes())
 }
 
 pub fn start_dht_namespace_discovery(
