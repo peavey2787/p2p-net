@@ -60,7 +60,7 @@ crates/
 
 ## Phase 1 — Explicit node profiles and resolved capability view
 
-Status: in progress.
+Status: implemented.
 
 Add a user-facing profile layer without splitting the runtime yet.
 
@@ -87,16 +87,17 @@ Exit criteria:
 
 ## Phase 2 — Environment detection
 
-Status: planned.
+Status: implemented.
 
 Add a capability detector that reports platform and network reachability.
 
 Required work:
 
 - Add `EnvironmentReport` containing platform, reachability, NAT status, listen capability, CGNAT likelihood, battery sensitivity, and background restrictions.
-- Use AutoNAT observations, observed external addresses, listen failures, and configured platform hints.
+- Add `EnvironmentConfig` hints for platform shells and tests.
+- Add advisory methods for NAT observations, observed external addresses, and listen failures without coupling policy to libp2p event types.
 - Keep detection advisory-only at first; do not make the node unstable by changing roles mid-run.
-- Add tests for public desktop, private NAT desktop, CGNAT-like desktop, Android, iOS, and unknown platform reports.
+- Add tests for public desktop, private NAT desktop, CGNAT-like desktop, Android, iOS, unknown platform reports, explicit profile overrides, and runtime observation updates.
 
 Exit criteria:
 
@@ -268,3 +269,4 @@ Exit criteria:
 |---|---:|---|---|
 | 2026-07-01 | 1 | Started | Added this roadmap and began explicit profile/resolved-capability implementation. |
 | 2026-07-01 | 1 | Implemented | Added `NodeProfile`, `NodeRole`, `BehaviourSet`, `ResolvedNodeConfig`, profile defaults, example config update, and profile unit tests. Static edit only; cargo was unavailable in the sandbox for compile/test validation. |
+| 2026-07-01 | 2 | Implemented | Added advisory `EnvironmentConfig`/`EnvironmentReport`, platform/reachability/NAT enums, auto-profile resolution with environment input, environment snapshot fields, example config hints, and environment detection tests. Also fixed a duplicated `NodeSnapshot` field found while preparing this phase. Static edit only; cargo was unavailable in the sandbox for compile/test validation. |

@@ -1,5 +1,16 @@
 {
   "profile": "auto",
+  "environment": {
+    "platform_hint": null,
+    "reachability_hint": null,
+    "nat_hint": null,
+    "can_listen_tcp": null,
+    "can_listen_quic": null,
+    "can_accept_inbound": null,
+    "likely_cgnat": null,
+    "battery_sensitive": null,
+    "background_restricted": null
+  },
   "network_id": 1,
   "heartbeat_interval_secs": 30,
   "startup_peer_cache_probe": 5,

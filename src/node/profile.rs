@@ -2,11 +2,12 @@
 //!
 //! Phase 1 introduces explicit user-facing profiles and a resolved capability
 //! view without forcing every caller to understand individual libp2p behaviours.
-//! Later phases will replace the conservative `Auto` resolver with environment
-//! detection and platform-aware policy.
+//! Phase 2 adds advisory environment detection so callers can resolve `Auto`
+//! against platform/reachability information without changing roles mid-run.
 
 use serde::{Deserialize, Serialize};
 
+use super::environment::{EnvironmentReport, NetworkReachability};
 use super::types::NodeConfig;
 
 /// User-facing node profile. `Auto` preserves the current all-in-one defaults
@@ -169,10 +170,21 @@ impl ResolvedNodeConfig {
         let mut effective = cfg.clone();
         effective.profile.apply_to(&mut effective);
         let role = resolve_role(&effective);
+        Self::from_effective_config(cfg.profile, role, effective)
+    }
+
+    pub fn from_config_and_environment(cfg: &NodeConfig, environment: &EnvironmentReport) -> Self {
+        let mut effective = cfg.clone();
+        effective.profile.apply_to(&mut effective);
+        let role = resolve_role_for_environment(&effective, environment);
+        Self::from_effective_config(cfg.profile, role, effective)
+    }
+
+    fn from_effective_config(profile: NodeProfile, role: NodeRole, effective: NodeConfig) -> Self {
         let enabled_behaviours = BehaviourSet::for_role(role, &effective);
 
         Self {
-            profile: cfg.profile,
+            profile,
             role,
             relay_server_enabled: enabled_behaviours.relay_server,
             rendezvous_client_enabled: enabled_behaviours.rendezvous_client,
@@ -187,15 +199,7 @@ impl ResolvedNodeConfig {
 
 pub(crate) fn resolve_role(cfg: &NodeConfig) -> NodeRole {
     match cfg.profile {
-        NodeProfile::Auto => {
-            if cfg.relay.enabled {
-                NodeRole::Relay
-            } else if cfg.discovery.rendezvous.server_enabled {
-                NodeRole::Rendezvous
-            } else {
-                NodeRole::Full
-            }
-        }
+        NodeProfile::Auto => explicit_config_role(cfg).unwrap_or(NodeRole::Full),
         NodeProfile::Full => NodeRole::Full,
         NodeProfile::Lite => NodeRole::Lite,
         NodeProfile::Relay => NodeRole::Relay,
@@ -203,4 +207,49 @@ pub(crate) fn resolve_role(cfg: &NodeConfig) -> NodeRole {
         NodeProfile::Bootstrap => NodeRole::Bootstrap,
         NodeProfile::MobileLite => NodeRole::MobileLite,
     }
+}
+
+pub(crate) fn resolve_role_for_environment(
+    cfg: &NodeConfig,
+    environment: &EnvironmentReport,
+) -> NodeRole {
+    match cfg.profile {
+        NodeProfile::Auto => explicit_config_role(cfg).unwrap_or_else(|| auto_role(environment)),
+        NodeProfile::Full => NodeRole::Full,
+        NodeProfile::Lite => NodeRole::Lite,
+        NodeProfile::Relay => NodeRole::Relay,
+        NodeProfile::Rendezvous => NodeRole::Rendezvous,
+        NodeProfile::Bootstrap => NodeRole::Bootstrap,
+        NodeProfile::MobileLite => NodeRole::MobileLite,
+    }
+}
+
+fn explicit_config_role(cfg: &NodeConfig) -> Option<NodeRole> {
+    if cfg.relay.enabled {
+        Some(NodeRole::Relay)
+    } else if cfg.discovery.rendezvous.server_enabled {
+        Some(NodeRole::Rendezvous)
+    } else {
+        None
+    }
+}
+
+fn auto_role(environment: &EnvironmentReport) -> NodeRole {
+    if environment.platform.is_mobile() || environment.background_restricted {
+        return NodeRole::MobileLite;
+    }
+    if environment.can_accept_inbound
+        || matches!(environment.reachability, NetworkReachability::Public)
+    {
+        return NodeRole::Full;
+    }
+    if environment.likely_cgnat
+        || matches!(
+            environment.reachability,
+            NetworkReachability::PrivateNat | NetworkReachability::CgnatLikely
+        )
+    {
+        return NodeRole::Lite;
+    }
+    NodeRole::Full
 }

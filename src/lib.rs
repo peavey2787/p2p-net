@@ -28,8 +28,9 @@ pub use connectivity::relay::{
 pub use connectivity::rendezvous::{RendezvousConfig, RendezvousState};
 pub use libp2p::{Multiaddr, PeerId};
 pub use node::{
-    snapshot_to_json, snapshot_to_prometheus_metrics, start_node, BehaviourSet, NodeConfig,
-    NodeHandle, NodeProfile, NodeRole, NodeSnapshot, ResolvedNodeConfig,
+    snapshot_to_json, snapshot_to_prometheus_metrics, start_node, BehaviourSet, EnvironmentConfig,
+    EnvironmentReport, NatKind, NetworkReachability, NodeConfig, NodeHandle, NodeProfile,
+    NodeRole, NodeSnapshot, PlatformKind, ResolvedNodeConfig,
 };
 pub use protocol::pulse::{
     heartbeat_topic, validate_heartbeat_wire, verify_heartbeat, verify_heartbeat_with_config,
