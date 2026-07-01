@@ -128,13 +128,33 @@ impl RendezvousConfig {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RendezvousPeerNamespace {
+    pub peer: PeerId,
+    pub namespace: String,
+}
+
+impl RendezvousPeerNamespace {
+    #[must_use]
+    pub fn new(peer: PeerId, namespace: impl Into<String>) -> Self {
+        Self {
+            peer,
+            namespace: namespace.into(),
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct RendezvousState {
     pub registered_with: HashSet<PeerId>,
     pub register_inflight: HashSet<PeerId>,
     pub discover_inflight: HashSet<PeerId>,
+    pub registered_namespaces: HashSet<RendezvousPeerNamespace>,
+    pub register_inflight_namespaces: HashSet<RendezvousPeerNamespace>,
+    pub discover_inflight_namespaces: HashSet<RendezvousPeerNamespace>,
     pub discovered_peers: HashSet<PeerId>,
     pub cookies: HashMap<PeerId, rendezvous::Cookie>,
+    pub cookies_by_namespace: HashMap<RendezvousPeerNamespace, rendezvous::Cookie>,
     pub register_attempts: usize,
     pub register_failures: usize,
     pub discover_attempts: usize,
@@ -142,6 +162,94 @@ pub struct RendezvousState {
     pub server_registrations: usize,
     pub server_discoveries_served: usize,
     pub server_errors: usize,
+}
+
+impl RendezvousState {
+    #[must_use]
+    pub fn namespace_registration_count(&self) -> usize {
+        self.registered_namespaces.len()
+    }
+
+    #[must_use]
+    pub fn namespace_discover_inflight_count(&self) -> usize {
+        self.discover_inflight_namespaces.len()
+    }
+
+    pub fn mark_register_inflight(&mut self, peer: PeerId, namespace: &str) {
+        self.register_inflight.insert(peer);
+        self.register_inflight_namespaces
+            .insert(RendezvousPeerNamespace::new(peer, namespace));
+    }
+
+    pub fn mark_registered(&mut self, peer: PeerId, namespace: &str) {
+        self.register_inflight.remove(&peer);
+        self.registered_with.insert(peer);
+        let key = RendezvousPeerNamespace::new(peer, namespace);
+        self.register_inflight_namespaces.remove(&key);
+        self.registered_namespaces.insert(key);
+    }
+
+    pub fn mark_register_failed(&mut self, peer: PeerId, namespace: &str) {
+        self.register_inflight.remove(&peer);
+        self.register_inflight_namespaces
+            .remove(&RendezvousPeerNamespace::new(peer, namespace));
+    }
+
+    pub fn is_register_inflight(&self, peer: PeerId, namespace: &str) -> bool {
+        self.register_inflight_namespaces
+            .contains(&RendezvousPeerNamespace::new(peer, namespace))
+    }
+
+    pub fn is_registered(&self, peer: PeerId, namespace: &str) -> bool {
+        self.registered_namespaces
+            .contains(&RendezvousPeerNamespace::new(peer, namespace))
+    }
+
+    pub fn mark_discover_inflight(&mut self, peer: PeerId, namespace: &str) {
+        self.discover_inflight.insert(peer);
+        self.discover_inflight_namespaces
+            .insert(RendezvousPeerNamespace::new(peer, namespace));
+    }
+
+    pub fn discover_cookie(&self, peer: PeerId, namespace: &str) -> Option<rendezvous::Cookie> {
+        self.cookies_by_namespace
+            .get(&RendezvousPeerNamespace::new(peer, namespace))
+            .cloned()
+            .or_else(|| self.cookies.get(&peer).cloned())
+    }
+
+    pub fn complete_discover_for_peer(
+        &mut self,
+        peer: PeerId,
+        cookie: rendezvous::Cookie,
+    ) -> Option<String> {
+        self.discover_inflight.remove(&peer);
+        self.cookies.insert(peer, cookie.clone());
+
+        let key = self
+            .discover_inflight_namespaces
+            .iter()
+            .find(|candidate| candidate.peer == peer)
+            .cloned();
+        if let Some(key) = key {
+            self.discover_inflight_namespaces.remove(&key);
+            self.cookies_by_namespace.insert(key.clone(), cookie);
+            Some(key.namespace)
+        } else {
+            None
+        }
+    }
+
+    pub fn fail_discover(&mut self, peer: PeerId, namespace: Option<&str>) {
+        self.discover_inflight.remove(&peer);
+        if let Some(namespace) = namespace {
+            self.discover_inflight_namespaces
+                .remove(&RendezvousPeerNamespace::new(peer, namespace));
+        } else {
+            self.discover_inflight_namespaces
+                .retain(|candidate| candidate.peer != peer);
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

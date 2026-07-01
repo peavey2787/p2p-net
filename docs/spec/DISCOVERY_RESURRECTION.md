@@ -37,7 +37,7 @@ Applications should not publish raw contact names, invite phrases, or human-read
 network_id + app_id + secret/contact tag
 ```
 
-and publish only hashed namespace keys.
+and publish only hashed namespace keys. The implemented namespace shape is `p2p-net/<network_id>/<app_id>/<tag_fingerprint>`; see `docs/spec/DISCOVERY_NAMESPACES.md`.
 
 ## CGNAT-to-CGNAT reality
 

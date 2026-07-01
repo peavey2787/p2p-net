@@ -49,6 +49,9 @@ fn snapshot_json_includes_accurate_relay_fields() {
         platform_can_listen_tcp: true,
         platform_can_listen_quic: true,
         active_transports: vec!["tcp".to_string(), "quic".to_string()],
+        discovery_namespace_mode: "hashed".to_string(),
+        discovery_namespaces: vec!["p2p-net/1/hydra-msg/hash".to_string()],
+        discovery_namespace_count: 1,
         app_subscriptions: vec!["chat/general".to_string()],
         app_messages_sent: 13,
         app_messages_received: 14,
@@ -90,6 +93,9 @@ fn snapshot_json_includes_accurate_relay_fields() {
     assert_eq!(json["platform_default_data_dir"], "/tmp/p2p-net");
     assert_eq!(json["platform_can_listen_tcp"].as_bool(), Some(true));
     assert_eq!(json["platform_can_listen_quic"].as_bool(), Some(true));
+    assert_eq!(json["discovery_namespace_mode"], "hashed");
+    assert_eq!(json["discovery_namespace_count"], 1);
+    assert_eq!(json["discovery_namespaces"][0], "p2p-net/1/hydra-msg/hash");
     assert_eq!(json["app_subscriptions"][0], "chat/general");
     assert_eq!(json["app_messages_sent"], 13);
     assert_eq!(json["app_messages_received"], 14);
@@ -106,6 +112,7 @@ fn snapshot_json_includes_accurate_relay_fields() {
 fn prometheus_metrics_exports_operator_counters() {
     let snap = NodeSnapshot {
         connected_peers: 7,
+        discovery_namespace_count: 2,
         app_subscriptions: vec!["chat/general".to_string()],
         app_messages_sent: 13,
         app_messages_received: 14,
@@ -147,6 +154,7 @@ fn prometheus_metrics_exports_operator_counters() {
 
     let metrics = snapshot_to_prometheus_metrics(&snap);
     assert!(metrics.contains("p2p_connected_peers 7\n"));
+    assert!(metrics.contains("p2p_discovery_namespace_count 2\n"));
     assert!(metrics.contains("p2p_api_commands_processed 17\n"));
     assert!(metrics.contains("p2p_api_command_failures 1\n"));
     assert!(metrics.contains("p2p_app_subscriptions 1\n"));

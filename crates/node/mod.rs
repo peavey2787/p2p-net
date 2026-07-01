@@ -139,9 +139,20 @@ pub async fn start_node_with_platform(
         Default::default()
     };
 
+    let discovery_namespaces = cfg
+        .discovery
+        .rendezvous_namespaces(cfg.network_id)
+        .unwrap_or_else(|_| vec![cfg.discovery.rendezvous.namespace.clone()]);
+    let discovery_namespace_mode = if cfg.discovery.namespace.is_enabled() {
+        cfg.discovery.namespace.privacy.as_str().to_string()
+    } else {
+        "operator".to_string()
+    };
+
     let mut rendezvous_state = RendezvousState::default();
     let rendezvous_plan = refresh_rendezvous(
         &mut swarm,
+        cfg.network_id,
         &cfg.discovery,
         &rendezvous_peers,
         &mut rendezvous_state,
@@ -172,6 +183,9 @@ pub async fn start_node_with_platform(
             .iter()
             .map(|s| s.to_string())
             .collect(),
+        discovery_namespace_mode,
+        discovery_namespace_count: discovery_namespaces.len(),
+        discovery_namespaces,
         connected_peers: 0,
         relay_server_enabled: cfg.relay.is_active_now(),
         mediator_enabled: resolved_config.mediator_enabled,
@@ -488,6 +502,7 @@ pub fn snapshot_to_prometheus_metrics(snapshot: &NodeSnapshot) -> String {
 
     let mut out = String::new();
     line("p2p_connected_peers", snapshot.connected_peers, &mut out);
+    line("p2p_discovery_namespace_count", snapshot.discovery_namespace_count, &mut out);
     line("p2p_api_commands_processed", snapshot.api_commands_processed, &mut out);
     line("p2p_api_command_failures", snapshot.api_command_failures, &mut out);
     line("p2p_app_subscriptions", snapshot.app_subscriptions.len(), &mut out);

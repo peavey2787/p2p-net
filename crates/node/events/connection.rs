@@ -171,6 +171,7 @@ pub(crate) async fn handle_new_listen_addr(
 
     let rendezvous_plan = refresh_rendezvous(
         swarm,
+        ctx.network_id,
         ctx.discovery_cfg,
         ctx.rendezvous_peers,
         ctx.rendezvous_state,
