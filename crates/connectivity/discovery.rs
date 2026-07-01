@@ -4,6 +4,7 @@ use libp2p_rendezvous as rendezvous;
 use serde::{Deserialize, Serialize};
 
 use super::namespace::{DiscoveryNamespace, DiscoveryNamespaceConfig};
+use super::public_fallback::PublicBootstrapConfig;
 use super::relay_discovery::RelayDiscoveryPolicy;
 use super::rendezvous::RendezvousConfig;
 
@@ -26,6 +27,9 @@ pub struct DiscoveryConfig {
     /// Application discovery namespace derivation. Tags are hashed by default before publication.
     #[serde(default)]
     pub namespace: DiscoveryNamespaceConfig,
+    /// Explicit public bootstrap/relay fallback. Disabled by default; operator-owned infra is preferred.
+    #[serde(default)]
+    pub public_bootstrap: PublicBootstrapConfig,
     /// Relay discovery/selection controls for lite/mobile nodes.
     #[serde(default)]
     pub relay_discovery: RelayDiscoveryPolicy,
@@ -44,6 +48,7 @@ impl Default for DiscoveryConfig {
             bootstrap_seed_peers: Vec::new(),
             rendezvous_peers: Vec::new(),
             namespace: DiscoveryNamespaceConfig::default(),
+            public_bootstrap: PublicBootstrapConfig::default(),
             relay_discovery: RelayDiscoveryPolicy::default(),
             rendezvous: RendezvousConfig::default(),
         }
@@ -61,6 +66,7 @@ impl DiscoveryConfig {
             ));
         }
         self.namespace.validate()?;
+        self.public_bootstrap.validate()?;
         self.relay_discovery.validate()?;
         self.rendezvous.validate()?;
         for ns in self.rendezvous_namespaces(0)? {

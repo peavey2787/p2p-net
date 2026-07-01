@@ -4,8 +4,8 @@ use libp2p::{Multiaddr, PeerId};
 use p2p_net::connectivity::peer_cache::{
     is_cacheable_peer_addr, load_last_addrs, record_peer_addr_failure, record_seen_peer_addr,
 };
-use p2p_net::stack::startup_discovery_plan;
-use p2p_net::{start_node, DiscoveryConfig, NodeConfig};
+use p2p_net::stack::{startup_discovery_plan, startup_discovery_plan_with_public};
+use p2p_net::{start_node, DiscoveryConfig, NodeConfig, PublicBootstrapConfig, PublicFallbackMode};
 
 #[test]
 fn peer_cache_persists_p2p_addresses() {
@@ -104,6 +104,38 @@ fn startup_plan_ignores_bare_cached_addrs() {
 }
 
 #[test]
+fn startup_plan_can_add_public_bootstrap_fallback_after_owned_candidates() {
+    let owned = p2p_addr(1101);
+    let public = p2p_addr(1102);
+    let plan = startup_discovery_plan_with_public(
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        vec![owned.clone()],
+        vec![public.clone()],
+        true,
+    );
+
+    assert!(plan.public_fallback_used);
+    assert_eq!(plan.public_bootstrap_seed_count, 1);
+    assert_eq!(plan.dial_addrs, vec![owned, public]);
+}
+
+#[test]
+fn public_bootstrap_policy_is_explicit_and_prefers_owned_candidates() {
+    let cfg = PublicBootstrapConfig {
+        mode: PublicFallbackMode::FallbackOnly,
+        bootstrap_seed_peers: vec![p2p_addr(1201).to_string()],
+        relay_peers: vec![p2p_addr(1202).to_string()],
+    };
+
+    assert!(!cfg.bootstrap_decision(1).used);
+    assert!(cfg.bootstrap_decision(0).used);
+    assert!(!cfg.relay_decision(1).used);
+    assert!(cfg.relay_decision(0).used);
+}
+
+#[test]
 fn bootstrap_seed_config_requires_p2p_peer_id() {
     let bad = NodeConfig {
         discovery: DiscoveryConfig {
@@ -123,6 +155,48 @@ fn bootstrap_seed_config_requires_p2p_peer_id() {
         ..NodeConfig::default()
     };
     good.validate().expect("seed config validates");
+}
+
+#[test]
+fn public_bootstrap_config_requires_p2p_peer_id_when_present() {
+    let bad = NodeConfig {
+        discovery: DiscoveryConfig {
+            public_bootstrap: PublicBootstrapConfig {
+                mode: PublicFallbackMode::FallbackOnly,
+                bootstrap_seed_peers: vec!["/ip4/127.0.0.1/tcp/4001".to_string()],
+                relay_peers: Vec::new(),
+            },
+            ..DiscoveryConfig::default()
+        },
+        ..NodeConfig::default()
+    };
+    assert!(bad.validate().is_err());
+
+    let good = NodeConfig {
+        discovery: DiscoveryConfig {
+            public_bootstrap: PublicBootstrapConfig {
+                mode: PublicFallbackMode::FallbackOnly,
+                bootstrap_seed_peers: vec![p2p_addr(4003).to_string()],
+                relay_peers: vec![p2p_addr(4004).to_string()],
+            },
+            ..DiscoveryConfig::default()
+        },
+        ..NodeConfig::default()
+    };
+    good.validate().expect("public fallback config validates");
+}
+
+#[test]
+fn enabled_public_bootstrap_requires_at_least_one_public_candidate() {
+    let cfg = DiscoveryConfig {
+        public_bootstrap: PublicBootstrapConfig {
+            mode: PublicFallbackMode::FallbackOnly,
+            bootstrap_seed_peers: Vec::new(),
+            relay_peers: Vec::new(),
+        },
+        ..DiscoveryConfig::default()
+    };
+    assert!(cfg.validate().is_err());
 }
 
 #[test]

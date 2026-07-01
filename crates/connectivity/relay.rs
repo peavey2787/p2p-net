@@ -53,6 +53,7 @@ pub struct RelayState {
     pub relay_discovery_configured_candidates: usize,
     pub relay_discovery_cached_candidates: usize,
     pub relay_discovery_rendezvous_candidates: usize,
+    pub relay_discovery_public_candidates: usize,
     pub relay_discovery_ignored_candidates: usize,
     pub relay_discovery_failures: usize,
     pub relay_discovery_replacements: usize,

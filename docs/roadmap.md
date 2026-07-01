@@ -33,12 +33,12 @@ Status: complete.
 
 ## Phase 3 — Public fallback policy
 
-Status: planned.
+Status: complete.
 
-- Add `discovery.public_bootstrap` with modes: `disabled`, `fallback_only`, and `always`.
-- Prefer operator-owned bootstrap/rendezvous/relay infrastructure before public fallback.
-- Add public seed lists as explicit config, not hidden defaults.
-- Add counters showing when public fallback was used.
+- Added `discovery.public_bootstrap` with modes: `disabled`, `fallback_only`, and `always`.
+- Operator-owned bootstrap, rendezvous, relay, and cached peers are preferred before public fallback.
+- Public bootstrap and public relay/mediator candidates are explicit config lists, not hidden defaults.
+- Snapshots and metrics report whether public fallback was used and which public candidate class participated.
 
 ## Phase 4 — DHT provider-record namespace discovery
 

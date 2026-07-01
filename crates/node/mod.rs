@@ -28,7 +28,7 @@ use crate::protocol::pulse::{collect_local_heartbeat, heartbeat_topic, Heartbeat
 use crate::protocol::reputation::ReputationStore;
 use crate::stack::{
     build_swarm, refresh_rendezvous, reserve_configured_relays, seed_bootstrap,
-    startup_discovery_plan, MeshBehaviour,
+    startup_discovery_plan, startup_discovery_plan_with_public, MeshBehaviour,
 };
 
 pub use capabilities::{apply_resolved_capabilities, resolve_node_config};
@@ -84,6 +84,18 @@ pub async fn start_node_with_platform(
         &cfg.dnsaddr,
     )
     .await?;
+    let public_bootstrap_seed_peers = dns::resolve_configured_multiaddrs(
+        "discovery.public_bootstrap.bootstrap_seed_peers",
+        cfg.parsed_public_bootstrap_seed_peers()?,
+        &cfg.dnsaddr,
+    )
+    .await?;
+    let public_relay_peers = dns::resolve_configured_multiaddrs(
+        "discovery.public_bootstrap.relay_peers",
+        cfg.parsed_public_relay_peers()?,
+        &cfg.dnsaddr,
+    )
+    .await?;
     let rendezvous_peers = dns::resolve_configured_multiaddrs(
         "discovery.rendezvous_peers",
         cfg.parsed_rendezvous_peers()?,
@@ -104,11 +116,29 @@ pub async fn start_node_with_platform(
     let cached_relay_peers =
         dns::resolve_cached_multiaddrs(cached_startup_addrs, &cfg.dnsaddr).await;
 
-    let startup_plan = startup_discovery_plan(
+    let owned_startup_candidate_count = startup_discovery_plan(
+        bootstrap_peers.clone(),
+        bootstrap_seed_peers.clone(),
+        rendezvous_peers.clone(),
+        cached_peers.clone(),
+    )
+    .dial_addrs
+    .len();
+    let public_bootstrap_decision = cfg
+        .discovery
+        .public_bootstrap
+        .bootstrap_decision(owned_startup_candidate_count);
+    let startup_plan = startup_discovery_plan_with_public(
         bootstrap_peers,
         bootstrap_seed_peers,
         rendezvous_peers.clone(),
         cached_peers,
+        if public_bootstrap_decision.used {
+            public_bootstrap_seed_peers
+        } else {
+            Vec::new()
+        },
+        public_bootstrap_decision.used,
     );
     seed_bootstrap(&mut swarm, &startup_plan.dial_addrs);
 
@@ -120,12 +150,31 @@ pub async fn start_node_with_platform(
             ..cfg.discovery.relay_discovery.clone()
         }
     };
-    let relay_selection_plan = relay_discovery::select_startup_relays(
+    let configured_relay_peers = relay_peers;
+    let startup_cached_relay_peers = cached_relay_peers;
+    let startup_rendezvous_relay_peers = rendezvous_peers.clone();
+    let owned_relay_selection_plan = relay_discovery::select_startup_relays(
         &relay_discovery_policy,
-        relay_peers,
-        cached_relay_peers,
-        rendezvous_peers.clone(),
+        configured_relay_peers.clone(),
+        startup_cached_relay_peers.clone(),
+        startup_rendezvous_relay_peers.clone(),
+        Vec::new(),
     );
+    let public_relay_decision = cfg
+        .discovery
+        .public_bootstrap
+        .relay_decision(owned_relay_selection_plan.selected_addrs.len());
+    let relay_selection_plan = if public_relay_decision.used {
+        relay_discovery::select_startup_relays(
+            &relay_discovery_policy,
+            configured_relay_peers,
+            startup_cached_relay_peers,
+            startup_rendezvous_relay_peers,
+            public_relay_peers,
+        )
+    } else {
+        owned_relay_selection_plan
+    };
 
     let selected_relay_peers = relay_selection_plan.selected_addrs.clone();
     let relay_reservation_plan = if resolved_config.enabled_behaviours.relay_client
@@ -148,6 +197,18 @@ pub async fn start_node_with_platform(
     } else {
         "operator".to_string()
     };
+
+    let mut active_transports: Vec<String> = transport_plan
+        .active
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    if public_bootstrap_decision.used {
+        active_transports.push("public-bootstrap-fallback".to_string());
+    }
+    if public_relay_decision.used {
+        active_transports.push("public-relay-fallback".to_string());
+    }
 
     let mut rendezvous_state = RendezvousState::default();
     let rendezvous_plan = refresh_rendezvous(
@@ -178,14 +239,21 @@ pub async fn start_node_with_platform(
             .map(|path| path.display().to_string()),
         platform_can_listen_tcp: platform_runtime.can_listen_tcp(),
         platform_can_listen_quic: platform_runtime.can_listen_quic(),
-        active_transports: transport_plan
-            .active
-            .iter()
-            .map(|s| s.to_string())
-            .collect(),
+        active_transports,
         discovery_namespace_mode,
         discovery_namespace_count: discovery_namespaces.len(),
         discovery_namespaces,
+        public_fallback_mode: cfg.discovery.public_bootstrap.mode.as_str().to_string(),
+        public_fallback_used: public_bootstrap_decision.used || public_relay_decision.used,
+        public_fallback_reason: if public_bootstrap_decision.used {
+            public_bootstrap_decision.reason.clone()
+        } else if public_relay_decision.used {
+            public_relay_decision.reason.clone()
+        } else {
+            "not_used".to_string()
+        },
+        public_bootstrap_seed_count: startup_plan.public_bootstrap_seed_count,
+        public_relay_candidate_count: relay_selection_plan.public_candidates,
         connected_peers: 0,
         relay_server_enabled: cfg.relay.is_active_now(),
         mediator_enabled: resolved_config.mediator_enabled,
@@ -221,6 +289,7 @@ pub async fn start_node_with_platform(
         relay_discovery_configured_candidates: relay_selection_plan.configured_candidates,
         relay_discovery_cached_candidates: relay_selection_plan.cached_candidates,
         relay_discovery_rendezvous_candidates: relay_selection_plan.rendezvous_candidates,
+        relay_discovery_public_candidates: relay_selection_plan.public_candidates,
         relay_discovery_ignored_candidates: relay_selection_plan.ignored_candidates,
         relay_discovery_failures: relay_selection_plan
             .errors
@@ -285,6 +354,21 @@ pub async fn start_node_with_platform(
         );
     }
 
+    if public_bootstrap_decision.used || public_relay_decision.used {
+        let mut guard = snapshot.lock().await;
+        push_pulse(
+            &mut guard.pulses,
+            format!(
+                "public_fallback mode={} bootstrap_used={} relay_used={} bootstrap_reason={} relay_reason={}",
+                cfg.discovery.public_bootstrap.mode.as_str(),
+                public_bootstrap_decision.used,
+                public_relay_decision.used,
+                public_bootstrap_decision.reason,
+                public_relay_decision.reason
+            ),
+        );
+    }
+
     if relay_selection_plan.total_candidates() > 0
         || !relay_selection_plan.selected_addrs.is_empty()
         || !relay_selection_plan.errors.is_empty()
@@ -293,12 +377,13 @@ pub async fn start_node_with_platform(
         push_pulse(
             &mut guard.pulses,
             format!(
-                "relay_discovery selected={} candidates={} configured={} cached={} rendezvous={} ignored={}",
+                "relay_discovery selected={} candidates={} configured={} cached={} rendezvous={} public={} ignored={}",
                 relay_selection_plan.selected_addrs.len(),
                 relay_selection_plan.total_candidates(),
                 relay_selection_plan.configured_candidates,
                 relay_selection_plan.cached_candidates,
                 relay_selection_plan.rendezvous_candidates,
+                relay_selection_plan.public_candidates,
                 relay_selection_plan.ignored_candidates
             ),
         );
@@ -372,6 +457,7 @@ pub async fn start_node_with_platform(
             relay_discovery_configured_candidates: relay_selection_plan.configured_candidates,
             relay_discovery_cached_candidates: relay_selection_plan.cached_candidates,
             relay_discovery_rendezvous_candidates: relay_selection_plan.rendezvous_candidates,
+            relay_discovery_public_candidates: relay_selection_plan.public_candidates,
             relay_discovery_ignored_candidates: relay_selection_plan.ignored_candidates,
             relay_discovery_failures: relay_selection_plan
                 .errors
@@ -503,6 +589,21 @@ pub fn snapshot_to_prometheus_metrics(snapshot: &NodeSnapshot) -> String {
     let mut out = String::new();
     line("p2p_connected_peers", snapshot.connected_peers, &mut out);
     line("p2p_discovery_namespace_count", snapshot.discovery_namespace_count, &mut out);
+    line(
+        "p2p_public_fallback_used",
+        if snapshot.public_fallback_used { 1 } else { 0 },
+        &mut out,
+    );
+    line(
+        "p2p_public_bootstrap_seed_count",
+        snapshot.public_bootstrap_seed_count,
+        &mut out,
+    );
+    line(
+        "p2p_public_relay_candidate_count",
+        snapshot.public_relay_candidate_count,
+        &mut out,
+    );
     line("p2p_api_commands_processed", snapshot.api_commands_processed, &mut out);
     line("p2p_api_command_failures", snapshot.api_command_failures, &mut out);
     line("p2p_app_subscriptions", snapshot.app_subscriptions.len(), &mut out);
@@ -598,6 +699,11 @@ pub fn snapshot_to_prometheus_metrics(snapshot: &NodeSnapshot) -> String {
     line(
         "p2p_relay_discovery_candidate_count",
         snapshot.relay_discovery_candidate_count,
+        &mut out,
+    );
+    line(
+        "p2p_relay_discovery_public_candidates",
+        snapshot.relay_discovery_public_candidates,
         &mut out,
     );
     line(

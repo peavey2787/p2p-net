@@ -1,5 +1,7 @@
 use libp2p::{Multiaddr, PeerId};
-use p2p_net::{select_startup_relays, NodeConfig, NodeProfile, RelayDiscoveryPolicy};
+use p2p_net::{
+    select_startup_relays, NodeConfig, NodeProfile, RelayCandidateSource, RelayDiscoveryPolicy,
+};
 
 #[test]
 fn relay_discovery_selects_configured_cached_and_rendezvous_candidates() {
@@ -21,6 +23,7 @@ fn relay_discovery_selects_configured_cached_and_rendezvous_candidates() {
         vec![configured.clone(), duplicate_configured],
         vec![cached.clone(), bare],
         vec![rendezvous.clone(), circuit],
+        Vec::new(),
     );
 
     assert!(plan.enabled);
@@ -28,6 +31,7 @@ fn relay_discovery_selects_configured_cached_and_rendezvous_candidates() {
     assert_eq!(plan.configured_candidates, 1);
     assert_eq!(plan.cached_candidates, 1);
     assert_eq!(plan.rendezvous_candidates, 1);
+    assert_eq!(plan.public_candidates, 0);
     assert_eq!(plan.ignored_candidates, 3);
     assert!(plan.errors.is_empty());
 }
@@ -76,12 +80,35 @@ fn disabled_policy_falls_back_to_configured_relays_only() {
         ..RelayDiscoveryPolicy::default()
     };
 
-    let plan = select_startup_relays(&policy, vec![configured.clone()], vec![cached], Vec::new());
+    let plan = select_startup_relays(&policy, vec![configured.clone()], vec![cached], Vec::new(), Vec::new());
 
     assert!(!plan.enabled);
     assert_eq!(plan.selected_addrs, vec![configured]);
     assert_eq!(plan.configured_candidates, 1);
     assert_eq!(plan.cached_candidates, 0);
+}
+
+#[test]
+fn public_relay_fallback_candidates_are_last_and_tracked() {
+    let configured = p2p_addr(4401);
+    let public = p2p_addr(4402);
+    let policy = RelayDiscoveryPolicy {
+        max_reservations: 2,
+        ..RelayDiscoveryPolicy::default()
+    };
+
+    let plan = select_startup_relays(
+        &policy,
+        vec![configured.clone()],
+        Vec::new(),
+        Vec::new(),
+        vec![public.clone()],
+    );
+
+    assert_eq!(plan.selected_addrs, vec![configured, public]);
+    assert_eq!(plan.configured_candidates, 1);
+    assert_eq!(plan.public_candidates, 1);
+    assert_eq!(RelayCandidateSource::PublicFallback.as_str(), "public_fallback");
 }
 
 fn p2p_addr(port: u16) -> Multiaddr {

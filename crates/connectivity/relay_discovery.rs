@@ -84,6 +84,7 @@ pub enum RelayCandidateSource {
     Configured,
     Cached,
     Rendezvous,
+    PublicFallback,
 }
 
 impl RelayCandidateSource {
@@ -92,6 +93,7 @@ impl RelayCandidateSource {
             Self::Configured => "configured",
             Self::Cached => "cached",
             Self::Rendezvous => "rendezvous",
+            Self::PublicFallback => "public_fallback",
         }
     }
 }
@@ -110,6 +112,7 @@ pub struct RelaySelectionPlan {
     pub configured_candidates: usize,
     pub cached_candidates: usize,
     pub rendezvous_candidates: usize,
+    pub public_candidates: usize,
     pub ignored_candidates: usize,
     pub min_reservations: usize,
     pub max_reservations: usize,
@@ -125,6 +128,7 @@ impl RelaySelectionPlan {
         self.configured_candidates
             .saturating_add(self.cached_candidates)
             .saturating_add(self.rendezvous_candidates)
+            .saturating_add(self.public_candidates)
     }
 }
 
@@ -134,6 +138,7 @@ pub fn select_startup_relays(
     configured_relays: Vec<Multiaddr>,
     cached_relays: Vec<Multiaddr>,
     rendezvous_relays: Vec<Multiaddr>,
+    public_relays: Vec<Multiaddr>,
 ) -> RelaySelectionPlan {
     let mut plan = RelaySelectionPlan {
         enabled: policy.enabled,
@@ -149,6 +154,10 @@ pub fn select_startup_relays(
             .take(policy.max_reservations.max(1))
             .collect();
         plan.configured_candidates = plan.selected_addrs.len();
+        plan.ignored_candidates = cached_relays
+            .len()
+            .saturating_add(rendezvous_relays.len())
+            .saturating_add(public_relays.len());
         return plan;
     }
 
@@ -172,6 +181,11 @@ pub fn select_startup_relays(
                 rendezvous_relays,
                 policy.use_rendezvous_relays,
             ),
+            (
+                RelayCandidateSource::PublicFallback,
+                public_relays,
+                true,
+            ),
         ]
     } else {
         vec![
@@ -189,6 +203,11 @@ pub fn select_startup_relays(
                 RelayCandidateSource::Configured,
                 configured_relays,
                 policy.use_configured_relays,
+            ),
+            (
+                RelayCandidateSource::PublicFallback,
+                public_relays,
+                true,
             ),
         ]
     };
@@ -219,6 +238,9 @@ pub fn select_startup_relays(
                 }
                 RelayCandidateSource::Rendezvous => {
                     plan.rendezvous_candidates = plan.rendezvous_candidates.saturating_add(1)
+                }
+                RelayCandidateSource::PublicFallback => {
+                    plan.public_candidates = plan.public_candidates.saturating_add(1)
                 }
             }
 

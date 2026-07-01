@@ -28,6 +28,7 @@ fn snapshot_json_includes_accurate_relay_fields() {
         relay_discovery_enabled: true,
         relay_discovery_selected_relays: vec!["/ip4/127.0.0.1/tcp/4001/p2p/relay".to_string()],
         relay_discovery_candidate_count: 3,
+        relay_discovery_public_candidates: 1,
         relay_discovery_failures: 1,
         relay_active_circuits: 4,
         relay_denied_requests: 5,
@@ -52,6 +53,11 @@ fn snapshot_json_includes_accurate_relay_fields() {
         discovery_namespace_mode: "hashed".to_string(),
         discovery_namespaces: vec!["p2p-net/1/hydra-msg/hash".to_string()],
         discovery_namespace_count: 1,
+        public_fallback_mode: "fallback_only".to_string(),
+        public_fallback_used: true,
+        public_fallback_reason: "no_operator_or_cached_startup_candidates".to_string(),
+        public_bootstrap_seed_count: 2,
+        public_relay_candidate_count: 1,
         app_subscriptions: vec!["chat/general".to_string()],
         app_messages_sent: 13,
         app_messages_received: 14,
@@ -74,6 +80,7 @@ fn snapshot_json_includes_accurate_relay_fields() {
     assert_eq!(json["relay_client_reservations"], 3);
     assert_eq!(json["relay_discovery_enabled"].as_bool(), Some(true));
     assert_eq!(json["relay_discovery_candidate_count"], 3);
+    assert_eq!(json["relay_discovery_public_candidates"], 1);
     assert_eq!(json["relay_discovery_failures"], 1);
     assert_eq!(json["relay_active_circuits"], 4);
     assert_eq!(json["relay_denied_requests"], 5);
@@ -96,6 +103,10 @@ fn snapshot_json_includes_accurate_relay_fields() {
     assert_eq!(json["discovery_namespace_mode"], "hashed");
     assert_eq!(json["discovery_namespace_count"], 1);
     assert_eq!(json["discovery_namespaces"][0], "p2p-net/1/hydra-msg/hash");
+    assert_eq!(json["public_fallback_mode"], "fallback_only");
+    assert_eq!(json["public_fallback_used"].as_bool(), Some(true));
+    assert_eq!(json["public_bootstrap_seed_count"], 2);
+    assert_eq!(json["public_relay_candidate_count"], 1);
     assert_eq!(json["app_subscriptions"][0], "chat/general");
     assert_eq!(json["app_messages_sent"], 13);
     assert_eq!(json["app_messages_received"], 14);
@@ -113,6 +124,9 @@ fn prometheus_metrics_exports_operator_counters() {
     let snap = NodeSnapshot {
         connected_peers: 7,
         discovery_namespace_count: 2,
+        public_fallback_used: true,
+        public_bootstrap_seed_count: 2,
+        public_relay_candidate_count: 1,
         app_subscriptions: vec!["chat/general".to_string()],
         app_messages_sent: 13,
         app_messages_received: 14,
@@ -133,6 +147,7 @@ fn prometheus_metrics_exports_operator_counters() {
         relay_discovery_enabled: true,
         relay_discovery_selected_relays: vec!["/ip4/127.0.0.1/tcp/4001/p2p/relay".to_string()],
         relay_discovery_candidate_count: 3,
+        relay_discovery_public_candidates: 1,
         relay_discovery_failures: 1,
         relay_active_circuits: 4,
         relay_denied_requests: 5,
@@ -155,6 +170,9 @@ fn prometheus_metrics_exports_operator_counters() {
     let metrics = snapshot_to_prometheus_metrics(&snap);
     assert!(metrics.contains("p2p_connected_peers 7\n"));
     assert!(metrics.contains("p2p_discovery_namespace_count 2\n"));
+    assert!(metrics.contains("p2p_public_fallback_used 1\n"));
+    assert!(metrics.contains("p2p_public_bootstrap_seed_count 2\n"));
+    assert!(metrics.contains("p2p_public_relay_candidate_count 1\n"));
     assert!(metrics.contains("p2p_api_commands_processed 17\n"));
     assert!(metrics.contains("p2p_api_command_failures 1\n"));
     assert!(metrics.contains("p2p_app_subscriptions 1\n"));
@@ -177,6 +195,7 @@ fn prometheus_metrics_exports_operator_counters() {
     assert!(metrics.contains("p2p_relay_discovery_enabled 1\n"));
     assert!(metrics.contains("p2p_relay_discovery_selected_relays 1\n"));
     assert!(metrics.contains("p2p_relay_discovery_candidate_count 3\n"));
+    assert!(metrics.contains("p2p_relay_discovery_public_candidates 1\n"));
     assert!(metrics.contains("p2p_relay_discovery_failures 1\n"));
     assert!(metrics.contains("p2p_relay_active_circuits 4\n"));
     assert!(metrics.contains("p2p_relay_denied_requests 5\n"));
@@ -206,6 +225,7 @@ fn relay_state_updates_snapshot_counters_without_mixing_meanings() {
         relay_client_reservation_attempts: 9,
         relay_client_reservation_failures: 1,
         relay_discovery_candidate_count: 3,
+        relay_discovery_public_candidates: 1,
         relay_discovery_failures: 1,
         relay_bytes_forwarded: 1234,
         dcutr_enabled: true,
@@ -230,6 +250,7 @@ fn relay_state_updates_snapshot_counters_without_mixing_meanings() {
     assert_eq!(snap.relay_reservations_accepted, 2);
     assert_eq!(snap.relay_client_reservations, 1);
     assert_eq!(snap.relay_discovery_candidate_count, 3);
+    assert_eq!(snap.relay_discovery_public_candidates, 1);
     assert_eq!(snap.relay_discovery_failures, 1);
     assert_eq!(snap.relay_active_circuits, 4);
     assert_eq!(snap.relay_denied_reservations, 3);

@@ -42,3 +42,7 @@ and publish only hashed namespace keys. The implemented namespace shape is `p2p-
 ## CGNAT-to-CGNAT reality
 
 Two nodes that are both behind CGNAT usually still need a reachable third-party path before DCUtR can try to upgrade the connection. That path can be one of our own mediators/relays, or an explicitly enabled public relay fallback. Once a relayed connection exists, DCUtR can attempt a direct upgrade. If the upgrade fails, the relay path remains the fallback.
+
+## Public fallback policy
+
+The implemented public fallback policy lives under `discovery.public_bootstrap`. It is disabled by default and has no hidden public seed list. Operators can configure public bootstrap seeds and public relay/mediator candidates with `mode = "fallback_only"` or `mode = "always"`. See `docs/spec/PUBLIC_FALLBACK.md`.
