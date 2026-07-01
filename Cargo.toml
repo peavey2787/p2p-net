@@ -58,6 +58,11 @@ path = "unit_tests/mediator_role.rs"
 
 
 [[test]]
+name = "event_responsibility"
+path = "unit_tests/event_responsibility.rs"
+
+
+[[test]]
 name = "relay_client"
 path = "unit_tests/relay_client.rs"
 

@@ -113,3 +113,5 @@ The crate is intended to be validation-clean under the stable validation script 
 ## Manual checks
 
 Normally, do not run the individual commands manually. Use `./scripts/run-full-validation.ps1`; it is the canonical one-file validation runner for formatting, tests, clippy, security audit, dependency policy, and ignored load/soak tests.
+
+- `docs/EVENT_HANDLING.md` documents the Phase 5 single-responsibility swarm event split.
