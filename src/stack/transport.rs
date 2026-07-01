@@ -4,7 +4,7 @@ use libp2p::identity::Keypair;
 use libp2p::swarm::Swarm;
 use libp2p::{noise, tcp, yamux, SwarmBuilder};
 
-use super::behaviour::{build_behaviour, MeshBehaviour};
+use super::behaviour::{build_behaviour, BehaviourBuildContext, MeshBehaviour};
 use crate::common::error::NetError;
 use crate::{NodeConfig, ResolvedNodeConfig};
 
@@ -93,16 +93,16 @@ pub async fn build_swarm(
 
     let mut swarm = builder
         .with_behaviour(|key, relay_behaviour| {
-            build_behaviour(
-                key,
+            build_behaviour(BehaviourBuildContext {
+                local_key: key,
                 local_peer,
                 relay_behaviour,
-                cfg.network_id,
-                &relay_cfg,
-                &cfg.connection_limits,
-                &cfg.discovery,
+                network_id: cfg.network_id,
+                relay_cfg: &relay_cfg,
+                connection_limits_cfg: &cfg.connection_limits,
+                discovery_cfg: &cfg.discovery,
                 resolved_cfg,
-            )
+            })
         })
         .map_err(|e| NetError::Build(e.to_string()))?
         .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::from_secs(60)))

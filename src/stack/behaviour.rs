@@ -108,16 +108,28 @@ impl From<ping::Event> for MeshEvent {
     }
 }
 
-pub fn build_behaviour(
-    local_key: &libp2p::identity::Keypair,
-    local_peer: PeerId,
-    relay_behaviour: relay::client::Behaviour,
-    network_id: u32,
-    relay_cfg: &RelayServiceConfig,
-    connection_limits_cfg: &ConnectionLimitsConfig,
-    discovery_cfg: &DiscoveryConfig,
-    resolved_cfg: &ResolvedNodeConfig,
-) -> MeshBehaviour {
+pub struct BehaviourBuildContext<'a> {
+    pub local_key: &'a libp2p::identity::Keypair,
+    pub local_peer: PeerId,
+    pub relay_behaviour: relay::client::Behaviour,
+    pub network_id: u32,
+    pub relay_cfg: &'a RelayServiceConfig,
+    pub connection_limits_cfg: &'a ConnectionLimitsConfig,
+    pub discovery_cfg: &'a DiscoveryConfig,
+    pub resolved_cfg: &'a ResolvedNodeConfig,
+}
+
+pub fn build_behaviour(ctx: BehaviourBuildContext<'_>) -> MeshBehaviour {
+    let BehaviourBuildContext {
+        local_key,
+        local_peer,
+        relay_behaviour,
+        network_id,
+        relay_cfg,
+        connection_limits_cfg,
+        discovery_cfg,
+        resolved_cfg,
+    } = ctx;
     let message_id_fn = |msg: &gossipsub::Message| {
         let h = blake3::hash(&msg.data);
         gossipsub::MessageId::from(h.to_hex().to_string())
