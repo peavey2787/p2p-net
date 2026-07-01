@@ -1,5 +1,6 @@
 //! Standalone node: libp2p swarm + heartbeat loop, split into `types` and `events`.
 
+mod environment;
 mod events;
 mod profile;
 mod types;
@@ -27,6 +28,9 @@ use crate::stack::{
     startup_discovery_plan, MeshBehaviour,
 };
 
+pub use environment::{
+    EnvironmentConfig, EnvironmentReport, NatKind, NetworkReachability, PlatformKind,
+};
 pub use profile::{BehaviourSet, NodeProfile, NodeRole, ResolvedNodeConfig};
 pub use types::{NodeConfig, NodeSnapshot};
 
@@ -54,6 +58,8 @@ pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
     cfg.validate()?;
     let cfg = cfg.with_profile_defaults_applied();
     cfg.validate()?;
+    let environment_report = cfg.environment_report();
+    let resolved_config = cfg.resolved_for_environment(&environment_report);
     let local_key = identity::load_or_create_identity_key(&cfg.identity_key_path)?;
     let local_peer = PeerId::from(local_key.public());
     let (mut swarm, transport_plan) = build_swarm(local_key, &cfg).await?;
@@ -118,6 +124,13 @@ pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
         peer_id: local_peer.to_string(),
         nat_status: "unknown".to_string(),
         public_addr: None,
+        environment_platform: environment_report.platform.as_str().to_string(),
+        environment_reachability: environment_report.reachability.as_str().to_string(),
+        environment_nat_status: environment_report.nat_status.as_str().to_string(),
+        environment_can_accept_inbound: environment_report.can_accept_inbound,
+        environment_likely_cgnat: environment_report.likely_cgnat,
+        environment_battery_sensitive: environment_report.battery_sensitive,
+        environment_background_restricted: environment_report.background_restricted,
         active_transports: transport_plan
             .active
             .iter()
@@ -165,6 +178,20 @@ pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
         pulses: VecDeque::new(),
         uptime_secs: 0,
     }));
+
+    {
+        let mut guard = snapshot.lock().await;
+        push_pulse(
+            &mut guard.pulses,
+            format!(
+                "environment detected platform={} reachability={} nat={} advisory_role={}",
+                environment_report.platform.as_str(),
+                environment_report.reachability.as_str(),
+                environment_report.nat_status.as_str(),
+                resolved_config.role.as_str()
+            ),
+        );
+    }
 
     if !relay_reservation_plan.listen_addrs.is_empty() || !relay_reservation_plan.errors.is_empty()
     {
@@ -315,6 +342,41 @@ pub fn snapshot_to_json(snapshot: &NodeSnapshot) -> Value {
     insert(&mut map, "network_label", &snapshot.network_label);
     insert(&mut map, "nat_status", &snapshot.nat_status);
     insert(&mut map, "public_addr", &snapshot.public_addr);
+    insert(
+        &mut map,
+        "environment_platform",
+        &snapshot.environment_platform,
+    );
+    insert(
+        &mut map,
+        "environment_reachability",
+        &snapshot.environment_reachability,
+    );
+    insert(
+        &mut map,
+        "environment_nat_status",
+        &snapshot.environment_nat_status,
+    );
+    insert(
+        &mut map,
+        "environment_can_accept_inbound",
+        snapshot.environment_can_accept_inbound,
+    );
+    insert(
+        &mut map,
+        "environment_likely_cgnat",
+        snapshot.environment_likely_cgnat,
+    );
+    insert(
+        &mut map,
+        "environment_battery_sensitive",
+        snapshot.environment_battery_sensitive,
+    );
+    insert(
+        &mut map,
+        "environment_background_restricted",
+        snapshot.environment_background_restricted,
+    );
     insert(&mut map, "active_transports", &snapshot.active_transports);
     insert(&mut map, "connected_peers", snapshot.connected_peers);
     insert(

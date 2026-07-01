@@ -12,16 +12,19 @@ use crate::connectivity::limits::ConnectionLimitsConfig;
 use crate::connectivity::relay::{RelayServiceConfig, RelayServiceHealth, RelayState};
 use crate::protocol::pulse::MessageSecurityConfig;
 
+use super::environment::{EnvironmentConfig, EnvironmentReport};
 use super::profile::{NodeProfile, ResolvedNodeConfig};
 
 /// Swarm + heartbeat configuration for a standalone P2P network instance.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct NodeConfig {
-    /// High-level node profile. `auto` preserves current all-in-one behaviour until
-    /// environment-aware resolution is implemented.
+    /// High-level node profile. `auto` can be resolved against an advisory environment report.
     #[serde(default)]
     pub profile: NodeProfile,
+    /// Optional platform/network hints for advisory environment detection.
+    #[serde(default)]
+    pub environment: EnvironmentConfig,
     pub network_id: u32,
     pub heartbeat_interval_secs: u64,
     pub startup_peer_cache_probe: usize,
@@ -58,6 +61,7 @@ impl Default for NodeConfig {
     fn default() -> Self {
         Self {
             profile: NodeProfile::Auto,
+            environment: EnvironmentConfig::default(),
             network_id: 1,
             heartbeat_interval_secs: 30,
             startup_peer_cache_probe: 5,
@@ -156,8 +160,21 @@ impl NodeConfig {
     }
 
     /// Resolve the high-level profile into a concrete role and behaviour set.
+    /// This preserves phase-1 compatibility for callers that do not provide
+    /// environment information.
     pub fn resolved(&self) -> ResolvedNodeConfig {
         ResolvedNodeConfig::from_config(self)
+    }
+
+    /// Resolve `profile = auto` using an advisory environment report. Explicit
+    /// profiles still win over environment detection.
+    pub fn resolved_for_environment(&self, environment: &EnvironmentReport) -> ResolvedNodeConfig {
+        ResolvedNodeConfig::from_config_and_environment(self, environment)
+    }
+
+    /// Build the current advisory environment report from config/platform hints.
+    pub fn environment_report(&self) -> EnvironmentReport {
+        EnvironmentReport::detect(self)
     }
 
     pub fn parsed_listen_addresses(
@@ -200,6 +217,13 @@ pub struct NodeSnapshot {
     pub peer_id: String,
     pub nat_status: String,
     pub public_addr: Option<String>,
+    pub environment_platform: String,
+    pub environment_reachability: String,
+    pub environment_nat_status: String,
+    pub environment_can_accept_inbound: bool,
+    pub environment_likely_cgnat: bool,
+    pub environment_battery_sensitive: bool,
+    pub environment_background_restricted: bool,
     pub active_transports: Vec<String>,
     pub connected_peers: usize,
     pub relay_server_enabled: bool,
