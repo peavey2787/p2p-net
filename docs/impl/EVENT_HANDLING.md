@@ -1,27 +1,27 @@
 # Swarm event handling layout
 
 The node runtime splits swarm event handling by responsibility.
-The top-level dispatcher remains `crates/p2p-net/src/node/events.rs`; it should only route
+The top-level dispatcher remains `crates/node/events.rs`; it should only route
 `SwarmEvent<MeshEvent>` values to focused handlers.
 
 ## Modules
 
-- `crates/p2p-net/src/node/events/connection.rs` handles connection lifecycle, listener errors,
+- `crates/node/events/connection.rs` handles connection lifecycle, listener errors,
   AutoNAT snapshot updates, relayed listen addresses, connection caps, and
   refresh-on-listen rendezvous startup actions.
-- `crates/p2p-net/src/node/events/relay_client.rs` handles relay-client reservation and circuit
+- `crates/node/events/relay_client.rs` handles relay-client reservation and circuit
   events.
-- `crates/p2p-net/src/node/events/relay_server.rs` handles relay-server/mediator events,
+- `crates/node/events/relay_server.rs` handles relay-server/mediator events,
   denial health mapping, and schedule enforcement.
-- `crates/p2p-net/src/node/events/dcutr.rs` handles DCUtR attempt/success accounting.
-- `crates/p2p-net/src/node/events/rendezvous.rs` handles rendezvous client/server event snapshot
+- `crates/node/events/dcutr.rs` handles DCUtR attempt/success accounting.
+- `crates/node/events/rendezvous.rs` handles rendezvous client/server event snapshot
   synchronization.
-- `crates/p2p-net/src/node/events/gossip.rs` handles heartbeat gossip validation, replay
+- `crates/node/events/gossip.rs` handles heartbeat gossip validation, replay
   decisions, reputation changes, and explicit gossipsub validation reporting.
 
 ## Design rules
 
-- Do not add protocol-specific logic back into `crates/p2p-net/src/node/events.rs`.
+- Do not add protocol-specific logic back into `crates/node/events.rs`.
 - Do not make relay handlers update rendezvous state or gossip handlers update
   relay state.
 - Keep `SwarmEventContext` as the shared state boundary unless runtime services

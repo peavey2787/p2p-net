@@ -6,7 +6,7 @@ Date: 2026-07-01
 
 This pass reorganized the repository to match the modular baseline:
 
-- Runtime code under `crates/p2p-net/src/`.
+- Runtime code under `crates/`.
 - Implementation docs under `docs/impl/`.
 - Core specifications under `docs/spec/`.
 - Validation docs under `docs/validation/`.
@@ -17,7 +17,7 @@ This pass reorganized the repository to match the modular baseline:
 - Fuzzing under `qa/fuzz/`.
 - QA utilities under `qa/tools/`.
 - Test vectors under `qa/vectors/`.
-- Local third-party patches under `external/vendor/`.
+- Local third-party patches under `external/`.
 
 ## Structural checks performed in the sandbox
 

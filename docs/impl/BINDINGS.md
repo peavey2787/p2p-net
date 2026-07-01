@@ -24,7 +24,7 @@ Binding hosts are responsible for:
 
 ## Binding facade
 
-`crates/p2p-net/src/bindings/mod.rs` contains JSON/enum-oriented helpers that are easy to wrap from UniFFI, a C ABI, Kotlin JNI, Swift FFI, Tauri, egui, or another host layer:
+`crates/bindings/mod.rs` contains JSON/enum-oriented helpers that are easy to wrap from UniFFI, a C ABI, Kotlin JNI, Swift FFI, Tauri, egui, or another host layer:
 
 - `BindingTarget`
 - `BindingRuntimeSpec`

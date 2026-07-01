@@ -8,7 +8,7 @@
 //! `/dns`, `/dns4`, and `/dns6` use Tokio's OS-backed resolver. `/dnsaddr` is
 //! intentionally rejected here so there is no hidden hard-coded third-party DoH
 //! dependency inside the transport adapter. p2p-net resolves configured and
-//! cached `/dnsaddr` entries before dialing via `crates/p2p-net/src/connectivity/dns.rs`, where
+//! cached `/dnsaddr` entries before dialing via `crates/connectivity/dns.rs`, where
 //! the DoH endpoint is operator-configurable.
 
 use std::{

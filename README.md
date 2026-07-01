@@ -27,19 +27,19 @@ DNS support is enabled by default for configured and cached peers through p2p-ne
 ## Repository layout
 
 ```text
-crates/p2p-net/src/   Shared Rust P2P core
-docs/impl/            Implementation docs
-docs/spec/            Core specifications
-docs/validation/      Validation docs
-docs/project/         Project/audit notes
-docs/future-work/     Deferred ideas and long-term proposals
-qa/ci/                Canonical validation scripts and CI helpers
-qa/tests/             Global/system/invariant integration tests
-qa/fuzz/              Fuzz targets
-qa/tools/             Internal QA utilities
-qa/vectors/           Protocol fixtures and test vectors
-examples/             Runnable examples and minimal demo configs
-external/vendor/      Local third-party crate patches
+crates/              Shared Rust P2P core modules
+docs/impl/          Implementation docs
+docs/spec/          Core specifications
+docs/validation/    Validation docs
+docs/project/       Project/audit notes
+docs/future-work/   Deferred ideas and long-term proposals
+qa/ci/              Canonical validation scripts and CI helpers
+qa/tests/           Global/system/invariant integration tests
+qa/fuzz/            Fuzz targets
+qa/tools/           Internal QA utilities
+qa/vectors/         Protocol fixtures and test vectors
+examples/           Runnable examples and minimal demo configs
+external/           Local third-party crate patches
 ```
 
 ## Run all stable tests and checks
@@ -139,7 +139,7 @@ The crate is intended to be validation-clean under the stable validation script 
 
 ## Manual checks
 
-Normally, do not run the individual commands manually. Use `./qa/ci/run-full-validation.ps1`; it is the canonical one-file validation runner for formatting, tests, clippy, security audit, dependency policy, and ignored load/soak tests.
+Normally, do not run the individual commands manually. Use `.\qa\ci\run-full-validation.ps1`; it is the canonical one-file validation runner for formatting, tests, clippy, security audit, dependency policy, and ignored load/soak tests.
 
 - `docs/impl/EVENT_HANDLING.md` documents the single-responsibility swarm event split.
 - `docs/impl/BEHAVIOUR_POLICY.md` documents profile-driven behaviour construction.

@@ -11,7 +11,8 @@ NodeConfig
   -> ResolvedNodeConfig
   -> with_resolved_capabilities_applied(...)
   -> build_swarm(..., resolved_config)
-  -> build_behaviour(..., resolved_config)
+  -> BehaviourBuildContext { ..., resolved_cfg: &resolved_config }
+  -> build_behaviour(context)
 ```
 
 The raw config remains the user-facing input. The resolved config is the runtime policy object.
