@@ -33,6 +33,10 @@ pub use bindings::{
     BindingSupportMatrix, BindingTarget, BindingTargetInfo,
 };
 pub use common::error::NetError;
+pub use connectivity::connection_strategy::{
+    build_connection_plan, ConnectionAttempt, ConnectionAttemptKind, ConnectionPlan,
+    PendingConnectionPlans,
+};
 pub use connectivity::discovery::DiscoveryConfig;
 pub use connectivity::dcutr::DcutrPolicy;
 pub use connectivity::dht::{

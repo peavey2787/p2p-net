@@ -61,9 +61,9 @@ Status: complete.
 
 ## Phase 6 — Connection strategy planner
 
-Status: planned.
+Status: complete.
 
-- Add direct/relay/DCUtR connection planning behind `connect_peer(...)`.
+- Added direct/relay/DCUtR connection planning behind `connect_peer(...)`.
 - Prefer QUIC/direct addresses when available.
 - Use relay paths when direct dialing fails or the peer is known to be behind NAT/CGNAT.
 - Attempt DCUtR after a relay path exists.

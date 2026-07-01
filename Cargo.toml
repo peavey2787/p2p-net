@@ -123,6 +123,10 @@ name = "peer_book"
 path = "qa/tests/peer_book.rs"
 
 [[test]]
+name = "connection_strategy"
+path = "qa/tests/connection_strategy.rs"
+
+[[test]]
 name = "rendezvous"
 path = "qa/tests/rendezvous.rs"
 

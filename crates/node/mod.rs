@@ -20,6 +20,7 @@ use tokio::sync::{broadcast, mpsc, Mutex};
 
 use crate::api::PeerSource;
 use crate::common::error::NetError;
+use crate::connectivity::connection_strategy::PendingConnectionPlans;
 use crate::connectivity::dht::{start_dht_namespace_discovery, DhtProviderState};
 use crate::connectivity::limits::ConnectionCapState;
 use crate::connectivity::peer_book::PeerBook;
@@ -531,6 +532,7 @@ pub async fn start_node_with_platform(
         let mut rendezvous_state = rendezvous_state;
         let mut dht_state = dht_state;
         let mut peer_book = peer_book;
+        let mut pending_connections = PendingConnectionPlans::default();
         let mut connection_caps = ConnectionCapState::new(&cfg.connection_limits);
         let mut app_topic_hashes = Vec::new();
         let started_at = std::time::Instant::now();
@@ -563,6 +565,8 @@ pub async fn start_node_with_platform(
                             &mut app_topic_hashes,
                             &task_snapshot,
                             &mut peer_book,
+                            &mut pending_connections,
+                            &cfg.dcutr,
                         ).await;
                     } else {
                         break;
@@ -576,6 +580,7 @@ pub async fn start_node_with_platform(
                         rendezvous_state: &mut rendezvous_state,
                         dht_state: &mut dht_state,
                         peer_book: &mut peer_book,
+                        pending_connections: &mut pending_connections,
                         connection_caps: &mut connection_caps,
                         relay_cfg: &cfg.relay,
                         dcutr_policy: &cfg.dcutr,

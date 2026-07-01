@@ -15,7 +15,7 @@ These primitives are available on `NodeHandle`, returned by `start_node(...)` or
 
 ### `connect_peer(addr)`
 
-Dials a concrete peer multiaddr. Production callers should prefer addresses that include `/p2p/<PeerId>` so the transport can authenticate the expected peer identity.
+Dials a concrete peer multiaddr. Production callers should prefer addresses that include `/p2p/<PeerId>` so the transport can authenticate the expected peer identity. When the target peer id is known, the node may expand this request through the internal connection planner: direct QUIC addresses are preferred, other direct addresses follow, and relayed paths are retained as fallback candidates. Relay-preferred peers can use relayed paths first, and relayed connections feed the DCUtR upgrade policy after the relay path exists.
 
 ### `disconnect_peer(peer_id)`
 

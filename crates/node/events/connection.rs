@@ -24,6 +24,7 @@ pub(crate) async fn handle_connection_established(
     );
 
     ctx.peer_book.record_connected(peer_id, Some(remote_addr.clone()));
+    ctx.pending_connections.complete(&peer_id);
 
     if ctx.relay_cfg.enabled && !ctx.relay_cfg.schedule.is_open_now_utc() {
         let _ = swarm.close_connection(connection_id);
@@ -61,8 +62,8 @@ pub(crate) async fn handle_connection_established(
 
     let mut guard = ctx.snapshot.lock().await;
     guard.connected_peers = swarm.connected_peers().count();
-        guard.peer_book_known_peers = ctx.peer_book.len();
-        guard.peer_book_discovered_peers = ctx.peer_book.discovered_count();
+    guard.peer_book_known_peers = ctx.peer_book.len();
+    guard.peer_book_discovered_peers = ctx.peer_book.discovered_count();
     guard.connection_cap_disconnects = ctx.connection_caps.cap_disconnects;
     if is_p2p_circuit_addr(&remote_addr) {
         if ctx.dcutr_policy.keep_relay_fallback {
@@ -132,8 +133,8 @@ pub(crate) async fn handle_connection_closed(
     ctx.peer_book.record_disconnected(peer_id);
     let mut guard = ctx.snapshot.lock().await;
     guard.connected_peers = swarm.connected_peers().count();
-        guard.peer_book_known_peers = ctx.peer_book.len();
-        guard.peer_book_discovered_peers = ctx.peer_book.discovered_count();
+    guard.peer_book_known_peers = ctx.peer_book.len();
+    guard.peer_book_discovered_peers = ctx.peer_book.discovered_count();
     guard.connection_cap_disconnects = ctx.connection_caps.cap_disconnects;
 }
 
@@ -153,18 +154,44 @@ pub(crate) async fn handle_incoming_connection_error(
 pub(crate) async fn handle_outgoing_connection_error(
     peer_id: Option<PeerId>,
     error_debug: String,
+    swarm: &mut Swarm<MeshBehaviour>,
     ctx: &mut SwarmEventContext<'_>,
 ) {
+    let mut planner_pulses = Vec::new();
     if let Some(peer) = peer_id.as_ref() {
         peer_cache::record_peer_addr_failure_with_storage(ctx.discovery_cfg, peer, ctx.storage);
         ctx.peer_book.record_failure(peer.to_owned());
+
+        while let Some(attempt) = ctx.pending_connections.next_after_failure(peer) {
+            match swarm.dial(attempt.addr.clone()) {
+                Ok(()) => {
+                    planner_pulses.push(format!(
+                        "connection planner fallback dial peer={peer} kind={} addr={}",
+                        attempt.kind.as_str(),
+                        attempt.addr
+                    ));
+                    break;
+                }
+                Err(err) => planner_pulses.push(format!(
+                    "connection planner fallback failed immediately peer={peer} kind={} addr={} error={}",
+                    attempt.kind.as_str(),
+                    attempt.addr,
+                    err
+                )),
+            }
+        }
     }
     let mut guard = ctx.snapshot.lock().await;
     guard.connection_limit_events = guard.connection_limit_events.saturating_add(1);
+    guard.peer_book_known_peers = ctx.peer_book.len();
+    guard.peer_book_discovered_peers = ctx.peer_book.discovered_count();
     push_pulse(
         &mut guard.pulses,
         format!("outgoing connection error peer={peer_id:?} error={error_debug}"),
     );
+    for pulse in planner_pulses {
+        push_pulse(&mut guard.pulses, pulse);
+    }
 }
 
 pub(crate) async fn handle_new_listen_addr(

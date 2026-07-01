@@ -25,6 +25,7 @@ Each record tracks:
 - discovery namespaces
 - connection state
 - optional capability hints for relay, rendezvous, and DCUtR
+- internal relay-preferred hint for peers known to need relay-first dialing
 - last-seen time
 - failure count
 

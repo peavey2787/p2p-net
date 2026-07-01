@@ -10,6 +10,7 @@ Runtime sources update it through the node event loop:
 - rendezvous discovery records peers, addresses, and namespaces
 - DHT provider-record discovery records provider peers and namespaces
 - command handling reads the peer book for `get_peers()`
+- connection planning reads peer-book addresses and relay preference hints when `connect_peer(...)` is called
 
 The peer book is currently in-memory. Durable peer address storage remains handled by the existing peer-cache module. This keeps `get_peers()` fast and avoids expanding the on-disk cache format into an application-visible database.
 
