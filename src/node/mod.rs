@@ -1,5 +1,6 @@
 //! Standalone node: libp2p swarm + heartbeat loop, split into `types` and `events`.
 
+mod capabilities;
 mod environment;
 mod events;
 mod profile;
@@ -28,6 +29,7 @@ use crate::stack::{
     startup_discovery_plan, MeshBehaviour,
 };
 
+pub use capabilities::{apply_resolved_capabilities, resolve_node_config};
 pub use environment::{
     EnvironmentConfig, EnvironmentReport, NatKind, NetworkReachability, PlatformKind,
 };
@@ -56,10 +58,10 @@ impl NodeHandle {
 
 pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
     cfg.validate()?;
-    let cfg = cfg.with_profile_defaults_applied();
-    cfg.validate()?;
     let environment_report = cfg.environment_report();
-    let resolved_config = cfg.resolved_for_environment(&environment_report);
+    let resolved_config = cfg.try_resolved_for_environment(&environment_report)?;
+    let cfg = cfg.with_resolved_capabilities_applied(&resolved_config);
+    cfg.validate()?;
     let local_key = identity::load_or_create_identity_key(&cfg.identity_key_path)?;
     let local_peer = PeerId::from(local_key.public());
     let (mut swarm, transport_plan) = build_swarm(local_key, &cfg).await?;
@@ -103,10 +105,12 @@ pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
     );
     seed_bootstrap(&mut swarm, &startup_plan.dial_addrs);
 
-    let relay_reservation_plan = if cfg.reserve_configured_relays {
+    let relay_reservation_plan = if resolved_config.should_reserve_configured_relays {
         reserve_configured_relays(&mut swarm, &relay_peers)
     } else {
-        seed_bootstrap(&mut swarm, &relay_peers);
+        if resolved_config.should_seed_relay_peers {
+            seed_bootstrap(&mut swarm, &relay_peers);
+        }
         Default::default()
     };
 

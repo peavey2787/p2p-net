@@ -159,6 +159,13 @@ impl NodeConfig {
         cfg
     }
 
+    /// Apply a phase-3 resolved capability policy to a clone of this config. This
+    /// is a compatibility adapter for the current single-crate runtime; later
+    /// phases should pass `ResolvedNodeConfig` directly into behaviour builders.
+    pub fn with_resolved_capabilities_applied(&self, resolved: &ResolvedNodeConfig) -> Self {
+        super::capabilities::apply_resolved_capabilities(self, resolved)
+    }
+
     /// Resolve the high-level profile into a concrete role and behaviour set.
     /// This preserves phase-1 compatibility for callers that do not provide
     /// environment information.
@@ -166,10 +173,25 @@ impl NodeConfig {
         ResolvedNodeConfig::from_config(self)
     }
 
+    /// Fallible form of `resolved` that reports impossible capability
+    /// combinations instead of panicking.
+    pub fn try_resolved(&self) -> Result<ResolvedNodeConfig, crate::common::error::NetError> {
+        ResolvedNodeConfig::try_from_config(self)
+    }
+
     /// Resolve `profile = auto` using an advisory environment report. Explicit
     /// profiles still win over environment detection.
     pub fn resolved_for_environment(&self, environment: &EnvironmentReport) -> ResolvedNodeConfig {
         ResolvedNodeConfig::from_config_and_environment(self, environment)
+    }
+
+    /// Fallible form of `resolved_for_environment` that reports impossible
+    /// capability combinations before startup.
+    pub fn try_resolved_for_environment(
+        &self,
+        environment: &EnvironmentReport,
+    ) -> Result<ResolvedNodeConfig, crate::common::error::NetError> {
+        ResolvedNodeConfig::try_from_config_and_environment(self, environment)
     }
 
     /// Build the current advisory environment report from config/platform hints.

@@ -28,7 +28,8 @@ pub use connectivity::relay::{
 pub use connectivity::rendezvous::{RendezvousConfig, RendezvousState};
 pub use libp2p::{Multiaddr, PeerId};
 pub use node::{
-    snapshot_to_json, snapshot_to_prometheus_metrics, start_node, BehaviourSet, EnvironmentConfig,
+    apply_resolved_capabilities, resolve_node_config, snapshot_to_json,
+    snapshot_to_prometheus_metrics, start_node, BehaviourSet, EnvironmentConfig,
     EnvironmentReport, NatKind, NetworkReachability, NodeConfig, NodeHandle, NodeProfile,
     NodeRole, NodeSnapshot, PlatformKind, ResolvedNodeConfig,
 };
