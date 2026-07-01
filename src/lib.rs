@@ -21,6 +21,7 @@ pub use connectivity::dns::{
     DnsaddrConfig, DEFAULT_DNSADDR_DOH_ENDPOINT, DEFAULT_DNSADDR_TIMEOUT_SECS,
 };
 pub use connectivity::limits::{ConnectionCapState, ConnectionLimitsConfig};
+pub use connectivity::mediator::MediatorConfig;
 pub use connectivity::relay::{
     is_p2p_circuit_addr, relay_peer_id, relay_reservation_addr, RelayAccess, RelaySchedule,
     RelayServiceConfig, RelayServiceHealth, RelayWindow,

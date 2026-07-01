@@ -10,6 +10,7 @@
 - Persistent node identity key and stable `PeerId`
 - AutoNAT, relay client, relay reservation, DCUtR upgrade path
 - Optional relay server with limits, ACLs, schedule, and abuse telemetry
+- First-class DCUtR mediator profile/config mapped onto Circuit Relay v2
 - Optional rendezvous client/server discovery layer
 - Connection caps, peer/IP limits, replay cache, timestamp checks
 - JSON snapshot export and Prometheus-style metrics export
@@ -70,16 +71,18 @@ examples/node-config.example.json
 
 Important fields:
 
+- `profile`: high-level node role selection: `auto`, `full`, `lite`, `relay`, `mediator`, `rendezvous`, `bootstrap`, or `mobile_lite`.
 - `identity_key_path`: stable private node identity; keep this file private and back it up according to `docs/IDENTITY_KEY_BACKUP_ROTATION.md`.
 - `listen_addresses`: local TCP/QUIC/WebSocket listen multiaddrs. Use concrete `/ip4` or `/ip6` listen addresses, not DNS names.
 - `bootstrap_peers`: trusted `/p2p/<PeerId>` bootstrap multiaddrs. `/dns`, `/dns4`, `/dns6`, and `/dnsaddr` dial addresses are supported by default.
 - `dnsaddr`: `/dnsaddr` DoH policy. Defaults to bounded Cloudflare DoH for simple operation; set `doh_endpoint` to an internal/self-hosted DoH resolver for production, or set `enabled` to `false` to reject `/dnsaddr` in configured peers. See `docs/DNSADDR_DOH.md`.
-- `relay_peers`: relay peers to dial and reserve through.
+- `relay_peers`: relay or mediator peers to dial and reserve through.
 - `reserve_configured_relays`: request `/p2p-circuit` reservations from configured relays.
 - `discovery.rendezvous`: enable rendezvous client/server registration/discovery.
 - `connection_limits`: global, per-peer, and per-IP connection caps.
 - `message_security`: heartbeat size, timestamp, replay, and reputation settings.
-- `relay.enabled`: opt-in relay server mode. Defaults to `false`.
+- `mediator`: first-class DCUtR mediator policy. `profile = "mediator"` enables the underlying relay server capability intentionally for lite/mobile peers. See `docs/MEDIATOR.md`.
+- `relay.enabled`: opt-in generic relay server mode. Defaults to `false`.
 - `relay.allow_peers` / `relay.deny_peers`: connection-level relay-node ACLs; deny wins.
 - `relay.schedule`: UTC relay service windows.
 
@@ -93,7 +96,15 @@ Minimal volunteer relay config:
 }
 ```
 
-Relay ACL note: current ACL enforcement is connection-level. A peer denied from relay use is denied from connecting to that relay node at all.
+Minimal DCUtR mediator config:
+
+```json
+{
+  "profile": "mediator"
+}
+```
+
+Relay/mediator ACL note: current ACL enforcement is connection-level. A peer denied from relay/mediator use is denied from connecting to that node at all.
 
 ## Production-readiness status
 

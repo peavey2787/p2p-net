@@ -124,7 +124,7 @@ Exit criteria:
 
 ## Phase 4 — First-class mediator role
 
-Status: planned.
+Status: implemented.
 
 Make DCUtR mediation explicit instead of only implying it through `relay.enabled`.
 
@@ -271,3 +271,4 @@ Exit criteria:
 | 2026-07-01 | 1 | Implemented | Added `NodeProfile`, `NodeRole`, `BehaviourSet`, `ResolvedNodeConfig`, profile defaults, example config update, and profile unit tests. Static edit only; cargo was unavailable in the sandbox for compile/test validation. |
 | 2026-07-01 | 2 | Implemented | Added advisory `EnvironmentConfig`/`EnvironmentReport`, platform/reachability/NAT enums, auto-profile resolution with environment input, environment snapshot fields, example config hints, and environment detection tests. Also fixed a duplicated `NodeSnapshot` field found while preparing this phase. Static edit only; cargo was unavailable in the sandbox for compile/test validation. |
 | 2026-07-01 | 3 | Implemented | Fixed clippy `derivable_impls` for `NodeProfile`, added the central `resolve_node_config(raw, environment)` capability resolver, added a runtime compatibility adapter for resolved capabilities, moved role decisions out of startup code, added pre-start validation for impossible capability combinations, and added `capability_resolver` unit tests. Static edit only; cargo was unavailable in the sandbox for compile/test validation. |
+| 2026-07-01 | 4 | Implemented | Added first-class `MediatorConfig`, `mediator` profile/role, resolver mapping from mediator policy to Circuit Relay v2 server capability, mediator snapshot/JSON/Prometheus metrics, mediator role tests, example config fields, and `docs/MEDIATOR.md`. Static edit only; cargo was unavailable in the sandbox for compile/test validation. |

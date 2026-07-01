@@ -4,6 +4,7 @@ pub mod discovery;
 pub mod dns;
 pub mod identity;
 pub mod limits;
+pub mod mediator;
 pub mod peer_cache;
 pub mod relay;
 pub mod rendezvous;

@@ -99,10 +99,11 @@ fn draw_dashboard(frame: &mut ratatui::Frame<'_>, snap: &NodeSnapshot) {
     frame.render_widget(transports, chunks[1]);
 
     let mesh = Paragraph::new(format!(
-        "Connected Peers: {}\nRelay Server: {} ({})\nServer Reservations: {} | Client Reservations: {} / attempts {} failures {}\nActive Circuits: {} | Denied Requests: {} | Bytes Fwd: {} | DCUtR: {}/{}",
+        "Connected Peers: {}\nRelay Server: {} ({}) | Mediator: {}\nServer Reservations: {} | Client Reservations: {} / attempts {} failures {}\nActive Circuits: {} | Denied Requests: {} | Bytes Fwd: {} | DCUtR: {}/{}",
         snap.connected_peers,
         snap.relay_server_enabled,
         snap.relay_service_health.as_str(),
+        snap.mediator_enabled,
         snap.relay_reservations_accepted,
         snap.relay_client_reservations,
         snap.relay_client_reservation_attempts,

@@ -13,6 +13,15 @@ fn snapshot_json_includes_accurate_relay_fields() {
     let snap = NodeSnapshot {
         peer_id: PeerId::random().to_string(),
         relay_server_enabled: true,
+        mediator_enabled: true,
+        mediator_advertise_for_dcutr: true,
+        mediator_require_authenticated_peers: false,
+        mediator_active_reservations: 2,
+        mediator_active_circuits: 4,
+        mediator_dcutr_attempts_observed: 6,
+        mediator_denied_reservations: 1,
+        mediator_denied_circuits: 2,
+        mediator_abuse_rate_limit_events: 3,
         relay_service_health: RelayServiceHealth::Enabled,
         relay_reservations_accepted: 2,
         relay_client_reservations: 3,
@@ -27,6 +36,11 @@ fn snapshot_json_includes_accurate_relay_fields() {
 
     let json = snapshot_to_json(&snap);
     assert_eq!(json["relay_server_enabled"].as_bool(), Some(true));
+    assert_eq!(json["mediator_enabled"].as_bool(), Some(true));
+    assert_eq!(json["mediator_active_reservations"], 2);
+    assert_eq!(json["mediator_active_circuits"], 4);
+    assert_eq!(json["mediator_dcutr_attempts_observed"], 6);
+    assert_eq!(json["mediator_abuse_rate_limit_events"], 3);
     assert_eq!(json["relay_service_health"], "enabled");
     assert_eq!(json["relay_reservations_accepted"], 2);
     assert_eq!(json["relay_client_reservations"], 3);
@@ -45,6 +59,13 @@ fn prometheus_metrics_exports_operator_counters() {
     let snap = NodeSnapshot {
         connected_peers: 7,
         relay_server_enabled: true,
+        mediator_enabled: true,
+        mediator_active_reservations: 2,
+        mediator_active_circuits: 4,
+        mediator_dcutr_attempts_observed: 6,
+        mediator_denied_reservations: 1,
+        mediator_denied_circuits: 2,
+        mediator_abuse_rate_limit_events: 3,
         relay_reservations_accepted: 2,
         relay_client_reservations: 3,
         relay_active_circuits: 4,
@@ -61,6 +82,13 @@ fn prometheus_metrics_exports_operator_counters() {
     let metrics = snapshot_to_prometheus_metrics(&snap);
     assert!(metrics.contains("p2p_connected_peers 7\n"));
     assert!(metrics.contains("p2p_relay_server_enabled 1\n"));
+    assert!(metrics.contains("p2p_mediator_enabled 1\n"));
+    assert!(metrics.contains("p2p_mediator_active_reservations 2\n"));
+    assert!(metrics.contains("p2p_mediator_active_circuits 4\n"));
+    assert!(metrics.contains("p2p_mediator_dcutr_attempts_observed 6\n"));
+    assert!(metrics.contains("p2p_mediator_denied_reservations 1\n"));
+    assert!(metrics.contains("p2p_mediator_denied_circuits 2\n"));
+    assert!(metrics.contains("p2p_mediator_abuse_rate_limit_events 3\n"));
     assert!(metrics.contains("p2p_relay_reservations_accepted 2\n"));
     assert!(metrics.contains("p2p_relay_client_reservations 3\n"));
     assert!(metrics.contains("p2p_relay_active_circuits 4\n"));
@@ -92,7 +120,10 @@ fn relay_state_updates_snapshot_counters_without_mixing_meanings() {
     };
     state.relay_client_reservations.insert(peer);
 
-    let mut snap = NodeSnapshot::default();
+    let mut snap = NodeSnapshot {
+        mediator_enabled: true,
+        ..NodeSnapshot::default()
+    };
     snap.apply_relay_state(&state);
 
     assert!(snap.relay_server_enabled);
@@ -104,6 +135,12 @@ fn relay_state_updates_snapshot_counters_without_mixing_meanings() {
     assert_eq!(snap.relay_denied_circuits, 5);
     assert_eq!(snap.relay_denied_requests, 8);
     assert_eq!(snap.relay_bytes_forwarded, 1234);
+    assert_eq!(snap.mediator_active_reservations, 2);
+    assert_eq!(snap.mediator_active_circuits, 4);
+    assert_eq!(snap.mediator_dcutr_attempts_observed, 10);
+    assert_eq!(snap.mediator_denied_reservations, 3);
+    assert_eq!(snap.mediator_denied_circuits, 5);
+    assert_eq!(snap.mediator_abuse_rate_limit_events, 13);
     assert_eq!(snap.dcutr_attempts, 10);
     assert_eq!(snap.dcutr_successes, 2);
 }

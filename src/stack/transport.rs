@@ -69,6 +69,9 @@ pub async fn build_swarm(
     }
     if relay_cfg.enabled {
         active.push("relay-server");
+        if cfg.mediator.enabled {
+            active.push("mediator");
+        }
         active.push("relay-acl");
         if relay_cfg.schedule.enabled {
             active.push("relay-schedule");

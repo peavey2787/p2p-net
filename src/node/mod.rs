@@ -142,6 +142,15 @@ pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
             .collect(),
         connected_peers: 0,
         relay_server_enabled: cfg.relay.is_active_now(),
+        mediator_enabled: resolved_config.mediator_enabled,
+        mediator_advertise_for_dcutr: resolved_config.mediator_advertise_for_dcutr,
+        mediator_require_authenticated_peers: cfg.mediator.require_authenticated_peers,
+        mediator_active_reservations: 0,
+        mediator_active_circuits: 0,
+        mediator_dcutr_attempts_observed: 0,
+        mediator_denied_reservations: 0,
+        mediator_denied_circuits: 0,
+        mediator_abuse_rate_limit_events: 0,
         relay_service_health: cfg.relay.health_now(),
         relay_acl_scope: "connection_level".to_string(),
         relay_reservations_accepted: 0,
@@ -188,11 +197,12 @@ pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
         push_pulse(
             &mut guard.pulses,
             format!(
-                "environment detected platform={} reachability={} nat={} advisory_role={}",
+                "environment detected platform={} reachability={} nat={} advisory_role={} mediator_enabled={}",
                 environment_report.platform.as_str(),
                 environment_report.reachability.as_str(),
                 environment_report.nat_status.as_str(),
-                resolved_config.role.as_str()
+                resolved_config.role.as_str(),
+                resolved_config.mediator_enabled
             ),
         );
     }
@@ -388,6 +398,47 @@ pub fn snapshot_to_json(snapshot: &NodeSnapshot) -> Value {
         "relay_server_enabled",
         snapshot.relay_server_enabled,
     );
+    insert(&mut map, "mediator_enabled", snapshot.mediator_enabled);
+    insert(
+        &mut map,
+        "mediator_advertise_for_dcutr",
+        snapshot.mediator_advertise_for_dcutr,
+    );
+    insert(
+        &mut map,
+        "mediator_require_authenticated_peers",
+        snapshot.mediator_require_authenticated_peers,
+    );
+    insert(
+        &mut map,
+        "mediator_active_reservations",
+        snapshot.mediator_active_reservations,
+    );
+    insert(
+        &mut map,
+        "mediator_active_circuits",
+        snapshot.mediator_active_circuits,
+    );
+    insert(
+        &mut map,
+        "mediator_dcutr_attempts_observed",
+        snapshot.mediator_dcutr_attempts_observed,
+    );
+    insert(
+        &mut map,
+        "mediator_denied_reservations",
+        snapshot.mediator_denied_reservations,
+    );
+    insert(
+        &mut map,
+        "mediator_denied_circuits",
+        snapshot.mediator_denied_circuits,
+    );
+    insert(
+        &mut map,
+        "mediator_abuse_rate_limit_events",
+        snapshot.mediator_abuse_rate_limit_events,
+    );
     insert(
         &mut map,
         "relay_service_health",
@@ -562,6 +613,41 @@ pub fn snapshot_to_prometheus_metrics(snapshot: &NodeSnapshot) -> String {
     line(
         "p2p_relay_server_enabled",
         if snapshot.relay_server_enabled { 1 } else { 0 },
+        &mut out,
+    );
+    line(
+        "p2p_mediator_enabled",
+        if snapshot.mediator_enabled { 1 } else { 0 },
+        &mut out,
+    );
+    line(
+        "p2p_mediator_active_reservations",
+        snapshot.mediator_active_reservations,
+        &mut out,
+    );
+    line(
+        "p2p_mediator_active_circuits",
+        snapshot.mediator_active_circuits,
+        &mut out,
+    );
+    line(
+        "p2p_mediator_dcutr_attempts_observed",
+        snapshot.mediator_dcutr_attempts_observed,
+        &mut out,
+    );
+    line(
+        "p2p_mediator_denied_reservations",
+        snapshot.mediator_denied_reservations,
+        &mut out,
+    );
+    line(
+        "p2p_mediator_denied_circuits",
+        snapshot.mediator_denied_circuits,
+        &mut out,
+    );
+    line(
+        "p2p_mediator_abuse_rate_limit_events",
+        snapshot.mediator_abuse_rate_limit_events,
         &mut out,
     );
     line(
