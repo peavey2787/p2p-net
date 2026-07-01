@@ -177,7 +177,9 @@ Normally, do not run the individual commands manually. Use `.\qa\ci\run-full-val
 - `docs/spec/DISCOVERY_NAMESPACES.md` documents hashed app discovery namespace derivation.
 - `docs/spec/PUBLIC_FALLBACK.md` documents explicit public bootstrap and relay fallback.
 - `docs/spec/DHT_PROVIDER_DISCOVERY.md` documents DHT provider-record namespace discovery.
+- `docs/spec/PEER_BOOK.md` documents normalized peer metadata returned by `get_peers()`.
 - `docs/impl/DHT_PROVIDER_DISCOVERY_IMPLEMENTATION.md` documents DHT provider wiring and observability.
+- `docs/impl/PEER_BOOK_IMPLEMENTATION.md` documents peer-book update paths and observability.
 - `docs/impl/PUBLIC_FALLBACK_IMPLEMENTATION.md` documents the startup wiring for public fallback.
 - `docs/impl/API_IMPLEMENTATION.md` documents API command routing and message delivery.
 - `qa/tests/codebase_hygiene.rs` guards against stale transitional docs, duplicate test registration, and profile-decision drift outside the resolver.

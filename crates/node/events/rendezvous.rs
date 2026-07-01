@@ -1,4 +1,7 @@
 use libp2p::Swarm;
+
+use crate::api::PeerSource;
+use crate::connectivity::rendezvous::peer_record_addrs;
 use libp2p_rendezvous as rendezvous;
 
 use crate::stack::{on_rendezvous_client_event, on_rendezvous_server_event, MeshBehaviour};
@@ -11,6 +14,7 @@ pub(crate) async fn handle_client_event(
     ev: &rendezvous::client::Event,
     ctx: &mut SwarmEventContext<'_>,
 ) {
+    record_rendezvous_discovery(ev, ctx);
     let line = on_rendezvous_client_event(
         swarm,
         ev,
@@ -33,6 +37,26 @@ pub(crate) async fn handle_server_event(
     push_pulse(&mut guard.pulses, line);
 }
 
+
+fn record_rendezvous_discovery(
+    ev: &rendezvous::client::Event,
+    ctx: &mut SwarmEventContext<'_>,
+) {
+    let rendezvous::client::Event::Discovered { registrations, .. } = ev else {
+        return;
+    };
+
+    for registration in registrations {
+        let peer = registration.record.peer_id();
+        let namespace = registration.namespace.to_string();
+        ctx.peer_book
+            .record_namespace(peer, namespace, PeerSource::Rendezvous);
+        for addr in peer_record_addrs(registration) {
+            ctx.peer_book.record_addr(peer, addr, PeerSource::Rendezvous);
+        }
+    }
+}
+
 fn sync_rendezvous_snapshot(
     snapshot: &mut super::super::types::NodeSnapshot,
     ctx: &SwarmEventContext<'_>,
@@ -46,4 +70,6 @@ fn sync_rendezvous_snapshot(
     snapshot.rendezvous_server_registrations = ctx.rendezvous_state.server_registrations;
     snapshot.rendezvous_server_discoveries_served = ctx.rendezvous_state.server_discoveries_served;
     snapshot.rendezvous_server_errors = ctx.rendezvous_state.server_errors;
+    snapshot.peer_book_known_peers = ctx.peer_book.len();
+    snapshot.peer_book_discovered_peers = ctx.peer_book.discovered_count();
 }

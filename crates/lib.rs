@@ -48,6 +48,7 @@ pub use connectivity::namespace::{
     build_discovery_namespace, discovery_tag_hash_hex, DiscoveryNamespace,
     DiscoveryNamespaceConfig, DiscoveryNamespacePrivacy, DISCOVERY_NAMESPACE_PREFIX,
 };
+pub use connectivity::peer_book::{PeerBook, PeerRecord};
 pub use connectivity::public_fallback::{
     PublicBootstrapConfig, PublicFallbackDecision, PublicFallbackMode,
 };

@@ -22,7 +22,8 @@ get_peers()
 3. App messages are encoded as `AppMessage` envelopes and published through app-topic gossipsub topics.
 4. Subscribed app topics are tracked by topic hash, separate from heartbeat gossip.
 5. Incoming app-topic messages are decoded by `node/events/app.rs` and sent through the local delivery bus only when they match the local network id and target peer id.
-6. `NodeSnapshot` exposes API/app counters for observability.
+6. `get_peers()` reads the internal peer book, which merges connected, cached, configured, rendezvous, DHT-provider, and relay-discovery records.
+7. `NodeSnapshot` exposes API/app counters for observability.
 
 This preserves SRP:
 

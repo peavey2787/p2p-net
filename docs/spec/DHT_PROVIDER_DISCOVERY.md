@@ -58,4 +58,4 @@ to run DHT provider lookup alongside rendezvous discovery.
 
 ## Runtime results
 
-Provider lookup results update internal DHT provider state and observability counters. Full peer-book-backed `get_peers()` integration is the next roadmap phase.
+Provider lookup results update internal DHT provider state, observability counters, and the peer book used by `get_peers()`.

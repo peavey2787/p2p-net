@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::connectivity::discovery::DiscoveryConfig;
 use crate::connectivity::peer_cache;
 use crate::platform::NodeStorage;
-use crate::stack::behaviour::MeshBehaviour;
+use crate::stack::MeshBehaviour;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -108,7 +108,7 @@ impl DhtProviderState {
         self.start_providing_queries.remove(id)
     }
 
-    fn provider_namespace(&self, id: &QueryId) -> Option<String> {
+    pub fn provider_namespace(&self, id: &QueryId) -> Option<String> {
         self.get_provider_queries.get(id).cloned()
     }
 
@@ -118,7 +118,7 @@ impl DhtProviderState {
 }
 
 pub fn dht_record_key(namespace: &str) -> kad::RecordKey {
-    kad::RecordKey::new(&namespace.as_bytes())
+    kad::RecordKey::new(namespace.as_bytes())
 }
 
 pub fn start_dht_namespace_discovery(

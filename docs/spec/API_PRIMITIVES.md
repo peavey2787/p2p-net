@@ -46,11 +46,11 @@ Subscribes the local swarm to an application topic and returns a topic-filtered 
 
 ### `get_peers()`
 
-Returns known peers as `PeerInfo` records. At minimum this includes currently connected peers. As the discovery-resurrection roadmap lands, the same primitive will also return cached, rendezvous-discovered, DHT-provider-discovered, relay-discovered, bootstrap, and manual peers. `PeerInfo.sources` tells applications how each peer was learned.
+Returns known peers as `PeerInfo` records. This includes connected, cached, rendezvous-discovered, DHT-provider-discovered, relay-discovered, bootstrap, bootstrap-seed, and configured peers when those sources are available. `PeerInfo.sources` tells applications how each peer was learned.
 
 ## Peer metadata
 
-`PeerInfo` contains the peer id, connection status, known addresses, optional capability hints, optional namespace metadata, and one or more `PeerSource` values. This keeps `get_peers()` stable while allowing the implementation to grow from connected-only results to full peer-book results.
+`PeerInfo` contains the peer id, connection status, known addresses, optional capability hints, optional namespace metadata, and one or more `PeerSource` values. This keeps `get_peers()` stable while the internal peer book merges multiple discovery sources into one application-facing record per peer id.
 
 `PeerSource` values are:
 

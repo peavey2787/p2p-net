@@ -119,6 +119,10 @@ name = "dht_provider_discovery"
 path = "qa/tests/dht_provider_discovery.rs"
 
 [[test]]
+name = "peer_book"
+path = "qa/tests/peer_book.rs"
+
+[[test]]
 name = "rendezvous"
 path = "qa/tests/rendezvous.rs"
 
