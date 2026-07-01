@@ -6,6 +6,7 @@ pub mod dcutr;
 pub mod identity;
 pub mod limits;
 pub mod mediator;
+pub mod namespace;
 pub mod peer_cache;
 pub mod relay;
 pub mod relay_discovery;

@@ -51,6 +51,12 @@
       "max_reservations": 3,
       "prefer_configured_relays": true,
       "replace_failed_relays": true
+    },
+    "namespace": {
+      "app_id": "p2p-net",
+      "tags": [],
+      "privacy": "hashed",
+      "allow_readable_tags": false
     }
   },
   "dnsaddr": {

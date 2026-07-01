@@ -13,7 +13,7 @@ This roadmap tracks the next discovery layer: prefer our own bootstrap, rendezvo
 
 ## Phase 1 — Peer roles and API metadata
 
-Status: in progress.
+Status: complete.
 
 - Add explicit peer-source metadata shared by the public API and future peer book.
 - Extend `PeerInfo` so `get_peers()` can represent discovered peers, not only connected peers.
@@ -23,12 +23,13 @@ Status: in progress.
 
 ## Phase 2 — Hashed discovery namespace model
 
-Status: planned.
+Status: complete.
 
 - Add a deterministic namespace builder: `p2p-net/<network_id>/<app_id>/<hashed_tag>`.
 - Add config for app discovery tags without publishing raw contact names or invite phrases.
 - Support multiple tags per application.
 - Keep readable namespaces available only behind an explicit unsafe/debug option.
+- Runtime rendezvous refresh now uses derived hashed namespaces when app tags are configured, otherwise it uses the operator rendezvous namespace.
 
 ## Phase 3 — Public fallback policy
 

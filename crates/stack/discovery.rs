@@ -5,7 +5,9 @@ use libp2p_rendezvous as rendezvous;
 use crate::connectivity::discovery::DiscoveryConfig;
 use crate::connectivity::peer_cache;
 use crate::connectivity::relay::{relay_reservation_addr, RelayReservationPlan};
-use crate::connectivity::rendezvous::{peer_record_addrs, RendezvousActionPlan, RendezvousState};
+use crate::connectivity::rendezvous::{
+    peer_record_addrs, RendezvousActionPlan, RendezvousPeerNamespace, RendezvousState,
+};
 use crate::platform::NodeStorage;
 
 use super::behaviour::{MeshBehaviour, MeshEvent};
@@ -98,6 +100,7 @@ pub fn reserve_configured_relays(
 /// repeated registrations after one succeeds.
 pub fn refresh_rendezvous(
     swarm: &mut Swarm<MeshBehaviour>,
+    network_id: u32,
     discovery_cfg: &DiscoveryConfig,
     rendezvous_addrs: &[Multiaddr],
     state: &mut RendezvousState,
@@ -109,13 +112,27 @@ pub fn refresh_rendezvous(
         return plan;
     }
 
-    let namespace = match rv_cfg.namespace() {
+    let namespace_strings = match discovery_cfg.rendezvous_namespaces(network_id) {
         Ok(v) => v,
         Err(err) => {
             plan.errors.push(err.to_string());
             return plan;
         }
     };
+    let mut namespaces = Vec::new();
+    for namespace in namespace_strings {
+        match rendezvous::Namespace::new(namespace.clone()) {
+            Ok(value) => namespaces.push((namespace, value)),
+            Err(err) => {
+                plan.errors.push(format!(
+                    "rendezvous namespace `{namespace}` is invalid: {err}"
+                ));
+            }
+        }
+    }
+    if namespaces.is_empty() {
+        return plan;
+    }
 
     for addr in rendezvous_addrs {
         let Some(peer) = extract_p2p_peer_id(addr) else {
@@ -133,36 +150,43 @@ pub fn refresh_rendezvous(
             continue;
         };
 
-        if rv_cfg.register
-            && !state.registered_with.contains(&peer)
-            && !state.register_inflight.contains(&peer)
-        {
-            state.register_attempts = state.register_attempts.saturating_add(1);
-            match client.register(namespace.clone(), peer, Some(rv_cfg.register_ttl_secs)) {
-                Ok(()) => {
-                    state.register_inflight.insert(peer);
-                    plan.register_attempts = plan.register_attempts.saturating_add(1);
-                }
-                Err(err) => {
-                    state.register_failures = state.register_failures.saturating_add(1);
-                    plan.errors.push(format!(
-                        "rendezvous register request failed peer={peer} namespace={namespace}: {err}"
-                    ));
+        for (namespace_key, namespace) in &namespaces {
+            if rv_cfg.register
+                && !state.is_registered(peer, namespace_key)
+                && !state.is_register_inflight(peer, namespace_key)
+            {
+                state.register_attempts = state.register_attempts.saturating_add(1);
+                match client.register(namespace.clone(), peer, Some(rv_cfg.register_ttl_secs)) {
+                    Ok(()) => {
+                        state.mark_register_inflight(peer, namespace_key);
+                        plan.register_attempts = plan.register_attempts.saturating_add(1);
+                    }
+                    Err(err) => {
+                        state.register_failures = state.register_failures.saturating_add(1);
+                        plan.errors.push(format!(
+                            "rendezvous register request failed peer={peer} namespace={namespace}: {err}"
+                        ));
+                    }
                 }
             }
-        }
 
-        if rv_cfg.discover && !state.discover_inflight.contains(&peer) {
-            state.discover_attempts = state.discover_attempts.saturating_add(1);
-            let cookie = state.cookies.get(&peer).cloned();
-            client.discover(
-                Some(namespace.clone()),
-                cookie,
-                rv_cfg.discover_limit(),
-                peer,
-            );
-            state.discover_inflight.insert(peer);
-            plan.discover_attempts = plan.discover_attempts.saturating_add(1);
+            if rv_cfg.discover
+                && !state.discover_inflight.contains(&peer)
+                && !state
+                    .discover_inflight_namespaces
+                    .contains(&RendezvousPeerNamespace::new(peer, namespace_key.as_str()))
+            {
+                state.discover_attempts = state.discover_attempts.saturating_add(1);
+                let cookie = state.discover_cookie(peer, namespace_key);
+                client.discover(
+                    Some(namespace.clone()),
+                    cookie,
+                    rv_cfg.discover_limit(),
+                    peer,
+                );
+                state.mark_discover_inflight(peer, namespace_key);
+                plan.discover_attempts = plan.discover_attempts.saturating_add(1);
+            }
         }
     }
 
@@ -195,8 +219,8 @@ pub fn on_rendezvous_client_event(
             ttl,
             namespace,
         } => {
-            state.register_inflight.remove(rendezvous_node);
-            state.registered_with.insert(rendezvous_node.to_owned());
+            let namespace_key = namespace.to_string();
+            state.mark_registered(rendezvous_node.to_owned(), &namespace_key);
             format!(
                 "rendezvous_client registered node={rendezvous_node} namespace={namespace} ttl={ttl}"
             )
@@ -206,7 +230,8 @@ pub fn on_rendezvous_client_event(
             namespace,
             error,
         } => {
-            state.register_inflight.remove(rendezvous_node);
+            let namespace_key = namespace.to_string();
+            state.mark_register_failed(rendezvous_node.to_owned(), &namespace_key);
             state.register_failures = state.register_failures.saturating_add(1);
             format!(
                 "rendezvous_client register failed node={rendezvous_node} namespace={namespace} error={error:?}"
@@ -217,10 +242,8 @@ pub fn on_rendezvous_client_event(
             registrations,
             cookie,
         } => {
-            state.discover_inflight.remove(rendezvous_node);
-            state
-                .cookies
-                .insert(rendezvous_node.to_owned(), cookie.clone());
+            let completed_namespace =
+                state.complete_discover_for_peer(rendezvous_node.to_owned(), cookie.clone());
             let mut learned = 0usize;
             for registration in registrations {
                 let peer = registration.record.peer_id();
@@ -241,17 +264,24 @@ pub fn on_rendezvous_client_event(
                 }
                 state.discovered_peers.insert(peer);
             }
-            format!(
-                "rendezvous_client discovered {} registrations from {rendezvous_node}; learned {learned} addrs",
-                registrations.len()
-            )
+            match completed_namespace {
+                Some(namespace) => format!(
+                    "rendezvous_client discovered {} registrations from {rendezvous_node} namespace={namespace}; learned {learned} addrs",
+                    registrations.len()
+                ),
+                None => format!(
+                    "rendezvous_client discovered {} registrations from {rendezvous_node}; learned {learned} addrs",
+                    registrations.len()
+                ),
+            }
         }
         rendezvous::client::Event::DiscoverFailed {
             rendezvous_node,
             namespace,
             error,
         } => {
-            state.discover_inflight.remove(rendezvous_node);
+            let namespace_key = namespace.as_ref().map(ToString::to_string);
+            state.fail_discover(rendezvous_node.to_owned(), namespace_key.as_deref());
             state.discover_failures = state.discover_failures.saturating_add(1);
             format!(
                 "rendezvous_client discover failed node={rendezvous_node} namespace={namespace:?} error={error:?}"
