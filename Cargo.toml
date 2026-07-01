@@ -56,11 +56,13 @@ path = "unit_tests/capability_resolver.rs"
 name = "mediator_role"
 path = "unit_tests/mediator_role.rs"
 
-
 [[test]]
 name = "event_responsibility"
 path = "unit_tests/event_responsibility.rs"
 
+[[test]]
+name = "behaviour_policy"
+path = "unit_tests/behaviour_policy.rs"
 
 [[test]]
 name = "relay_client"

@@ -15,7 +15,7 @@
 - Connection caps, peer/IP limits, replay cache, timestamp checks
 - JSON snapshot export and Prometheus-style metrics export
 - Dashboard example, security checks, ignored load/soak tests, and fuzz harnesses
-
+- Profile-driven libp2p behaviour policy, including Kademlia client mode for lite/mobile nodes
 
 DNS support is enabled by default for configured and cached peers through p2p-net's own startup resolver. Peer addresses using `/dns`, `/dns4`, `/dns6`, or `/dnsaddr` are resolved before dialing. WebSocket support in rust-libp2p 0.56 requires the `libp2p-dns` adapter crate, so p2p-net patches that crate to a local no-Hickory implementation instead of using the crates.io resolver path. The unused upstream mDNS adapter crate is policy-patched to a local no-op placeholder so the rejected Hickory DNS line stays out of `Cargo.lock`. `/dnsaddr` uses bounded DNS-over-HTTPS TXT lookup support with a configurable endpoint in p2p-net's own resolver. The default endpoint is Cloudflare for simple out-of-the-box operation; production deployments can point it at an internal/self-hosted DoH resolver or disable `/dnsaddr` entirely. LAN multicast discovery/mDNS is not included.
 
@@ -115,3 +115,4 @@ The crate is intended to be validation-clean under the stable validation script 
 Normally, do not run the individual commands manually. Use `./scripts/run-full-validation.ps1`; it is the canonical one-file validation runner for formatting, tests, clippy, security audit, dependency policy, and ignored load/soak tests.
 
 - `docs/EVENT_HANDLING.md` documents the Phase 5 single-responsibility swarm event split.
+- `docs/BEHAVIOUR_POLICY.md` documents the Phase 6 profile-driven behaviour construction policy.

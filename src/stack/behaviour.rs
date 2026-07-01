@@ -17,6 +17,7 @@ use libp2p_rendezvous as rendezvous;
 use crate::connectivity::discovery::DiscoveryConfig;
 use crate::connectivity::limits::ConnectionLimitsConfig;
 use crate::connectivity::relay::{RelayAccess, RelayServiceConfig};
+use crate::ResolvedNodeConfig;
 
 #[derive(NetworkBehaviour)]
 #[behaviour(to_swarm = "MeshEvent")]
@@ -115,6 +116,7 @@ pub fn build_behaviour(
     relay_cfg: &RelayServiceConfig,
     connection_limits_cfg: &ConnectionLimitsConfig,
     discovery_cfg: &DiscoveryConfig,
+    resolved_cfg: &ResolvedNodeConfig,
 ) -> MeshBehaviour {
     let message_id_fn = |msg: &gossipsub::Message| {
         let h = blake3::hash(&msg.data);
@@ -132,16 +134,25 @@ pub fn build_behaviour(
     )
     .expect("gossipsub behaviour");
 
+    let behaviour_policy = &resolved_cfg.enabled_behaviours;
+
     let store = kad::store::MemoryStore::new(local_peer);
     let mut kademlia = kad::Behaviour::new(local_peer, store);
-    kademlia.set_mode(Some(kad::Mode::Server));
+    let kad_mode = if behaviour_policy.kademlia_server {
+        Some(kad::Mode::Server)
+    } else if behaviour_policy.kademlia_client {
+        Some(kad::Mode::Client)
+    } else {
+        None
+    };
+    kademlia.set_mode(kad_mode);
 
     let identify = identify::Behaviour::new(identify::Config::new(
         format!("/p2p-net/net-{network_id}/1.0.0"),
         local_key.public(),
     ));
 
-    let relay_server_active = relay_cfg.enabled;
+    let relay_server_active = behaviour_policy.relay_server && relay_cfg.enabled;
     let relay_server = relay_server_active
         .then(|| relay::Behaviour::new(local_peer, relay_cfg.to_libp2p_config()))
         .into();
@@ -173,14 +184,12 @@ pub fn build_behaviour(
     let connection_limits =
         connection_limits::Behaviour::new(connection_limits_cfg.to_libp2p_limits());
 
-    let rendezvous_client = discovery_cfg
-        .rendezvous
-        .client_enabled
+    let rendezvous_client = (behaviour_policy.rendezvous_client
+        && discovery_cfg.rendezvous.client_enabled)
         .then(|| rendezvous::client::Behaviour::new(local_key.clone()))
         .into();
-    let rendezvous_server = discovery_cfg
-        .rendezvous
-        .server_enabled
+    let rendezvous_server = (behaviour_policy.rendezvous_server
+        && discovery_cfg.rendezvous.server_enabled)
         .then(|| rendezvous::server::Behaviour::new(discovery_cfg.rendezvous.server_config()))
         .into();
 
