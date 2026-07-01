@@ -85,6 +85,10 @@ sudo ./qa/tools/netem-linux.sh lo stop
 
 `platform_runtime` is picked up by `cargo test --workspace`.
 
+## Application API validation
+
+`qa/tests/api_primitives.rs` verifies the six public primitives on `NodeHandle`, app-topic namespacing and validation, `AppMessage` encode/decode behavior, addressed-message filtering, and payload size bounds. The test is registered in `Cargo.toml`, so the canonical validation script picks it up automatically.
+
 ## Codebase hygiene validation
 
 `qa/tests/codebase_hygiene.rs` guards the cleanup/audit pass by checking that runtime docs do not reintroduce transitional wording, startup does not duplicate profile-to-role decisions, stack builders consume resolved policy instead of user-facing profiles, snapshot JSON derives from `NodeSnapshot` instead of a hand-maintained field list, and every integration test under `qa/tests/` is registered exactly once in `Cargo.toml`.

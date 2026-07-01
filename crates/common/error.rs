@@ -14,4 +14,12 @@ pub enum NetError {
     Config { path: String, reason: String },
     #[error("identity key failed for {path}: {reason}")]
     Identity { path: String, reason: String },
+    #[error("api command failed: {0}")]
+    ApiCommand(String),
+    #[error("dial failed for {target}: {reason}")]
+    Dial { target: String, reason: String },
+    #[error("app topic `{topic}` is invalid: {reason}")]
+    AppTopic { topic: String, reason: String },
+    #[error("app message for topic `{topic}` failed: {reason}")]
+    AppMessage { topic: String, reason: String },
 }

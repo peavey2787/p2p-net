@@ -1,5 +1,6 @@
 //! Shared libp2p node core with profile-driven capabilities.
 //!
+//! - **`api`**: six universal app primitives and application message envelopes.
 //! - **`stack`**: transport, `MeshBehaviour`, and discovery helpers.
 //! - **`connectivity`**: NAT/relay state and on-disk peer address cache.
 //! - **`protocol`**: heartbeat gossip and lightweight reputation.
@@ -10,6 +11,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod api;
 pub mod bindings;
 pub mod common;
 pub mod connectivity;
@@ -19,6 +21,11 @@ pub mod stack;
 
 mod node;
 
+pub use api::{
+    app_ident_topic, app_topic_name, decode_app_message, encode_app_message,
+    normalize_app_topic, validate_app_message, AppMessage, AppSubscription, PeerInfo,
+    APP_MESSAGE_SCHEMA_VERSION, APP_TOPIC_PREFIX, MAX_APP_MESSAGE_BYTES, MAX_APP_TOPIC_LEN,
+};
 pub use bindings::{
     binding_support_matrix, node_config_from_json, node_config_to_json,
     node_snapshot_to_json_string, prepare_binding_start_plan, BindingPlatformRuntime,

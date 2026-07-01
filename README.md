@@ -1,6 +1,6 @@
 # p2p-net
 
-`p2p-net` is a shared libp2p node core for peer discovery, signed heartbeat gossip, NAT traversal, DCUtR hole punching, relay mediation, rendezvous discovery, operator metrics, platform adapters, binding-safe helpers, and hostile-network testing.
+`p2p-net` is a shared libp2p node core with six general-purpose application primitives: `connect_peer`, `disconnect_peer`, `send_message`, `broadcast`, `subscribe`, and `get_peers`. It also provides peer discovery, signed heartbeat gossip, NAT traversal, DCUtR hole punching, relay mediation, rendezvous discovery, operator metrics, platform adapters, binding-safe helpers, and hostile-network testing.
 
 ## Features
 
@@ -20,6 +20,7 @@
 - Explicit DCUtR policy with relay fallback, retry controls, and counters
 - Platform runtime/storage abstraction for desktop and mobile adapters
 - Binding-safe facade for desktop, Android, iOS/iPadOS, and WASM/WebView shells
+- Six stable application primitives exposed on `NodeHandle`: `connect_peer`, `disconnect_peer`, `send_message`, `broadcast`, `subscribe`, and `get_peers`
 
 DNS support is enabled by default for configured and cached peers through p2p-net's own startup resolver. Peer addresses using `/dns`, `/dns4`, `/dns6`, or `/dnsaddr` are resolved before dialing. WebSocket support in rust-libp2p 0.56 requires the `libp2p-dns` adapter crate, so p2p-net patches that crate to a local no-Hickory implementation instead of using the crates.io resolver path. The disallowed upstream mDNS adapter crate is policy-patched to a local no-op placeholder so the rejected Hickory DNS line stays out of `Cargo.lock`. `/dnsaddr` uses bounded DNS-over-HTTPS TXT lookup support with a configurable endpoint in p2p-net's own resolver. The default endpoint is Cloudflare for simple out-of-the-box operation; production deployments can point it at an internal/self-hosted DoH resolver or disable `/dnsaddr` entirely. LAN multicast discovery/mDNS is not included.
 
@@ -68,6 +69,22 @@ Linux/macOS equivalent:
 
 Fuzz targets are included under `qa/fuzz/`, but they are not run by the stable one-file validation script. Additional validation and hostile-network notes are in `docs/validation/VALIDATION.md`.
 
+
+## General-purpose application API
+
+Every application builds on the same six primitives exposed by `NodeHandle`:
+
+```rust
+handle.connect_peer(addr).await?;
+handle.disconnect_peer(peer_id).await?;
+handle.send_message(peer_id, "chat/general", payload).await?;
+handle.broadcast("game/lobby", payload).await?;
+let mut messages = handle.subscribe("chat/general").await?;
+let peers = handle.get_peers().await?;
+```
+
+Application messages use `AppMessage` envelopes and app topics namespaced as `p2p-net/app/v1/net-<network_id>/<topic>`. See `docs/spec/API_PRIMITIVES.md` and `docs/impl/API_IMPLEMENTATION.md`.
+
 ## Start a node
 
 Generate a config:
@@ -104,6 +121,7 @@ Important fields:
 - `dcutr`: direct-connection upgrade policy with relay fallback, retry budget, and observability. See `docs/impl/DCUTR_POLICY.md`.
 - `start_node_with_platform(...)`: embed the shared core with platform runtime/storage adapters. See `docs/impl/PLATFORM_RUNTIME.md`.
 - `bindings`: binding-safe JSON/enum facade for Kotlin, Swift, desktop, and WebView shells. See `docs/impl/BINDINGS.md`.
+- `NodeHandle`: six app primitives for connecting peers, sending/broadcasting payloads, subscribing to topics, and listing peers. See `docs/spec/API_PRIMITIVES.md`.
 - `reserve_configured_relays`: request `/p2p-circuit` reservations from selected relays.
 - `discovery.rendezvous`: enable rendezvous client/server registration/discovery.
 - `connection_limits`: global, per-peer, and per-IP connection caps.
@@ -147,4 +165,6 @@ Normally, do not run the individual commands manually. Use `.\qa\ci\run-full-val
 - `docs/impl/DCUTR_POLICY.md` documents DCUtR policy and fallback counters.
 - `docs/impl/PLATFORM_RUNTIME.md` documents the platform runtime/storage abstraction.
 - `docs/impl/BINDINGS.md` documents the cross-platform binding facade.
+- `docs/spec/API_PRIMITIVES.md` documents the six primitive application API.
+- `docs/impl/API_IMPLEMENTATION.md` documents API command routing and message delivery.
 - `qa/tests/codebase_hygiene.rs` guards against stale transitional docs, duplicate test registration, and profile-decision drift outside the resolver.

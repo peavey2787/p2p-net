@@ -1,4 +1,4 @@
-//! Node configuration, live snapshot, and internal control messages.
+//! Node configuration and live snapshot types.
 
 use std::collections::VecDeque;
 use std::path::Path;
@@ -355,6 +355,13 @@ pub struct NodeSnapshot {
     pub rendezvous_server_registrations: usize,
     pub rendezvous_server_discoveries_served: usize,
     pub rendezvous_server_errors: usize,
+    pub app_subscriptions: Vec<String>,
+    pub app_messages_sent: usize,
+    pub app_messages_received: usize,
+    pub app_messages_ignored: usize,
+    pub app_messages_rejected: usize,
+    pub api_commands_processed: usize,
+    pub api_command_failures: usize,
     pub gossip_messages_rejected: usize,
     pub gossip_messages_ignored: usize,
     pub gossip_messages_accepted: usize,

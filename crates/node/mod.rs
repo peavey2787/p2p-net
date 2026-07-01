@@ -1,8 +1,10 @@
-//! Standalone node: libp2p swarm + heartbeat loop, split into `types` and `events`.
+//! Standalone node orchestration: libp2p swarm ownership, command routing, events, and snapshots.
 
 mod capabilities;
+mod commands;
 mod environment;
 mod events;
+mod handle;
 mod profile;
 mod types;
 
@@ -14,8 +16,7 @@ use futures::StreamExt;
 use libp2p::gossipsub::IdentTopic;
 use libp2p::{PeerId, Swarm};
 use serde_json::Value;
-use tokio::sync::{mpsc, Mutex};
-use tokio::task::JoinHandle;
+use tokio::sync::{broadcast, mpsc, Mutex};
 
 use crate::common::error::NetError;
 use crate::connectivity::limits::ConnectionCapState;
@@ -35,27 +36,10 @@ pub use environment::{
     EnvironmentConfig, EnvironmentReport, NatKind, NetworkReachability, PlatformKind,
 };
 pub use profile::{BehaviourSet, NodeProfile, NodeRole, ResolvedNodeConfig};
+pub use handle::NodeHandle;
 pub use types::{NodeConfig, NodeSnapshot};
 
 use types::network_label;
-
-#[derive(Clone)]
-pub struct NodeHandle {
-    pub peer_id: PeerId,
-    pub snapshot: Arc<Mutex<NodeSnapshot>>,
-    shutdown_tx: mpsc::Sender<()>,
-    task: Arc<Mutex<Option<JoinHandle<()>>>>,
-}
-
-impl NodeHandle {
-    /// Request shutdown and wait for the swarm task to exit.
-    pub async fn shutdown(&self) {
-        let _ = self.shutdown_tx.send(()).await;
-        if let Some(task) = self.task.lock().await.take() {
-            let _ = task.await;
-        }
-    }
-}
 
 pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
     let desktop = Arc::new(DesktopPlatformRuntime::default());
@@ -256,6 +240,13 @@ pub async fn start_node_with_platform(
         rendezvous_server_registrations: rendezvous_state.server_registrations,
         rendezvous_server_discoveries_served: rendezvous_state.server_discoveries_served,
         rendezvous_server_errors: rendezvous_state.server_errors,
+        app_subscriptions: Vec::new(),
+        app_messages_sent: 0,
+        app_messages_received: 0,
+        app_messages_ignored: 0,
+        app_messages_rejected: 0,
+        api_commands_processed: 0,
+        api_command_failures: 0,
         gossip_messages_rejected: 0,
         gossip_messages_ignored: 0,
         gossip_messages_accepted: 0,
@@ -342,9 +333,12 @@ pub async fn start_node_with_platform(
     }
 
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
+    let (command_tx, mut command_rx) = mpsc::channel(128);
+    let (messages_tx, _) = broadcast::channel(256);
     let task_snapshot = Arc::clone(&snapshot);
     let rendezvous_peers_for_task = rendezvous_peers.clone();
     let storage_for_task = Arc::clone(&storage);
+    let messages_for_task = messages_tx.clone();
     let task = tokio::spawn(async move {
         let heartbeat_interval = Duration::from_secs(cfg.heartbeat_interval_secs.max(1));
         let mut ticker = tokio::time::interval(heartbeat_interval);
@@ -379,6 +373,7 @@ pub async fn start_node_with_platform(
         };
         let mut rendezvous_state = rendezvous_state;
         let mut connection_caps = ConnectionCapState::new(&cfg.connection_limits);
+        let mut app_topic_hashes = Vec::new();
         let started_at = std::time::Instant::now();
 
         loop {
@@ -399,6 +394,20 @@ pub async fn start_node_with_platform(
                     let _ = maybe_shutdown;
                     break;
                 }
+                maybe_command = command_rx.recv() => {
+                    if let Some(command) = maybe_command {
+                        commands::handle_node_command(
+                            command,
+                            &mut swarm,
+                            local_peer,
+                            cfg.network_id,
+                            &mut app_topic_hashes,
+                            &task_snapshot,
+                        ).await;
+                    } else {
+                        break;
+                    }
+                }
                 evt = swarm.select_next_some() => {
                     let mut event_ctx = events::SwarmEventContext {
                         snapshot: &task_snapshot,
@@ -414,6 +423,10 @@ pub async fn start_node_with_platform(
                         message_security: &cfg.message_security,
                         replay_cache: &mut replay_cache,
                         heartbeat_topic_hash: &heartbeat_topic_hash,
+                        app_topic_hashes: &app_topic_hashes,
+                        app_messages: &messages_for_task,
+                        local_peer,
+                        network_id: cfg.network_id,
                     };
                     events::handle_swarm_event(evt, &mut swarm, &mut event_ctx).await;
                 }
@@ -424,6 +437,8 @@ pub async fn start_node_with_platform(
     Ok(NodeHandle {
         peer_id: local_peer,
         snapshot,
+        command_tx,
+        messages_tx,
         shutdown_tx,
         task: Arc::new(Mutex::new(Some(task))),
     })
@@ -473,6 +488,13 @@ pub fn snapshot_to_prometheus_metrics(snapshot: &NodeSnapshot) -> String {
 
     let mut out = String::new();
     line("p2p_connected_peers", snapshot.connected_peers, &mut out);
+    line("p2p_api_commands_processed", snapshot.api_commands_processed, &mut out);
+    line("p2p_api_command_failures", snapshot.api_command_failures, &mut out);
+    line("p2p_app_subscriptions", snapshot.app_subscriptions.len(), &mut out);
+    line("p2p_app_messages_sent", snapshot.app_messages_sent, &mut out);
+    line("p2p_app_messages_received", snapshot.app_messages_received, &mut out);
+    line("p2p_app_messages_ignored", snapshot.app_messages_ignored, &mut out);
+    line("p2p_app_messages_rejected", snapshot.app_messages_rejected, &mut out);
     line(
         "p2p_platform_can_listen_tcp",
         if snapshot.platform_can_listen_tcp { 1 } else { 0 },

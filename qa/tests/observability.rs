@@ -49,6 +49,13 @@ fn snapshot_json_includes_accurate_relay_fields() {
         platform_can_listen_tcp: true,
         platform_can_listen_quic: true,
         active_transports: vec!["tcp".to_string(), "quic".to_string()],
+        app_subscriptions: vec!["chat/general".to_string()],
+        app_messages_sent: 13,
+        app_messages_received: 14,
+        app_messages_ignored: 15,
+        app_messages_rejected: 16,
+        api_commands_processed: 17,
+        api_command_failures: 1,
         ..NodeSnapshot::default()
     };
 
@@ -83,6 +90,13 @@ fn snapshot_json_includes_accurate_relay_fields() {
     assert_eq!(json["platform_default_data_dir"], "/tmp/p2p-net");
     assert_eq!(json["platform_can_listen_tcp"].as_bool(), Some(true));
     assert_eq!(json["platform_can_listen_quic"].as_bool(), Some(true));
+    assert_eq!(json["app_subscriptions"][0], "chat/general");
+    assert_eq!(json["app_messages_sent"], 13);
+    assert_eq!(json["app_messages_received"], 14);
+    assert_eq!(json["app_messages_ignored"], 15);
+    assert_eq!(json["app_messages_rejected"], 16);
+    assert_eq!(json["api_commands_processed"], 17);
+    assert_eq!(json["api_command_failures"], 1);
     assert!(json.get("relay_reservations").is_none());
     assert!(json.get("relay_circuits").is_none());
     assert!(json.get("dcutr_events").is_none());
@@ -92,6 +106,13 @@ fn snapshot_json_includes_accurate_relay_fields() {
 fn prometheus_metrics_exports_operator_counters() {
     let snap = NodeSnapshot {
         connected_peers: 7,
+        app_subscriptions: vec!["chat/general".to_string()],
+        app_messages_sent: 13,
+        app_messages_received: 14,
+        app_messages_ignored: 15,
+        app_messages_rejected: 16,
+        api_commands_processed: 17,
+        api_command_failures: 1,
         relay_server_enabled: true,
         mediator_enabled: true,
         mediator_active_reservations: 2,
@@ -126,6 +147,13 @@ fn prometheus_metrics_exports_operator_counters() {
 
     let metrics = snapshot_to_prometheus_metrics(&snap);
     assert!(metrics.contains("p2p_connected_peers 7\n"));
+    assert!(metrics.contains("p2p_api_commands_processed 17\n"));
+    assert!(metrics.contains("p2p_api_command_failures 1\n"));
+    assert!(metrics.contains("p2p_app_subscriptions 1\n"));
+    assert!(metrics.contains("p2p_app_messages_sent 13\n"));
+    assert!(metrics.contains("p2p_app_messages_received 14\n"));
+    assert!(metrics.contains("p2p_app_messages_ignored 15\n"));
+    assert!(metrics.contains("p2p_app_messages_rejected 16\n"));
     assert!(metrics.contains("p2p_platform_can_listen_tcp 1\n"));
     assert!(metrics.contains("p2p_platform_can_listen_quic 1\n"));
     assert!(metrics.contains("p2p_relay_server_enabled 1\n"));
