@@ -170,6 +170,11 @@ pub struct ResolvedNodeConfig {
     pub relay_discovery_enabled: bool,
     pub relay_discovery_min_reservations: usize,
     pub relay_discovery_max_reservations: usize,
+    pub dcutr_enabled: bool,
+    pub dcutr_attempt_after_relay_connection: bool,
+    pub dcutr_keep_relay_fallback: bool,
+    pub dcutr_retry_interval_secs: u64,
+    pub dcutr_max_attempts_per_peer: u32,
     pub relay_server_enabled: bool,
     pub mediator_enabled: bool,
     pub mediator_advertise_for_dcutr: bool,
@@ -207,7 +212,8 @@ impl ResolvedNodeConfig {
         role: NodeRole,
         effective: NodeConfig,
     ) -> Self {
-        let enabled_behaviours = BehaviourSet::for_role(role, &effective);
+        let mut enabled_behaviours = BehaviourSet::for_role(role, &effective);
+        enabled_behaviours.dcutr = effective.dcutr.enabled && enabled_behaviours.relay_client;
         let has_relay_peers = !effective.relay_peers.is_empty();
         let lite_role = matches!(role, NodeRole::Lite | NodeRole::MobileLite);
         let mobile_lite = matches!(role, NodeRole::MobileLite);
@@ -236,6 +242,11 @@ impl ResolvedNodeConfig {
             relay_discovery_enabled,
             relay_discovery_min_reservations: effective.discovery.relay_discovery.min_reservations,
             relay_discovery_max_reservations: effective.discovery.relay_discovery.max_reservations,
+            dcutr_enabled: enabled_behaviours.dcutr,
+            dcutr_attempt_after_relay_connection: effective.dcutr.attempt_after_relay_connection,
+            dcutr_keep_relay_fallback: effective.dcutr.keep_relay_fallback,
+            dcutr_retry_interval_secs: effective.dcutr.retry_interval_secs,
+            dcutr_max_attempts_per_peer: effective.dcutr.max_attempts_per_peer,
             enabled_behaviours,
         }
     }

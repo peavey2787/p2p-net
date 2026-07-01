@@ -45,3 +45,7 @@ The active transport/capability list now reports resolved behaviour intent, incl
 - `rendezvous-server`
 
 This keeps snapshots and dashboard output aligned with the actual role policy.
+
+## DCUtR policy
+
+Phase 8 adds `DcutrPolicy` to the same resolved behaviour path. The DCUtR behaviour is installed only when the resolved behaviour set enables DCUtR. Disabling `dcutr.enabled` removes the behaviour while keeping relay-client fallback available. See `docs/DCUTR_POLICY.md` for fallback and retry semantics.

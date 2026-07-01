@@ -32,8 +32,17 @@ fn snapshot_json_includes_accurate_relay_fields() {
         relay_active_circuits: 4,
         relay_denied_requests: 5,
         relay_bytes_forwarded: 1234,
+        dcutr_enabled: true,
+        dcutr_attempt_after_relay_connection: true,
+        dcutr_keep_relay_fallback: true,
+        dcutr_retry_interval_secs: 60,
+        dcutr_max_attempts_per_peer: 3,
         dcutr_attempts: 6,
         dcutr_successes: 2,
+        dcutr_failures: 1,
+        dcutr_relay_fallbacks: 4,
+        dcutr_upgrade_eligible_connections: 5,
+        dcutr_retry_suppressed: 1,
         active_transports: vec!["tcp".to_string(), "quic".to_string()],
         ..NodeSnapshot::default()
     };
@@ -54,8 +63,16 @@ fn snapshot_json_includes_accurate_relay_fields() {
     assert_eq!(json["relay_active_circuits"], 4);
     assert_eq!(json["relay_denied_requests"], 5);
     assert_eq!(json["relay_bytes_forwarded"], 1234);
+    assert_eq!(json["dcutr_enabled"].as_bool(), Some(true));
+    assert_eq!(json["dcutr_keep_relay_fallback"].as_bool(), Some(true));
+    assert_eq!(json["dcutr_retry_interval_secs"], 60);
+    assert_eq!(json["dcutr_max_attempts_per_peer"], 3);
     assert_eq!(json["dcutr_attempts"], 6);
     assert_eq!(json["dcutr_successes"], 2);
+    assert_eq!(json["dcutr_failures"], 1);
+    assert_eq!(json["dcutr_relay_fallbacks"], 4);
+    assert_eq!(json["dcutr_upgrade_eligible_connections"], 5);
+    assert_eq!(json["dcutr_retry_suppressed"], 1);
     assert!(json.get("relay_reservations").is_none());
     assert!(json.get("relay_circuits").is_none());
     assert!(json.get("dcutr_events").is_none());
@@ -82,8 +99,13 @@ fn prometheus_metrics_exports_operator_counters() {
         relay_active_circuits: 4,
         relay_denied_requests: 5,
         relay_bytes_forwarded: 1234,
+        dcutr_enabled: true,
         dcutr_attempts: 6,
         dcutr_successes: 2,
+        dcutr_failures: 1,
+        dcutr_relay_fallbacks: 4,
+        dcutr_upgrade_eligible_connections: 5,
+        dcutr_retry_suppressed: 1,
         gossip_messages_accepted: 10,
         gossip_messages_ignored: 11,
         gossip_messages_rejected: 12,
@@ -109,8 +131,13 @@ fn prometheus_metrics_exports_operator_counters() {
     assert!(metrics.contains("p2p_relay_active_circuits 4\n"));
     assert!(metrics.contains("p2p_relay_denied_requests 5\n"));
     assert!(metrics.contains("p2p_relay_bytes_forwarded 1234\n"));
+    assert!(metrics.contains("p2p_dcutr_enabled 1\n"));
     assert!(metrics.contains("p2p_dcutr_attempts 6\n"));
     assert!(metrics.contains("p2p_dcutr_successes 2\n"));
+    assert!(metrics.contains("p2p_dcutr_failures 1\n"));
+    assert!(metrics.contains("p2p_dcutr_relay_fallbacks 4\n"));
+    assert!(metrics.contains("p2p_dcutr_upgrade_eligible_connections 5\n"));
+    assert!(metrics.contains("p2p_dcutr_retry_suppressed 1\n"));
 }
 
 #[test]
@@ -131,8 +158,13 @@ fn relay_state_updates_snapshot_counters_without_mixing_meanings() {
         relay_discovery_candidate_count: 3,
         relay_discovery_failures: 1,
         relay_bytes_forwarded: 1234,
+        dcutr_enabled: true,
         dcutr_attempts: 10,
         dcutr_successes: 2,
+        dcutr_failures: 1,
+        dcutr_relay_fallbacks: 3,
+        dcutr_upgrade_eligible_connections: 4,
+        dcutr_retry_suppressed: 1,
         ..RelayState::default()
     };
     state.relay_client_reservations.insert(peer);
@@ -160,8 +192,13 @@ fn relay_state_updates_snapshot_counters_without_mixing_meanings() {
     assert_eq!(snap.mediator_denied_reservations, 3);
     assert_eq!(snap.mediator_denied_circuits, 5);
     assert_eq!(snap.mediator_abuse_rate_limit_events, 13);
+    assert!(snap.dcutr_enabled);
     assert_eq!(snap.dcutr_attempts, 10);
     assert_eq!(snap.dcutr_successes, 2);
+    assert_eq!(snap.dcutr_failures, 1);
+    assert_eq!(snap.dcutr_relay_fallbacks, 3);
+    assert_eq!(snap.dcutr_upgrade_eligible_connections, 4);
+    assert_eq!(snap.dcutr_retry_suppressed, 1);
 }
 
 #[tokio::test]

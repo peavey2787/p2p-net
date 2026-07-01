@@ -8,6 +8,7 @@ use libp2p::{Multiaddr, PeerId};
 
 use crate::connectivity::discovery::DiscoveryConfig;
 use crate::connectivity::dns::DnsaddrConfig;
+use crate::connectivity::dcutr::DcutrPolicy;
 use crate::connectivity::limits::ConnectionLimitsConfig;
 use crate::connectivity::mediator::MediatorConfig;
 use crate::connectivity::relay::{RelayServiceConfig, RelayServiceHealth, RelayState};
@@ -53,6 +54,9 @@ pub struct NodeConfig {
     /// Message validation, replay, and peer scoring controls for heartbeat gossip.
     #[serde(default)]
     pub message_security: MessageSecurityConfig,
+    /// Direct Connection Upgrade through Relay policy. Enabled by default with relay fallback retained.
+    #[serde(default)]
+    pub dcutr: DcutrPolicy,
     /// First-class DCUtR mediator policy. Disabled by default; when enabled it maps
     /// to the Circuit Relay v2 server capability through the central resolver.
     #[serde(default)]
@@ -79,6 +83,7 @@ impl Default for NodeConfig {
             reserve_configured_relays: true,
             connection_limits: ConnectionLimitsConfig::default(),
             message_security: MessageSecurityConfig::default(),
+            dcutr: DcutrPolicy::default(),
             mediator: MediatorConfig::default(),
             relay: RelayServiceConfig::default(),
         }
@@ -153,6 +158,7 @@ impl NodeConfig {
         self.discovery.validate()?;
         self.connection_limits.validate()?;
         self.message_security.validate()?;
+        self.dcutr.validate()?;
         self.relay.validate()?;
         self.mediator.validate(&self.relay)?;
         Ok(())
@@ -310,10 +316,19 @@ pub struct NodeSnapshot {
     pub relay_discovery_replacements: usize,
     /// Confirmed `/p2p-circuit` listen addresses for this node.
     pub relayed_listen_addresses: Vec<String>,
+    pub dcutr_enabled: bool,
+    pub dcutr_attempt_after_relay_connection: bool,
+    pub dcutr_keep_relay_fallback: bool,
+    pub dcutr_retry_interval_secs: u64,
+    pub dcutr_max_attempts_per_peer: u32,
     /// DCUtR upgrade attempts/events observed.
     pub dcutr_attempts: usize,
     /// DCUtR events that look successful by event debug output.
     pub dcutr_successes: usize,
+    pub dcutr_failures: usize,
+    pub dcutr_relay_fallbacks: usize,
+    pub dcutr_upgrade_eligible_connections: usize,
+    pub dcutr_retry_suppressed: usize,
     pub rendezvous_client_enabled: bool,
     pub rendezvous_server_enabled: bool,
     pub rendezvous_registered_with: usize,
@@ -376,8 +391,13 @@ impl NodeSnapshot {
         self.relay_server_errors = relay_state.server_errors;
         self.relay_bytes_forwarded = relay_state.relay_bytes_forwarded;
         self.relayed_listen_addresses = relay_state.relayed_listen_addrs.iter().cloned().collect();
+        self.dcutr_enabled = relay_state.dcutr_enabled;
         self.dcutr_attempts = relay_state.dcutr_attempts;
         self.dcutr_successes = relay_state.dcutr_successes;
+        self.dcutr_failures = relay_state.dcutr_failures;
+        self.dcutr_relay_fallbacks = relay_state.dcutr_relay_fallbacks;
+        self.dcutr_upgrade_eligible_connections = relay_state.dcutr_upgrade_eligible_connections;
+        self.dcutr_retry_suppressed = relay_state.dcutr_retry_suppressed;
     }
 }
 

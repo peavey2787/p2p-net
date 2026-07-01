@@ -208,8 +208,17 @@ pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
             .iter()
             .map(ToString::to_string)
             .collect(),
+        dcutr_enabled: resolved_config.dcutr_enabled,
+        dcutr_attempt_after_relay_connection: resolved_config.dcutr_attempt_after_relay_connection,
+        dcutr_keep_relay_fallback: resolved_config.dcutr_keep_relay_fallback,
+        dcutr_retry_interval_secs: resolved_config.dcutr_retry_interval_secs,
+        dcutr_max_attempts_per_peer: resolved_config.dcutr_max_attempts_per_peer,
         dcutr_attempts: 0,
         dcutr_successes: 0,
+        dcutr_failures: 0,
+        dcutr_relay_fallbacks: 0,
+        dcutr_upgrade_eligible_connections: 0,
+        dcutr_retry_suppressed: 0,
         rendezvous_client_enabled: cfg.discovery.rendezvous.client_enabled,
         rendezvous_server_enabled: cfg.discovery.rendezvous.server_enabled,
         rendezvous_registered_with: rendezvous_state.registered_with.len(),
@@ -317,6 +326,7 @@ pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
             health: cfg.relay.health_now(),
             relay_client_reservation_attempts: relay_reservation_plan.attempted,
             relay_client_reservation_failures: relay_reservation_plan.errors.len(),
+            dcutr_enabled: resolved_config.dcutr_enabled,
             relay_discovery_selected_relays: relay_selection_plan
                 .selected_strings()
                 .into_iter()
@@ -368,6 +378,7 @@ pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
                         rendezvous_state: &mut rendezvous_state,
                         connection_caps: &mut connection_caps,
                         relay_cfg: &cfg.relay,
+                        dcutr_policy: &cfg.dcutr,
                         discovery_cfg: &cfg.discovery,
                         rendezvous_peers: &rendezvous_peers_for_task,
                         message_security: &cfg.message_security,
@@ -647,8 +658,45 @@ pub fn snapshot_to_json(snapshot: &NodeSnapshot) -> Value {
         "relayed_listen_addresses",
         &snapshot.relayed_listen_addresses,
     );
+    insert(&mut map, "dcutr_enabled", snapshot.dcutr_enabled);
+    insert(
+        &mut map,
+        "dcutr_attempt_after_relay_connection",
+        snapshot.dcutr_attempt_after_relay_connection,
+    );
+    insert(
+        &mut map,
+        "dcutr_keep_relay_fallback",
+        snapshot.dcutr_keep_relay_fallback,
+    );
+    insert(
+        &mut map,
+        "dcutr_retry_interval_secs",
+        snapshot.dcutr_retry_interval_secs,
+    );
+    insert(
+        &mut map,
+        "dcutr_max_attempts_per_peer",
+        snapshot.dcutr_max_attempts_per_peer,
+    );
     insert(&mut map, "dcutr_attempts", snapshot.dcutr_attempts);
     insert(&mut map, "dcutr_successes", snapshot.dcutr_successes);
+    insert(&mut map, "dcutr_failures", snapshot.dcutr_failures);
+    insert(
+        &mut map,
+        "dcutr_relay_fallbacks",
+        snapshot.dcutr_relay_fallbacks,
+    );
+    insert(
+        &mut map,
+        "dcutr_upgrade_eligible_connections",
+        snapshot.dcutr_upgrade_eligible_connections,
+    );
+    insert(
+        &mut map,
+        "dcutr_retry_suppressed",
+        snapshot.dcutr_retry_suppressed,
+    );
     insert(
         &mut map,
         "rendezvous_client_enabled",
@@ -827,8 +875,29 @@ pub fn snapshot_to_prometheus_metrics(snapshot: &NodeSnapshot) -> String {
         snapshot.relay_discovery_replacements,
         &mut out,
     );
+    line(
+        "p2p_dcutr_enabled",
+        if snapshot.dcutr_enabled { 1 } else { 0 },
+        &mut out,
+    );
     line("p2p_dcutr_attempts", snapshot.dcutr_attempts, &mut out);
     line("p2p_dcutr_successes", snapshot.dcutr_successes, &mut out);
+    line("p2p_dcutr_failures", snapshot.dcutr_failures, &mut out);
+    line(
+        "p2p_dcutr_relay_fallbacks",
+        snapshot.dcutr_relay_fallbacks,
+        &mut out,
+    );
+    line(
+        "p2p_dcutr_upgrade_eligible_connections",
+        snapshot.dcutr_upgrade_eligible_connections,
+        &mut out,
+    );
+    line(
+        "p2p_dcutr_retry_suppressed",
+        snapshot.dcutr_retry_suppressed,
+        &mut out,
+    );
     line(
         "p2p_gossip_messages_accepted",
         snapshot.gossip_messages_accepted,

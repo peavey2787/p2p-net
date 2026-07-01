@@ -17,6 +17,7 @@ mod node;
 
 pub use common::error::NetError;
 pub use connectivity::discovery::DiscoveryConfig;
+pub use connectivity::dcutr::DcutrPolicy;
 pub use connectivity::dns::{
     DnsaddrConfig, DEFAULT_DNSADDR_DOH_ENDPOINT, DEFAULT_DNSADDR_TIMEOUT_SECS,
 };
