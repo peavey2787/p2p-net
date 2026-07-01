@@ -99,8 +99,8 @@ impl MediatorConfig {
     }
 
     /// Map mediator intent onto the existing Circuit Relay v2 service config.
-    /// This keeps the runtime DRY until Phase 6 passes resolved behaviour policy
-    /// directly into libp2p behaviour construction.
+    /// The central resolver still owns the final behaviour policy; this method
+    /// only projects mediator capacity settings onto relay-service limits.
     pub fn apply_to_relay(&self, relay: &mut RelayServiceConfig) {
         if !self.enabled {
             return;

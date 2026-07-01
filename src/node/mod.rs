@@ -64,7 +64,7 @@ pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
     cfg.validate()?;
     let local_key = identity::load_or_create_identity_key(&cfg.identity_key_path)?;
     let local_peer = PeerId::from(local_key.public());
-    let (mut swarm, transport_plan) = build_swarm(local_key, &cfg).await?;
+    let (mut swarm, transport_plan) = build_swarm(local_key, &cfg, &resolved_config).await?;
 
     let heartbeat_topic = IdentTopic::new(heartbeat_topic(cfg.network_id));
     let heartbeat_topic_hash = heartbeat_topic.hash().clone();

@@ -6,7 +6,7 @@ use libp2p::{noise, tcp, yamux, SwarmBuilder};
 
 use super::behaviour::{build_behaviour, MeshBehaviour};
 use crate::common::error::NetError;
-use crate::NodeConfig;
+use crate::{NodeConfig, ResolvedNodeConfig};
 
 #[derive(Debug, Clone)]
 pub struct TransportPlan {
@@ -16,6 +16,7 @@ pub struct TransportPlan {
 pub async fn build_swarm(
     local_key: Keypair,
     cfg: &NodeConfig,
+    resolved_cfg: &ResolvedNodeConfig,
 ) -> Result<(Swarm<MeshBehaviour>, TransportPlan), NetError> {
     let local_peer = libp2p::PeerId::from(local_key.public());
     let relay_cfg = cfg.relay.clone();
@@ -37,16 +38,28 @@ pub async fn build_swarm(
         .with_relay_client(noise::Config::new, yamux::Config::default)
         .map_err(|e| NetError::Build(e.to_string()))?;
 
-    // Only report transports/capabilities that are actually configured in this stack.
-    // Do not list WebRTC/WebTransport until they are implemented as real listeners.
-    let mut active = vec![
-        "quic",
-        "tcp",
-        "websocket",
-        "relay-client",
-        "autonat",
-        "dcutr",
-    ];
+    // Only report transports/capabilities that are actually enabled by the
+    // resolved profile policy. Do not list WebRTC/WebTransport until they are
+    // implemented as real listeners.
+    let behaviour_policy = &resolved_cfg.enabled_behaviours;
+    let mut active = vec!["quic", "tcp", "websocket"];
+    if behaviour_policy.gossipsub {
+        active.push("gossipsub");
+    }
+    if behaviour_policy.kademlia_server {
+        active.push("kademlia-server");
+    } else if behaviour_policy.kademlia_client {
+        active.push("kademlia-client");
+    }
+    if behaviour_policy.relay_client {
+        active.push("relay-client");
+    }
+    if behaviour_policy.autonat {
+        active.push("autonat");
+    }
+    if behaviour_policy.dcutr {
+        active.push("dcutr");
+    }
     #[cfg(feature = "dns")]
     active.push("dns");
     if !cfg.discovery.bootstrap_seed_peers.is_empty() {
@@ -55,21 +68,21 @@ pub async fn build_swarm(
     if !cfg.discovery.rendezvous_peers.is_empty() {
         active.push("rendezvous-peers");
     }
-    if cfg.discovery.rendezvous.client_enabled {
+    if behaviour_policy.rendezvous_client && cfg.discovery.rendezvous.client_enabled {
         active.push("rendezvous-client");
     }
-    if cfg.discovery.rendezvous.server_enabled {
+    if behaviour_policy.rendezvous_server && cfg.discovery.rendezvous.server_enabled {
         active.push("rendezvous-server");
     }
     if cfg.connection_limits.enabled {
         active.push("connection-limits");
     }
-    if cfg.reserve_configured_relays && !cfg.relay_peers.is_empty() {
+    if resolved_cfg.should_reserve_configured_relays {
         active.push("relay-reservations");
     }
-    if relay_cfg.enabled {
+    if behaviour_policy.relay_server && relay_cfg.enabled {
         active.push("relay-server");
-        if cfg.mediator.enabled {
+        if resolved_cfg.mediator_enabled {
             active.push("mediator");
         }
         active.push("relay-acl");
@@ -88,6 +101,7 @@ pub async fn build_swarm(
                 &relay_cfg,
                 &cfg.connection_limits,
                 &cfg.discovery,
+                resolved_cfg,
             )
         })
         .map_err(|e| NetError::Build(e.to_string()))?
