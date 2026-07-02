@@ -12,6 +12,11 @@ Power users and operators can still disable public fallback or replace it with p
 
 For consumer app defaults, use `fallback_only`. For private deployments, use `disabled` with owned bootstrap/rendezvous/relay peers.
 
+
+## Example config
+
+The normal public-fallback example is tracked at `examples/public-fallback.config.json`. It keeps `fallback_only` enabled, leaves manual bootstrap overrides optional, and keeps public relay entries empty unless the application operates or contracts real relay/mediator infrastructure.
+
 ## Privacy tradeoffs
 
 Public bootstrap or relay operators can observe connection attempts, source IPs, timing, and relay usage. They should not receive raw application contact tags because discovery namespaces are hashed by default, but metadata can still reveal activity patterns. Use private infrastructure when contact-graph privacy matters.
