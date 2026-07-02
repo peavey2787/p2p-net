@@ -118,7 +118,7 @@ Acceptance criteria:
 
 ## Step 5 — Extract node runtime loop responsibilities
 
-Status: pending.
+Status: implemented; pending full validation.
 
 Goal: separate event-loop mechanics from startup construction.
 
@@ -128,6 +128,12 @@ Scope:
 - Keep command routing in `crates/node/commands.rs`.
 - Keep event-specific handling in `crates/node/events.rs`.
 - Pass a small runtime context instead of many loose parameters.
+
+Implemented notes:
+
+- Added `crates/node/runtime.rs` for the long-running tokio select loop, heartbeat ticks, command dispatch, swarm-event dispatch, and runtime-only state initialization.
+- `crates/node/mod.rs` now constructs startup state and hands it to `runtime::spawn_node_runtime(...)` through `NodeRuntimeContext`.
+- Runtime-only mutable state is grouped in `RuntimeState` instead of staying as loose local variables in node startup.
 
 Acceptance criteria:
 

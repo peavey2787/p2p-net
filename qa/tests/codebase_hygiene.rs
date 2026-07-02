@@ -231,6 +231,35 @@ fn node_startup_discovery_setup_lives_in_startup_module() {
 }
 
 #[test]
+fn node_runtime_loop_lives_in_runtime_module() {
+    let root = manifest_dir();
+    let node_mod = fs::read_to_string(root.join("crates/node/mod.rs")).expect("node mod");
+    let node_runtime =
+        fs::read_to_string(root.join("crates/node/runtime.rs")).expect("node runtime");
+
+    assert!(
+        node_mod.contains("mod runtime;"),
+        "node mod must declare the focused runtime module"
+    );
+    assert!(
+        node_mod.contains("spawn_node_runtime"),
+        "node startup should hand long-running execution to the runtime module"
+    );
+    assert!(
+        !node_mod.contains("tokio::select!"),
+        "node startup must not own the long-running select loop"
+    );
+    assert!(
+        node_runtime.contains("pub(crate) struct NodeRuntimeContext"),
+        "runtime ownership should be grouped in a named context struct"
+    );
+    assert!(
+        node_runtime.contains("struct RuntimeState"),
+        "mutable loop state should be grouped instead of kept as loose startup locals"
+    );
+}
+
+#[test]
 fn cargo_test_registrations_are_unique_and_complete() {
     let root = manifest_dir();
     let cargo = fs::read_to_string(root.join("Cargo.toml")).expect("Cargo.toml");
