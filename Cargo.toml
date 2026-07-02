@@ -66,6 +66,10 @@ name = "connection_strategy"
 path = "qa/tests/discovery/connection_strategy.rs"
 
 [[test]]
+name = "consumer_public_network"
+path = "qa/tests/discovery/consumer_public_network.rs"
+
+[[test]]
 name = "dht_provider_discovery"
 path = "qa/tests/discovery/dht_provider_discovery.rs"
 

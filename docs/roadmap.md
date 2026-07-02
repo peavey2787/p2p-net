@@ -218,7 +218,7 @@ Implemented notes:
 
 ## Step 8 — Add deterministic public-network resurrection tests
 
-Status: planned.
+Status: implemented; pending full validation.
 
 Goal: add tests proving the default consumer public-network model works without requiring the CI runner to contact real public infrastructure.
 
@@ -233,3 +233,12 @@ Acceptance criteria:
 
 - CI validates the intended default UX deterministically.
 - No test depends on live public bootstrap, rendezvous, or relay servers.
+
+Implemented notes:
+
+- Added `qa/tests/discovery/consumer_public_network.rs` and registered it as the `consumer_public_network` Cargo test target.
+- Public fallback decisions are tested for bootstrap, rendezvous, and relay categories in `fallback_only`, `always`, and private disabled modes.
+- DHT-provider auto-connect planning is tested with fake direct QUIC/TCP and public-relay multiaddrs so CI does not contact public infrastructure.
+- Rendezvous-discovered peer auto-connect planning is tested with fake direct and relayed addresses while preserving `public_rendezvous` and `public_relay_discovery` source accounting.
+- Private-infrastructure-only mode is tested to disable public fallback and public auto-connect.
+- Auto-connect-not-auto-trust is covered by asserting planned/discovered peers remain unconnected peer-book entries with no contact/trust source metadata.
