@@ -29,7 +29,9 @@ fn private_nat_auto_resolves_lite_relay_reservation_policy() {
     assert!(!resolved.enabled_behaviours.relay_server);
     assert!(!resolved.enabled_behaviours.kademlia_server);
     assert!(resolved.should_reserve_configured_relays);
+    assert!(resolved.should_reserve_selected_relays);
     assert!(!resolved.should_seed_relay_peers);
+    assert!(!resolved.should_seed_selected_relays);
 
     let runtime_cfg = apply_resolved_capabilities(&cfg, &resolved);
     assert!(!runtime_cfg.relay.enabled);
@@ -51,7 +53,9 @@ fn disabled_relay_reservations_seed_relay_peers_instead() {
 
     assert_eq!(resolved.role, NodeRole::Lite);
     assert!(!resolved.should_reserve_configured_relays);
+    assert!(!resolved.should_reserve_selected_relays);
     assert!(resolved.should_seed_relay_peers);
+    assert!(resolved.should_seed_selected_relays);
 }
 
 #[test]

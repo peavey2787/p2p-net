@@ -28,7 +28,7 @@ use crate::connectivity::rendezvous::RendezvousState;
 use crate::connectivity::identity;
 use crate::platform::{DesktopPlatformRuntime, NodeStorage, PlatformRuntime};
 use crate::protocol::pulse::heartbeat_topic;
-use crate::stack::{build_swarm, refresh_rendezvous, reserve_configured_relays, seed_bootstrap};
+use crate::stack::{build_swarm, refresh_rendezvous, reserve_selected_relays, seed_bootstrap};
 
 pub use capabilities::{apply_resolved_capabilities, resolve_node_config};
 pub use environment::{
@@ -87,12 +87,12 @@ pub async fn start_node_with_platform(
 
     seed_bootstrap(&mut swarm, &startup_plan.dial_addrs);
     let selected_relay_peers = relay_selection_plan.selected_addrs.clone();
-    let relay_reservation_plan = if resolved_config.enabled_behaviours.relay_client
-        && cfg.reserve_configured_relays
+    let relay_reservation_plan = if resolved_config.should_reserve_selected_relays
+        && !selected_relay_peers.is_empty()
     {
-        reserve_configured_relays(&mut swarm, &selected_relay_peers)
+        reserve_selected_relays(&mut swarm, &selected_relay_peers)
     } else {
-        if resolved_config.enabled_behaviours.relay_client && !selected_relay_peers.is_empty() {
+        if resolved_config.should_seed_selected_relays && !selected_relay_peers.is_empty() {
             seed_bootstrap(&mut swarm, &selected_relay_peers);
         }
         Default::default()

@@ -77,7 +77,10 @@ pub async fn build_swarm(
     if cfg.connection_limits.enabled {
         active.push("connection-limits");
     }
-    if resolved_cfg.should_reserve_configured_relays {
+    if resolved_cfg.should_reserve_configured_relays
+        || (resolved_cfg.should_reserve_selected_relays
+            && cfg.discovery.public_bootstrap.has_relay_candidates())
+    {
         active.push("relay-reservations");
     }
     if behaviour_policy.relay_server && relay_cfg.enabled {

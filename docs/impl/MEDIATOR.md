@@ -88,4 +88,4 @@ Prometheus-style metrics include:
 
 Mediator intent is explicit and maps to Circuit Relay v2. Automatic relay/mediator selection is handled by relay discovery policy.
 
-Lite nodes can already prefer known mediator-capable relays by putting them in `relay_peers` and leaving `reserve_configured_relays = true`.
+Lite nodes can prefer known mediator-capable relays by putting them in `relay_peers` and leaving `reserve_configured_relays = true`. Consumer app distributions can also provide public relay/mediator candidates through `discovery.public_bootstrap.relay_peers`; those flow through the same selected-relay reservation path without being treated as trusted contacts.

@@ -43,7 +43,7 @@ All candidates must be identity-bound `/p2p/<PeerId>` multiaddrs with a reachabl
 
 Startup reserves through the selected relay set instead of only raw `relay_peers`. Automatic cached/rendezvous relay discovery is enabled for lite/mobile-lite roles; full/infrastructure nodes also enable relay discovery when explicit configured relays or public fallback relay candidates are available.
 
-When `reserve_configured_relays = true`, selected candidates are converted to `/p2p-circuit` reservation listen addresses. When reservation is disabled, selected candidates are still seeded/dialed so the node can connect to known relay infrastructure without requesting reservations.
+When `reserve_configured_relays = true`, the runtime reserves through the selected relay set, not only the raw `relay_peers` list. Selected candidates may come from operator config, cache, rendezvous, or public fallback. When reservation is disabled, selected candidates are still seeded/dialed so the node can connect to known relay infrastructure without requesting reservations.
 
 Failed peers are recorded in the peer cache through the existing outgoing-connection failure path. The `replace_failed_relays` flag is now part of policy and is reserved for the next runtime-health pass where failed reservations will trigger replacement from the remaining candidate pool.
 
