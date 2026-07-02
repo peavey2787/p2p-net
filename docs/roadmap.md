@@ -165,7 +165,7 @@ Implemented notes:
 
 ## Step 6 — Add consumer-vs-operator examples and advanced override docs
 
-Status: planned.
+Status: implemented; pending full validation.
 
 Goal: make docs match the desired product behavior.
 
@@ -180,6 +180,15 @@ Acceptance criteria:
 
 - README and operator docs no longer imply private infrastructure is the normal default.
 - Public fallback docs distinguish bootstrap, rendezvous, relay, DHT provider discovery, auto-connect, and contact trust.
+
+
+Implemented notes:
+
+- Added `docs/operator/CONSUMER_DEFAULT.md` as the normal user-facing walkthrough.
+- Added `examples/consumer-default.config.json` for consumer app mode.
+- Kept `examples/private-infrastructure-first.config.json` as the Advanced/operator private mode.
+- Updated README, operator docs, public fallback spec, implementation docs, and validation notes to make bootstrap/rendezvous/relay/DHT/auto-connect/contact-trust boundaries explicit.
+- Documented that public bootstrap alone is insufficient for guaranteed NAT-to-NAT first launch unless real public rendezvous and relay/mediator endpoints are supplied.
 
 ## Step 7 — Add runtime status for known vs discovered vs dialed vs connected
 

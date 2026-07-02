@@ -11,6 +11,8 @@ fn root() -> PathBuf {
 fn operator_guides_are_present_and_link_examples() {
     let root = root();
     let overview = fs::read_to_string(root.join("docs/operator/README.md")).expect("operator guide");
+    let consumer = fs::read_to_string(root.join("docs/operator/CONSUMER_DEFAULT.md"))
+        .expect("consumer default guide");
     let private = fs::read_to_string(root.join("docs/operator/PRIVATE_INFRASTRUCTURE_FIRST.md"))
         .expect("private infrastructure guide");
     let public = fs::read_to_string(root.join("docs/operator/PUBLIC_FALLBACK_TRADEOFFS.md"))
@@ -18,11 +20,16 @@ fn operator_guides_are_present_and_link_examples() {
     let fleet = fs::read_to_string(root.join("docs/operator/PRODUCTION_FLEET.md"))
         .expect("production fleet guide");
 
+    assert!(overview.contains("CONSUMER_DEFAULT.md"));
     assert!(overview.contains("PRIVATE_INFRASTRUCTURE_FIRST.md"));
     assert!(overview.contains("PUBLIC_FALLBACK_TRADEOFFS.md"));
     assert!(overview.contains("PRODUCTION_FLEET.md"));
+    assert!(consumer.contains("examples/consumer-default.config.json"));
+    assert!(consumer.contains("Auto-connect is not auto-trust"));
+    assert!(consumer.contains("Public bootstrap peers help a node enter the wider routing layer"));
     assert!(private.contains("examples/private-infrastructure-first.config.json"));
     assert!(private.contains("public_bootstrap.mode` is `disabled"));
+    assert!(public.contains("examples/consumer-default.config.json"));
     assert!(public.contains("examples/public-fallback.config.json"));
     assert!(public.contains("fallback_only"));
     assert!(public.contains("Public fallback is the normal app default"));
@@ -33,6 +40,20 @@ fn operator_guides_are_present_and_link_examples() {
 
 #[test]
 fn operator_example_configs_validate() {
+    let consumer = load_config("examples/consumer-default.config.json");
+    consumer.validate().expect("consumer default config validates");
+    assert_eq!(consumer.discovery.public_bootstrap.mode.as_str(), "fallback_only");
+    assert!(consumer.bootstrap_peers.is_empty());
+    assert!(consumer.relay_peers.is_empty());
+    assert!(consumer.discovery.public_bootstrap.bootstrap_seed_peers.len() >= 4);
+    assert!(consumer.discovery.public_bootstrap.auto_connect_discovered_peers);
+    assert!(consumer.discovery.rendezvous.client_enabled);
+    assert!(!consumer.discovery.rendezvous.server_enabled);
+    assert!(consumer.discovery.dht.enabled);
+    assert!(consumer.discovery.dht.discover);
+    assert_eq!(consumer.discovery.namespace.privacy.as_str(), "hashed");
+    assert!(!consumer.discovery.namespace.allow_readable_tags);
+
     let private = load_config("examples/private-infrastructure-first.config.json");
     private.validate().expect("private infra config validates");
     assert_eq!(private.discovery.public_bootstrap.mode.as_str(), "disabled");

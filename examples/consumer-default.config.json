@@ -1,0 +1,77 @@
+{
+  "profile": "auto",
+  "network_id": 7001,
+  "identity_key_path": "state/consumer-node.identity.hex",
+  "listen_addresses": [
+    "/ip4/0.0.0.0/udp/4001/quic-v1",
+    "/ip4/0.0.0.0/tcp/4001",
+    "/ip4/0.0.0.0/tcp/4002/ws"
+  ],
+  "bootstrap_peers": [],
+  "relay_peers": [],
+  "reserve_configured_relays": true,
+  "discovery": {
+    "peer_cache_path": "state/consumer-peer-cache.json",
+    "bootstrap_seed_peers": [],
+    "rendezvous_peers": [],
+    "rendezvous": {
+      "client_enabled": true,
+      "server_enabled": false,
+      "namespace": "p2p-net",
+      "register": true,
+      "discover": true,
+      "register_ttl_secs": 7200,
+      "discover_limit": 100
+    },
+    "namespace": {
+      "app_id": "hydra-msg",
+      "tags": [
+        "contacts:v1",
+        "inbox-resurrection:v1"
+      ],
+      "privacy": "hashed",
+      "allow_readable_tags": false
+    },
+    "dht": {
+      "enabled": true,
+      "announce": true,
+      "discover": true,
+      "discover_with_rendezvous_peers": true,
+      "max_namespaces_per_refresh": 16
+    },
+    "relay_discovery": {
+      "enabled": true,
+      "use_configured_relays": true,
+      "use_cached_relays": true,
+      "use_rendezvous_relays": true,
+      "min_reservations": 1,
+      "max_reservations": 3,
+      "prefer_configured_relays": true,
+      "replace_failed_relays": true
+    },
+    "public_bootstrap": {
+      "mode": "fallback_only",
+      "bootstrap_seed_peers": [
+        "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
+        "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa",
+        "/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb",
+        "/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt"
+      ],
+      "rendezvous_peers": [],
+      "relay_peers": [],
+      "auto_connect_discovered_peers": true
+    }
+  },
+  "dnsaddr": {
+    "enabled": true,
+    "doh_endpoint": "https://cloudflare-dns.com/dns-query",
+    "timeout_secs": 5
+  },
+  "dcutr": {
+    "enabled": true,
+    "attempt_after_relay_connection": true,
+    "keep_relay_fallback": true,
+    "retry_interval_secs": 60,
+    "max_attempts_per_peer": 3
+  }
+}

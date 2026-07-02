@@ -110,7 +110,7 @@ The test is registered in `Cargo.toml`, so `qa/ci/run-full-validation.ps1` and `
 
 ## Operator docs and examples checks
 
-`qa/tests/operator/operator_docs.rs` verifies that operator deployment guides exist, private-infrastructure-first and public-fallback example configs parse as `NodeConfig`, and the examples preserve the expected public-fallback defaults and private-mode override.
+`qa/tests/operator/operator_docs.rs` verifies that operator deployment guides exist, consumer-default, private-infrastructure-first, and public-fallback example configs parse as `NodeConfig`, and the examples preserve the expected public-fallback defaults and private-mode override.
 
 ## Manual audit and deny commands
 
