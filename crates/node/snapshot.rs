@@ -10,7 +10,12 @@ pub struct NodeSnapshot {
     pub network_label: String,
     pub peer_id: String,
     pub nat_status: String,
+    /// Confirmed public direct or relayed address. Local/private listen addresses are not stored here.
     pub public_addr: Option<String>,
+    /// Public direct listen addresses learned from the swarm.
+    pub public_direct_listen_addresses: Vec<String>,
+    /// Local/private listen addresses learned from the swarm. Useful for diagnostics but not public reachability.
+    pub local_listen_addresses: Vec<String>,
     pub environment_platform: String,
     pub environment_reachability: String,
     pub environment_nat_status: String,
@@ -197,6 +202,9 @@ impl NodeSnapshot {
         self.relay_server_errors = relay_state.server_errors;
         self.relay_bytes_forwarded = relay_state.relay_bytes_forwarded;
         self.relayed_listen_addresses = relay_state.relayed_listen_addrs.iter().cloned().collect();
+        if self.public_addr.is_none() {
+            self.public_addr = self.relayed_listen_addresses.first().cloned();
+        }
         self.dcutr_enabled = relay_state.dcutr_enabled;
         self.dcutr_attempts = relay_state.dcutr_attempts;
         self.dcutr_successes = relay_state.dcutr_successes;

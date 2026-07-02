@@ -385,8 +385,7 @@ fn on_identify_event(
     peer_book: &mut PeerBook,
 ) {
     match event {
-        identify::Event::Received { peer_id, info, .. }
-        | identify::Event::Pushed { peer_id, info, .. } => {
+        identify::Event::Received { peer_id, info, .. } => {
             for addr in &info.listen_addrs {
                 add_peer_address_to_discovery(swarm, peer_id.to_owned(), addr.clone());
                 peer_cache::record_seen_peer_addr_with_storage(

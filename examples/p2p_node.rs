@@ -66,11 +66,33 @@ async fn run_ui(
     Ok(())
 }
 
+
+fn public_addr_display(snap: &NodeSnapshot) -> String {
+    if let Some(addr) = &snap.public_addr {
+        return addr.clone();
+    }
+    if !snap.relay_discovery_selected_relays.is_empty() {
+        return "none yet; relay fallback selected".to_string();
+    }
+    if snap.public_relay_candidate_count > 0 {
+        return "none yet; public relay candidates available".to_string();
+    }
+    "none yet; no public direct/relayed addr".to_string()
+}
+
+fn local_listen_display(snap: &NodeSnapshot) -> String {
+    if snap.local_listen_addresses.is_empty() {
+        "-".to_string()
+    } else {
+        snap.local_listen_addresses.join(", ")
+    }
+}
+
 fn draw_dashboard(frame: &mut ratatui::Frame<'_>, snap: &NodeSnapshot) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(5),
+            Constraint::Length(7),
             Constraint::Length(4),
             Constraint::Length(8),
             Constraint::Min(6),
@@ -78,11 +100,12 @@ fn draw_dashboard(frame: &mut ratatui::Frame<'_>, snap: &NodeSnapshot) {
         .split(frame.area());
 
     let status = Paragraph::new(format!(
-        "Network: {}\nPeerID: {}\nNAT/Public: {} / {}\nPlatform: {} runtime={} storage={}",
+        "Network: {}\nPeerID: {}\nNAT/Public: {} / {}\nLocal Listen: {}\nPlatform: {} runtime={} storage={}",
         snap.network_label,
         snap.peer_id,
         snap.nat_status,
-        snap.public_addr.clone().unwrap_or_else(|| "-".to_string()),
+        public_addr_display(snap),
+        local_listen_display(snap),
         snap.environment_platform,
         snap.platform_runtime,
         snap.platform_storage

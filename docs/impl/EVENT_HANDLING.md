@@ -7,8 +7,9 @@ The top-level dispatcher remains `crates/node/events.rs`; it should only route
 ## Modules
 
 - `crates/node/events/connection.rs` handles connection lifecycle, listener errors,
-  AutoNAT snapshot updates, relayed listen addresses, connection caps, and
-  refresh-on-listen rendezvous startup actions.
+  AutoNAT snapshot updates, local/public listen-address classification, relayed
+  listen addresses, connection caps, and refresh-on-listen rendezvous startup
+  actions.
 - `crates/node/events/relay_client.rs` handles relay-client reservation and circuit
   events.
 - `crates/node/events/relay_server.rs` handles relay-server/mediator events,

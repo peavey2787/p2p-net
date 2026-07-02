@@ -1,13 +1,43 @@
-use libp2p::autonat;
 use libp2p::swarm::ConnectionId;
-use libp2p::{Multiaddr, PeerId, Swarm};
+use libp2p::{autonat, identify, Multiaddr, PeerId, Swarm};
 
+use crate::connectivity::addr::{is_local_direct_addr, is_public_direct_addr};
 use crate::connectivity::peer_cache;
 use crate::connectivity::relay::{is_p2p_circuit_addr, update_nat_state, RelayServiceHealth};
 use crate::stack::{refresh_rendezvous, MeshBehaviour};
 
 use super::super::push_pulse;
 use super::{sync_peer_connectivity_snapshot, SwarmEventContext};
+
+pub(crate) async fn handle_identify_observed_addr(
+    swarm: &mut Swarm<MeshBehaviour>,
+    ev: &identify::Event,
+    ctx: &mut SwarmEventContext<'_>,
+) {
+    let observed_addr = match ev {
+        identify::Event::Received { info, .. } => &info.observed_addr,
+        _ => return,
+    };
+
+    let classification = classify_listen_addr(observed_addr);
+    if classification.advertise_as_external() {
+        swarm.add_external_address(observed_addr.clone());
+    }
+
+    let mut guard = ctx.snapshot.lock().await;
+    record_listen_addr_snapshot(&mut guard, observed_addr, classification);
+    match classification {
+        ListenAddrClass::PublicDirect => push_pulse(
+            &mut guard.pulses,
+            format!("identify observed public direct addr {observed_addr}"),
+        ),
+        ListenAddrClass::Relayed => push_pulse(
+            &mut guard.pulses,
+            format!("identify observed relayed addr {observed_addr}"),
+        ),
+        ListenAddrClass::LocalOnly => {}
+    }
+}
 
 pub(crate) async fn handle_connection_established(
     peer_id: PeerId,
@@ -195,11 +225,11 @@ pub(crate) async fn handle_new_listen_addr(
     swarm: &mut Swarm<MeshBehaviour>,
     ctx: &mut SwarmEventContext<'_>,
 ) {
-    let is_relayed = is_p2p_circuit_addr(&address);
-    if is_advertisable_listen_addr(&address) {
+    let classification = classify_listen_addr(&address);
+    if classification.advertise_as_external() {
         swarm.add_external_address(address.clone());
     }
-    if is_relayed {
+    if classification.is_relayed() {
         ctx.relay_state
             .relayed_listen_addrs
             .insert(address.to_string());
@@ -214,7 +244,7 @@ pub(crate) async fn handle_new_listen_addr(
     );
 
     let mut guard = ctx.snapshot.lock().await;
-    guard.public_addr = Some(address.to_string());
+    record_listen_addr_snapshot(&mut guard, &address, classification);
     guard.rendezvous_register_attempts = ctx.rendezvous_state.register_attempts;
     guard.rendezvous_register_failures = ctx.rendezvous_state.register_failures;
     guard.rendezvous_discover_attempts = ctx.rendezvous_state.discover_attempts;
@@ -234,17 +264,19 @@ pub(crate) async fn handle_new_listen_addr(
             ),
         );
     }
-    if is_relayed {
-        guard.relayed_listen_addresses = ctx
-            .relay_state
-            .relayed_listen_addrs
-            .iter()
-            .cloned()
-            .collect();
-        push_pulse(
+    match classification {
+        ListenAddrClass::PublicDirect => push_pulse(
+            &mut guard.pulses,
+            format!("public direct listen addr confirmed {address}"),
+        ),
+        ListenAddrClass::Relayed => push_pulse(
             &mut guard.pulses,
             format!("relay_client relayed listen addr confirmed {address}"),
-        );
+        ),
+        ListenAddrClass::LocalOnly => push_pulse(
+            &mut guard.pulses,
+            format!("local/private listen addr {address}; not advertised as public reachability"),
+        ),
     }
 }
 
@@ -253,25 +285,23 @@ pub(crate) async fn handle_expired_listen_addr(
     swarm: &mut Swarm<MeshBehaviour>,
     ctx: &mut SwarmEventContext<'_>,
 ) {
-    if !is_p2p_circuit_addr(&address) {
-        return;
+    let classification = classify_listen_addr(&address);
+    if classification.advertise_as_external() {
+        swarm.remove_external_address(&address);
     }
-
-    swarm.remove_external_address(&address);
-    ctx.relay_state
-        .relayed_listen_addrs
-        .remove(&address.to_string());
+    if classification.is_relayed() {
+        ctx.relay_state
+            .relayed_listen_addrs
+            .remove(&address.to_string());
+    }
     let mut guard = ctx.snapshot.lock().await;
-    guard.relayed_listen_addresses = ctx
-        .relay_state
-        .relayed_listen_addrs
-        .iter()
-        .cloned()
-        .collect();
-    push_pulse(
-        &mut guard.pulses,
-        format!("relay_client relayed listen addr expired {address}"),
-    );
+    remove_listen_addr_snapshot(&mut guard, &address, classification);
+    if classification.is_relayed() {
+        push_pulse(
+            &mut guard.pulses,
+            format!("relay_client relayed listen addr expired {address}"),
+        );
+    }
 }
 
 pub(crate) async fn handle_listener_error(
@@ -290,28 +320,126 @@ pub(crate) async fn handle_autonat_event(
     ctx: &mut SwarmEventContext<'_>,
 ) {
     update_nat_state(ctx.relay_state, &ev);
+    let debug = format!("{ev:?}");
+    let status = autonat_status_label(&debug);
+    let relay_fallback_available = ctx.relay_state.relay_client_reservation_attempts > 0
+        || !ctx.relay_state.relay_discovery_selected_relays.is_empty();
     let mut guard = ctx.snapshot.lock().await;
-    guard.nat_status = format!("{ev:?}");
+    guard.nat_status = status;
+    if debug.contains("NoAddresses") && relay_fallback_available {
+        push_pulse(
+            &mut guard.pulses,
+            "autonat has no public direct address yet; continuing with relay fallback".to_string(),
+        );
+    }
 }
 
-fn is_advertisable_listen_addr(addr: &Multiaddr) -> bool {
-    let mut has_ip = false;
-    for protocol in addr.iter() {
-        match protocol {
-            libp2p::multiaddr::Protocol::Ip4(ip) => {
-                has_ip = true;
-                if ip.is_unspecified() {
-                    return false;
-                }
-            }
-            libp2p::multiaddr::Protocol::Ip6(ip) => {
-                has_ip = true;
-                if ip.is_unspecified() {
-                    return false;
-                }
-            }
-            _ => {}
-        }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ListenAddrClass {
+    PublicDirect,
+    Relayed,
+    LocalOnly,
+}
+
+impl ListenAddrClass {
+    fn advertise_as_external(self) -> bool {
+        matches!(self, Self::PublicDirect | Self::Relayed)
     }
-    has_ip || is_p2p_circuit_addr(addr)
+
+    fn is_relayed(self) -> bool {
+        matches!(self, Self::Relayed)
+    }
+}
+
+fn classify_listen_addr(addr: &Multiaddr) -> ListenAddrClass {
+    if is_p2p_circuit_addr(addr) {
+        ListenAddrClass::Relayed
+    } else if is_public_direct_addr(addr) {
+        ListenAddrClass::PublicDirect
+    } else {
+        ListenAddrClass::LocalOnly
+    }
+}
+
+fn record_listen_addr_snapshot(
+    snapshot: &mut super::super::snapshot::NodeSnapshot,
+    addr: &Multiaddr,
+    classification: ListenAddrClass,
+) {
+    let addr_string = addr.to_string();
+    match classification {
+        ListenAddrClass::PublicDirect => {
+            push_unique(
+                &mut snapshot.public_direct_listen_addresses,
+                addr_string.clone(),
+            );
+            snapshot.public_addr = Some(addr_string);
+        }
+        ListenAddrClass::Relayed => {
+            push_unique(&mut snapshot.relayed_listen_addresses, addr_string.clone());
+            snapshot.public_addr = Some(addr_string);
+        }
+        ListenAddrClass::LocalOnly if is_local_direct_addr(addr) => {
+            push_unique(&mut snapshot.local_listen_addresses, addr_string);
+        }
+        ListenAddrClass::LocalOnly => {}
+    }
+}
+
+fn remove_listen_addr_snapshot(
+    snapshot: &mut super::super::snapshot::NodeSnapshot,
+    addr: &Multiaddr,
+    classification: ListenAddrClass,
+) {
+    let addr = addr.to_string();
+    match classification {
+        ListenAddrClass::PublicDirect => snapshot
+            .public_direct_listen_addresses
+            .retain(|v| v != &addr),
+        ListenAddrClass::Relayed => snapshot.relayed_listen_addresses.retain(|v| v != &addr),
+        ListenAddrClass::LocalOnly => snapshot.local_listen_addresses.retain(|v| v != &addr),
+    }
+    snapshot.public_addr = snapshot
+        .relayed_listen_addresses
+        .first()
+        .cloned()
+        .or_else(|| snapshot.public_direct_listen_addresses.first().cloned());
+}
+
+fn push_unique(values: &mut Vec<String>, value: String) {
+    if !values.contains(&value) {
+        values.push(value);
+    }
+}
+
+fn autonat_status_label(debug: &str) -> String {
+    if debug.contains("NoAddresses") {
+        "unknown_no_public_direct_addr_yet".to_string()
+    } else if debug.contains("NoServer") {
+        "unknown_waiting_for_autonat_server".to_string()
+    } else {
+        debug.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn private_listen_addresses_are_not_public_addresses() {
+        let docker: Multiaddr = "/ip4/172.17.0.1/udp/4001/quic-v1".parse().unwrap();
+        let public: Multiaddr = "/ip4/8.8.8.8/udp/4001/quic-v1".parse().unwrap();
+
+        assert_eq!(classify_listen_addr(&docker), ListenAddrClass::LocalOnly);
+        assert_eq!(classify_listen_addr(&public), ListenAddrClass::PublicDirect);
+    }
+
+    #[test]
+    fn autonat_no_addresses_is_labeled_as_pending_public_direct_addr() {
+        assert_eq!(
+            autonat_status_label("OutboundProbe(Error { error: NoAddresses })"),
+            "unknown_no_public_direct_addr_yet"
+        );
+    }
 }

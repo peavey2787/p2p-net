@@ -242,3 +242,34 @@ Implemented notes:
 - Rendezvous-discovered peer auto-connect planning is tested with fake direct and relayed addresses while preserving `public_rendezvous` and `public_relay_discovery` source accounting.
 - Private-infrastructure-only mode is tested to disable public fallback and public auto-connect.
 - Auto-connect-not-auto-trust is covered by asserting planned/discovered peers remain unconnected peer-book entries with no contact/trust source metadata.
+
+## Step 9 — Separate local listen addresses from public reachability
+
+Status: implemented; pending full validation.
+
+Goal: make AutoNAT `NoAddresses` non-blocking for first-launch public fallback and stop showing local/private listen addresses as public reachability.
+
+Scope:
+
+- Classify listen addresses as public-direct, relayed, or local-only.
+- Do not add private, loopback, link-local, CGNAT, documentation, multicast, or unspecified IP listen addresses as external/public addresses.
+- Keep confirmed `/p2p-circuit` relayed listen addresses as public fallback reachability.
+- Label AutoNAT `NoAddresses` as “no public direct address yet” instead of displaying a scary raw error as the primary NAT status.
+- Preserve relay fallback and DCUtR behavior when direct public address probing cannot run.
+- Update dashboard text so local/private listen addresses are visible for diagnostics but never confused with `NAT/Public` reachability.
+
+Acceptance criteria:
+
+- `/ip4/172.17.0.1/...`, `/ip4/127.0.0.1/...`, and CGNAT/private ranges are not displayed as `public_addr`.
+- Relayed `/p2p-circuit` listen addresses still become public fallback reachability.
+- AutoNAT `NoAddresses` does not imply relay fallback is blocked.
+- The dashboard distinguishes `NAT/Public` from `Local Listen`.
+- Auto-connect still does not auto-trust contacts.
+
+Implemented notes:
+
+- Added shared multiaddr public/local classification helpers in `crates/connectivity/addr.rs`.
+- Updated connection listen-address handling so only public-direct or relayed addresses are advertised externally.
+- Added snapshot fields for `public_direct_listen_addresses` and `local_listen_addresses`.
+- Updated the example dashboard to show local listen addresses separately from public reachability.
+- AutoNAT `NoAddresses` now displays as `unknown_no_public_direct_addr_yet`; relay fallback remains eligible when relay candidates/reservations exist.
