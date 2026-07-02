@@ -17,6 +17,7 @@ use libp2p::Multiaddr;
 use super::config_validation::{parse_multiaddrs, validate_node_config};
 use super::environment::{EnvironmentConfig, EnvironmentReport};
 use super::profile::{NodeProfile, ResolvedNodeConfig};
+use super::public_ip::PublicIpProbeConfig;
 
 /// Swarm + heartbeat configuration for a standalone P2P network instance.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -40,6 +41,9 @@ pub struct NodeConfig {
     /// Discovery, peer-cache, bootstrap seed, and rendezvous controls.
     #[serde(default)]
     pub discovery: DiscoveryConfig,
+    /// Optional HTTPS public-IP probe used to advertise concrete external addresses.
+    #[serde(default)]
+    pub public_ip_probe: PublicIpProbeConfig,
     /// `/dnsaddr` TXT lookup policy. Defaults to bounded DoH and can be pointed
     /// at an internal/self-hosted DoH resolver for production deployments.
     #[serde(default)]
@@ -79,6 +83,7 @@ impl Default for NodeConfig {
             listen_addresses: default_listen_addresses(),
             bootstrap_peers: Vec::new(),
             discovery: DiscoveryConfig::default(),
+            public_ip_probe: PublicIpProbeConfig::default(),
             dnsaddr: DnsaddrConfig::default(),
             relay_peers: Vec::new(),
             reserve_configured_relays: true,

@@ -10,6 +10,7 @@ mod events;
 mod handle;
 mod metrics;
 mod profile;
+mod public_ip;
 mod runtime;
 mod startup;
 mod snapshot;
@@ -37,6 +38,7 @@ pub use environment::{
 pub use config::NodeConfig;
 pub use handle::NodeHandle;
 pub use metrics::snapshot_to_prometheus_metrics;
+pub use public_ip::PublicIpProbeConfig;
 pub use profile::{BehaviourSet, NodeProfile, NodeRole, ResolvedNodeConfig};
 pub use snapshot::NodeSnapshot;
 
@@ -122,6 +124,9 @@ pub async fn start_node_with_platform(
     if public_relay_decision.used {
         active_transports.push("public-relay-fallback".to_string());
     }
+    if cfg.public_ip_probe.enabled {
+        active_transports.push("public-ip-probe".to_string());
+    }
 
     let mut rendezvous_state = RendezvousState::default();
     let rendezvous_plan = refresh_rendezvous(
@@ -199,6 +204,12 @@ pub async fn start_node_with_platform(
         public_rendezvous_candidate_count,
         public_relay_candidate_count: public_relay_candidate_count
             .max(relay_selection_plan.public_candidates),
+        public_ip_probe_enabled: cfg.public_ip_probe.enabled,
+        public_ip_probe_status: if cfg.public_ip_probe.enabled {
+            "pending".to_string()
+        } else {
+            "disabled".to_string()
+        },
         peer_book_known_peers: peer_book.len(),
         peer_book_discovered_peers: peer_book.discovered_count(),
         auto_connect_enabled: cfg.discovery.public_bootstrap.auto_connect_discovered_peers,

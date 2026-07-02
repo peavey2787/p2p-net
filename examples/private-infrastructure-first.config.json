@@ -72,5 +72,11 @@
     "keep_relay_fallback": true,
     "retry_interval_secs": 60,
     "max_attempts_per_peer": 3
+  },
+  "public_ip_probe": {
+    "enabled": false,
+    "endpoints": [],
+    "timeout_secs": 2,
+    "advertise_listen_addresses": false
   }
 }

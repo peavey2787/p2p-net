@@ -145,5 +145,15 @@
       "enabled": false,
       "windows": []
     }
+  },
+  "public_ip_probe": {
+    "enabled": true,
+    "endpoints": [
+      "https://api.ipify.org",
+      "https://checkip.amazonaws.com",
+      "https://ifconfig.me/ip"
+    ],
+    "timeout_secs": 2,
+    "advertise_listen_addresses": true
   }
 }

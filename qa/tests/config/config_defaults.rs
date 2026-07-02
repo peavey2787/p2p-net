@@ -24,6 +24,8 @@ fn public_fallback_is_enabled_by_default_for_normal_app_mode() {
     );
     assert!(cfg.discovery.public_bootstrap.relay_peers.is_empty());
     assert!(cfg.discovery.public_bootstrap.auto_connect_discovered_peers);
+    assert!(cfg.public_ip_probe.enabled);
+    assert!(cfg.public_ip_probe.advertise_listen_addresses);
     assert!(cfg.discovery.rendezvous.client_enabled);
     assert!(!cfg.discovery.rendezvous.server_enabled);
     assert!(cfg.discovery.dht.discover_with_rendezvous_peers);

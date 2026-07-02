@@ -10,11 +10,8 @@ pub struct NodeSnapshot {
     pub network_label: String,
     pub peer_id: String,
     pub nat_status: String,
-    /// Confirmed public direct or relayed address. Local/private listen addresses are not stored here.
     pub public_addr: Option<String>,
-    /// Public direct listen addresses learned from the swarm.
     pub public_direct_listen_addresses: Vec<String>,
-    /// Local/private listen addresses learned from the swarm. Useful for diagnostics but not public reachability.
     pub local_listen_addresses: Vec<String>,
     pub environment_platform: String,
     pub environment_reachability: String,
@@ -55,6 +52,10 @@ pub struct NodeSnapshot {
     pub public_bootstrap_seed_count: usize,
     pub public_rendezvous_candidate_count: usize,
     pub public_relay_candidate_count: usize,
+    pub public_ip_probe_enabled: bool,
+    pub public_ip_probe_status: String,
+    pub public_ip_probe_addr: Option<String>,
+    pub public_ip_probe_external_addresses: Vec<String>,
     pub connected_peers: usize,
     pub peer_book_known_peers: usize,
     pub peer_book_discovered_peers: usize,
@@ -158,6 +159,19 @@ pub struct NodeSnapshot {
 }
 
 impl NodeSnapshot {
+    pub(crate) fn record_public_external_addr(&mut self, addr: impl Into<String>) {
+        let addr = addr.into();
+        if !self.public_direct_listen_addresses.contains(&addr) {
+            self.public_direct_listen_addresses.push(addr.clone());
+        }
+        if !self.public_ip_probe_external_addresses.contains(&addr) {
+            self.public_ip_probe_external_addresses.push(addr.clone());
+        }
+        if self.public_addr.is_none() {
+            self.public_addr = Some(addr);
+        }
+    }
+
     /// Apply relay/DCUtR counters from the authoritative event-loop relay state.
     pub fn apply_relay_state(&mut self, relay_state: &RelayState) {
         self.relay_server_enabled = relay_state.server_enabled;
