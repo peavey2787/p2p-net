@@ -181,6 +181,11 @@ pub(crate) async fn handle_swarm_event(
             )
             .await;
         }
+        SwarmEvent::Behaviour(MeshEvent::Identify(ev)) => {
+            connection::handle_identify_observed_addr(swarm, &ev, ctx).await;
+            let event = MeshEvent::Identify(ev);
+            on_mesh_event(swarm, &event, ctx.discovery_cfg, ctx.storage, ctx.peer_book);
+        }
         SwarmEvent::Behaviour(ev) => {
             on_mesh_event(swarm, &ev, ctx.discovery_cfg, ctx.storage, ctx.peer_book);
         }

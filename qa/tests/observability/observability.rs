@@ -300,6 +300,10 @@ fn dashboard_distinguishes_discovered_pending_and_connected_peers() {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/p2p_node.rs"),
     )
     .expect("dashboard example");
+    assert!(dashboard.contains("NAT/Public: {} / {}"));
+    assert!(dashboard.contains("Local Listen: {}"));
+    assert!(dashboard.contains("public_addr_display(snap)"));
+    assert!(dashboard.contains("local_listen_display(snap)"));
     assert!(dashboard.contains("Connected Peers: {} | PeerBook: known {} discovered {}"));
     assert!(dashboard.contains("Auto-Connect: enabled={}"));
     assert!(dashboard.contains("dial_attempts={}"));
