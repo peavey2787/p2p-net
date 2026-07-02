@@ -224,7 +224,7 @@ Acceptance criteria:
 
 ## Step 9 — Final hygiene audit
 
-Status: pending.
+Status: implemented; pending full validation.
 
 Goal: confirm the repository satisfies the guidelines after refactors.
 
@@ -234,6 +234,26 @@ Scope:
 - Check longest files and line counts again.
 - Search for duplicate helpers, dead compatibility shims, old phase language, stale docs, and unused modules.
 - Remove or reorganize anything that became temporary during the cleanup steps.
+
+Implemented notes:
+
+- Added `docs/project/FINAL_HYGIENE_AUDIT.md` with the final guideline audit result, current longest-file report, former hotspot status, and validation limitation.
+- Added `qa/tests/hygiene/final_hygiene_audit.rs` to lock in the final cleanup invariants.
+- Registered the final hygiene audit test in `Cargo.toml`.
+- Confirmed the original duplicate helper implementations remain centralized.
+- Confirmed `qa/tests/` remains domain-grouped and root-level integration test files did not return.
+
+Final line-count snapshot:
+
+```text
+Cargo.lock — 4,110 lines
+crates/connectivity/dns.rs — 471 lines
+qa/tests/hygiene/codebase_hygiene.rs — 464 lines
+crates/node/mod.rs — 421 lines
+crates/stack/discovery.rs — 417 lines
+crates/bindings/mod.rs — 415 lines
+crates/connectivity/relay.rs — 13 lines
+```
 
 Acceptance criteria:
 
