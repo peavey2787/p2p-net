@@ -162,7 +162,9 @@ pub struct ResolvedNodeConfig {
     pub enabled_behaviours: BehaviourSet,
     pub reserve_configured_relays: bool,
     pub should_reserve_configured_relays: bool,
+    pub should_reserve_selected_relays: bool,
     pub should_seed_relay_peers: bool,
+    pub should_seed_selected_relays: bool,
     pub should_listen: bool,
     pub listen_addresses: Vec<String>,
     pub relay_peers: Vec<String>,
@@ -214,12 +216,17 @@ impl ResolvedNodeConfig {
         let mut enabled_behaviours = BehaviourSet::for_role(role, &effective);
         enabled_behaviours.dcutr = effective.dcutr.enabled && enabled_behaviours.relay_client;
         let has_relay_peers = !effective.relay_peers.is_empty();
-        let has_public_relay_candidates = effective.discovery.public_bootstrap.has_relay_candidates();
+        let has_public_relay_candidates = effective
+            .discovery
+            .public_bootstrap
+            .has_relay_candidates();
         let lite_role = matches!(role, NodeRole::Lite | NodeRole::MobileLite);
         let mobile_lite = matches!(role, NodeRole::MobileLite);
+        let has_relay_selection_source =
+            lite_role || has_relay_peers || has_public_relay_candidates;
         let relay_discovery_enabled = effective.discovery.relay_discovery.enabled
             && enabled_behaviours.relay_client
-            && (lite_role || has_relay_peers || has_public_relay_candidates);
+            && has_relay_selection_source;
 
         Self {
             profile,
@@ -233,8 +240,14 @@ impl ResolvedNodeConfig {
             should_reserve_configured_relays: effective.reserve_configured_relays
                 && has_relay_peers
                 && enabled_behaviours.relay_client,
+            should_reserve_selected_relays: effective.reserve_configured_relays
+                && has_relay_selection_source
+                && enabled_behaviours.relay_client,
             should_seed_relay_peers: !effective.reserve_configured_relays
                 && has_relay_peers
+                && enabled_behaviours.relay_client,
+            should_seed_selected_relays: !effective.reserve_configured_relays
+                && has_relay_selection_source
                 && enabled_behaviours.relay_client,
             should_listen: !effective.listen_addresses.is_empty() && !mobile_lite,
             listen_addresses: effective.listen_addresses,

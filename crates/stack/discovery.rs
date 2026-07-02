@@ -84,9 +84,10 @@ pub fn seed_bootstrap(swarm: &mut Swarm<MeshBehaviour>, addrs: &[Multiaddr]) {
     let _ = swarm.behaviour_mut().kademlia.bootstrap();
 }
 
-/// Dial configured relay peers and request a Circuit Relay v2 reservation by
-/// listening on each relay's `/p2p-circuit` address.
-pub fn reserve_configured_relays(
+/// Dial selected relay peers and request a Circuit Relay v2 reservation by
+/// listening on each relay's `/p2p-circuit` address. Selected relays may come
+/// from operator config, cache/rendezvous discovery, or public fallback.
+pub fn reserve_selected_relays(
     swarm: &mut Swarm<MeshBehaviour>,
     relay_addrs: &[Multiaddr],
 ) -> RelayReservationPlan {

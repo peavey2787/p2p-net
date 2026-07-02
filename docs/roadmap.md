@@ -138,7 +138,7 @@ Implemented notes:
 
 ## Step 5 — Complete public relay fallback for NAT-to-NAT first launch
 
-Status: planned.
+Status: implemented; pending full validation.
 
 Goal: make public relay candidates usable by default app distributions that provide real relay/mediator endpoints.
 
@@ -154,6 +154,14 @@ Acceptance criteria:
 - When real public relays are configured, NATed nodes can reserve and connect through relay fallback.
 - `Relay Discovery` status shows selected public relay candidates.
 - DCUtR attempts are visible in the snapshot/pulse stream.
+
+Implemented notes:
+
+- Public fallback relay candidates flow through the same deterministic relay selector as configured, cached, and rendezvous candidates.
+- Startup now reserves **selected** relays instead of treating the reservation path as configured-relays-only. Selected relays may come from operator config, cache, rendezvous, or public fallback.
+- `ResolvedNodeConfig` now exposes `should_reserve_selected_relays` and `should_seed_selected_relays` so profile policy can cover public fallback relay candidates without overloading the older configured-relay fields.
+- App distributions can provide real public relay/mediator DNSADDR entries in `discovery.public_bootstrap.relay_peers`; this shared repo still ships no fake public relay fleet.
+- DCUtR remains enabled whenever relay-client capability is enabled, so relayed connectivity can later attempt direct upgrade while keeping relay fallback.
 
 ## Step 6 — Add consumer-vs-operator examples and advanced override docs
 

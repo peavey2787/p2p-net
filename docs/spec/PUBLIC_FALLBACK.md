@@ -103,6 +103,8 @@ Relay selection order is:
 3. rendezvous relay candidates
 4. `discovery.public_bootstrap.relay_peers` when policy allows it
 
+When relay reservations are enabled, the runtime reserves through the selected relay set rather than only `relay_peers`, so real public relay/mediator candidates configured by an app distribution can provide NAT-to-NAT first-launch fallback. DCUtR remains enabled with relay-client capability so relayed connections can attempt direct upgrade while keeping relay fallback.
+
 ## Runtime safety
 
 Built-in public fallback is best-effort. Invalid public multiaddrs still fail config validation, but DNS outages or unavailable public fallback peers should not prevent the app from starting. Observability fields show whether public fallback actually participated.
