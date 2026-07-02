@@ -2,7 +2,7 @@
 
 Public fallback is the normal app default. It is meant to give regular users a no-config startup path: run the app, use the built-in public bootstrap list plus any app-distribution public rendezvous/relay entries, discover peers, and then let peer cache, DHT provider discovery, rendezvous, relay policy, and network-layer auto-connect maintain connectivity.
 
-Power users and operators can still disable public fallback or replace it with private infrastructure.
+Power users and operators can still disable public fallback or replace it with private infrastructure. See `CONSUMER_DEFAULT.md` for the normal app walkthrough and `PRIVATE_INFRASTRUCTURE_FIRST.md` for the Advanced/operator override.
 
 ## Policy modes
 
@@ -15,7 +15,14 @@ For consumer app defaults, use `fallback_only`. For private deployments, use `di
 
 ## Example config
 
-The normal public-fallback example is tracked at `examples/public-fallback.config.json`. It keeps `fallback_only` enabled, leaves manual bootstrap overrides optional, enables network-layer auto-connect for discovered peers, and keeps public rendezvous/relay entries empty unless the application operates or contracts real infrastructure.
+The consumer-facing example is tracked at `examples/consumer-default.config.json`. The expanded public-fallback operator example is tracked at `examples/public-fallback.config.json`. Both keep `fallback_only` enabled, leave manual bootstrap overrides optional, enable network-layer auto-connect for discovered peers, and keep public rendezvous/relay entries empty unless the application operates or contracts real infrastructure.
+
+
+## Bootstrap, rendezvous, relay, and trust are separate
+
+Public bootstrap gives a node a first route into the wider libp2p/Kademlia layer. It is not enough by itself to guarantee two fresh NATed app installs can connect. Reliable consumer startup needs app rendezvous or DHT provider discovery for finding app peers, and relay/mediator candidates for NAT-to-NAT paths.
+
+`auto_connect_discovered_peers` only creates bounded network-layer dial attempts. It must not add trusted contacts. Contact trust still belongs to the application layer through QR codes, join codes, invite acceptance, safety-number verification, or an equivalent explicit user action.
 
 ## Privacy tradeoffs
 

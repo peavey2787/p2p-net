@@ -1,6 +1,6 @@
 # Public bootstrap, rendezvous, and relay fallback
 
-Public fallback is **enabled by default for normal app mode**. A fresh consumer node with no manual `bootstrap_peers`, no owned rendezvous peers, and no healthy peer cache may use public fallback to join the app discovery layer.
+Public fallback is **enabled by default for normal app mode**. A fresh consumer node with no manual `bootstrap_peers`, no owned rendezvous peers, and no healthy peer cache may use public fallback to join the app discovery layer and may auto-dial app-namespace-discovered peers at the network layer.
 
 Private-infrastructure-first is still supported, but it is now an advanced/operator mode: set `discovery.public_bootstrap.mode` to `disabled` and configure owned bootstrap, rendezvous, mediator, and relay peers explicitly.
 
@@ -71,6 +71,12 @@ Advanced private-infrastructure-only shape:
 | `always` | Include public candidates after operator/cached candidates on every startup. |
 
 Manual bootstrap peers remain optional power-user config. When `bootstrap_peers`, `discovery.bootstrap_seed_peers`, `discovery.rendezvous_peers`, or healthy peer-cache entries exist, `fallback_only` keeps those owned/cached candidates first.
+
+## Bootstrap alone is not enough
+
+Public bootstrap helps a node enter the wider routing layer, but it does not guarantee app-peer discovery or NAT traversal. The consumer default model has separate slots for bootstrap, app rendezvous, relay/mediator fallback, DHT provider discovery, and bounded auto-connect because each solves a different problem.
+
+Applications that require two fresh installs on different networks to connect reliably should ship real public rendezvous and relay/mediator candidates or operate private infrastructure. Without those real endpoints, the repository can honestly provide public bootstrap and deterministic discovery logic, but it cannot promise NAT-to-NAT reachability.
 
 ## Auto-connect is not auto-trust
 

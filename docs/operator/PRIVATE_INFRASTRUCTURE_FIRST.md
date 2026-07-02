@@ -1,6 +1,6 @@
 # Private-infrastructure-first operation
 
-Private-infrastructure-first operation is an advanced/operator mode. It is for deployments that do not want the normal app default of public fallback discovery.
+Private-infrastructure-first operation is an advanced/operator mode. It is for deployments that do not want the normal app default described in `CONSUMER_DEFAULT.md`, where public fallback discovery and network-layer auto-connect are enabled.
 
 Recommended private startup order:
 

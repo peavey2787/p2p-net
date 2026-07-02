@@ -111,16 +111,18 @@ Press `q` or `Esc` to stop the dashboard node cleanly.
 Normal app mode uses public fallback by default:
 
 ```text
-fresh node -> owned/cached peers if present -> public bootstrap/rendezvous fallback -> DHT provider discovery -> relay/DCUtR paths
+fresh node -> public fallback joins discovery -> app peers are discovered -> network auto-connect attempts start -> contact trust still requires invite/QR/join-code
 ```
 
-That means regular users should not have to edit bootstrap settings before first launch. Manual `bootstrap_peers`, `discovery.bootstrap_seed_peers`, `discovery.rendezvous_peers`, and `relay_peers` are power-user/operator controls and should be exposed under Advanced settings in app UIs.
+Regular users should not have to edit bootstrap settings before first launch. Manual `bootstrap_peers`, `discovery.bootstrap_seed_peers`, `discovery.rendezvous_peers`, and `relay_peers` are power-user/operator controls and should be exposed under Advanced settings in app UIs.
 
-The shared crate ships public bootstrap defaults, but it does not ship a project-operated public rendezvous or relay fleet. Apps that need reliable run-two-fresh-installs connectivity should add real public rendezvous DNSADDR entries under `discovery.public_bootstrap.rendezvous_peers` and real public relay/mediator DNSADDR entries under `discovery.public_bootstrap.relay_peers`, or operate private infrastructure.
+Auto-connect is **not** auto-trust. A peer discovered through public fallback, DHT provider records, or rendezvous may be dialed at the transport layer, but it must not become a trusted chat/contact identity until the app performs an explicit trust action such as QR scan, join code, invite acceptance, or safety-number verification.
+
+The shared crate ships public bootstrap defaults and config slots for public app rendezvous and public relay/mediator candidates. It does not ship a project-operated public rendezvous or relay fleet. Public bootstrap alone is not enough to guarantee two fresh NATed installs can reach each other; apps that need reliable run-two-fresh-installs connectivity should add real public rendezvous DNSADDR entries under `discovery.public_bootstrap.rendezvous_peers` and real public relay/mediator DNSADDR entries under `discovery.public_bootstrap.relay_peers`, or operate private infrastructure.
 
 Runtime snapshots and Prometheus metrics report public fallback by category: `public_bootstrap_used`, `public_rendezvous_used`, and `public_relay_used`. Peer metadata also distinguishes `public_rendezvous` from operator-provided `rendezvous` sources.
 
-Private-infrastructure-first operation is still supported by setting `discovery.public_bootstrap.mode` to `disabled` and configuring owned bootstrap/rendezvous/relay infrastructure explicitly.
+Private-infrastructure-first operation is still supported as an Advanced/operator mode by setting `discovery.public_bootstrap.mode` to `disabled` and configuring owned bootstrap/rendezvous/relay infrastructure explicitly. See `docs/operator/CONSUMER_DEFAULT.md` for the normal app walkthrough and `docs/operator/PRIVATE_INFRASTRUCTURE_FIRST.md` for the private mode override.
 
 ## Configure a node
 
@@ -130,12 +132,15 @@ Edit `p2p-node.json`. The default config is also available at:
 examples/node-config.example.json
 ```
 
-Operator-oriented configs are also available:
+Example configs are also available:
 
 ```text
+examples/consumer-default.config.json
 examples/public-fallback.config.json
 examples/private-infrastructure-first.config.json
 ```
+
+Use `examples/consumer-default.config.json` for normal app mode. `examples/public-fallback.config.json` is an expanded public-fallback example for operators and power users. `examples/private-infrastructure-first.config.json` is the Advanced/operator private mode.
 
 Operator guidance is in `docs/operator/`.
 
