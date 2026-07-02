@@ -99,11 +99,7 @@ impl PendingConnectionPlans {
                 }
             })
             .collect::<VecDeque<_>>();
-        if remaining.is_empty() {
-            self.pending.remove(&peer);
-        } else {
-            self.pending.insert(peer, remaining);
-        }
+        self.pending.insert(peer, remaining);
     }
 
     pub fn next_after_failure(&mut self, peer: &PeerId) -> Option<ConnectionAttempt> {
@@ -124,8 +120,45 @@ impl PendingConnectionPlans {
     }
 
     #[must_use]
+    pub fn is_pending(&self, peer: &PeerId) -> bool {
+        self.pending.contains_key(peer)
+    }
+
+    #[must_use]
     pub fn pending_count(&self) -> usize {
         self.pending.len()
+    }
+}
+
+#[must_use]
+pub fn build_peer_book_connection_plan(
+    peer_id: PeerId,
+    peer_book: &PeerBook,
+    dcutr_policy: &DcutrPolicy,
+) -> ConnectionPlan {
+    let relay_preferred = peer_book
+        .record(&peer_id)
+        .map(|record| record.relay_preferred)
+        .unwrap_or(false);
+    let mut candidate_strings = BTreeSet::new();
+    let mut candidates = Vec::new();
+
+    if let Some(peer) = peer_book.record(&peer_id) {
+        for addr in &peer.addresses {
+            if let Ok(addr) = addr.parse::<Multiaddr>() {
+                push_candidate(&mut candidates, &mut candidate_strings, addr);
+            }
+        }
+    }
+
+    let attempts = ordered_attempts(candidates, relay_preferred);
+    ConnectionPlan {
+        target_peer: Some(peer_id),
+        attempts,
+        relay_preferred,
+        attempt_dcutr_after_relay: dcutr_policy.enabled
+            && dcutr_policy.attempt_after_relay_connection,
+        keep_relay_fallback: dcutr_policy.keep_relay_fallback,
     }
 }
 
@@ -273,6 +306,38 @@ mod tests {
         assert!(plan.relay_preferred);
         assert_eq!(plan.attempts[0].addr, relay);
         assert_eq!(plan.attempts[0].kind, ConnectionAttemptKind::Relay);
+    }
+
+    #[test]
+    fn peer_book_planner_uses_known_addresses_without_manual_addr() {
+        let peer = PeerId::random();
+        let quic = format!("/ip4/127.0.0.1/udp/4002/quic-v1/p2p/{peer}")
+            .parse::<Multiaddr>()
+            .expect("valid quic addr");
+        let mut book = PeerBook::default();
+        book.record_addr(peer, quic.clone(), PeerSource::DhtProvider);
+
+        let plan = build_peer_book_connection_plan(peer, &book, &DcutrPolicy::default());
+
+        assert_eq!(plan.target_peer, Some(peer));
+        assert_eq!(plan.attempts.len(), 1);
+        assert_eq!(plan.attempts[0].addr, quic);
+        assert_eq!(plan.attempts[0].kind, ConnectionAttemptKind::DirectQuic);
+    }
+
+    #[test]
+    fn pending_plans_track_inflight_peer_dedupe() {
+        let peer = PeerId::random();
+        let tcp = addr(peer, "tcp", 4001);
+        let plan = build_connection_plan(tcp, &PeerBook::default(), &DcutrPolicy::default());
+        let first = plan.first_attempt().expect("first attempt").clone();
+        let mut pending = PendingConnectionPlans::default();
+
+        pending.track_remaining(&plan, &first);
+
+        assert!(pending.is_pending(&peer));
+        assert_eq!(pending.next_after_failure(&peer), None);
+        assert!(!pending.is_pending(&peer));
     }
 
     #[test]

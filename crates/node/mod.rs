@@ -4,6 +4,7 @@ mod capabilities;
 mod commands;
 mod config;
 mod config_validation;
+mod dial;
 mod environment;
 mod events;
 mod handle;

@@ -6,7 +6,7 @@
 //! resurrection can complement each other.
 
 use crate::common::error::config_error;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use libp2p::kad::{self, QueryId};
 use libp2p::swarm::Swarm;
@@ -88,6 +88,8 @@ pub struct DhtProviderState {
     pub provider_records_found: usize,
     pub provider_queries_finished: usize,
     pub discovered_provider_peers: HashMap<PeerId, BTreeSet<String>>,
+    pub auto_connect_attempted_peers: HashSet<PeerId>,
+    pub auto_connect_waiting_for_addrs: HashSet<PeerId>,
     start_providing_queries: HashMap<QueryId, String>,
     get_provider_queries: HashMap<QueryId, String>,
 }
@@ -104,6 +106,29 @@ impl DhtProviderState {
     #[must_use]
     pub fn provider_peer_count(&self) -> usize {
         self.discovered_provider_peers.len()
+    }
+
+    pub fn mark_auto_connect_attempted(&mut self, peer: PeerId) -> bool {
+        self.auto_connect_waiting_for_addrs.remove(&peer);
+        self.auto_connect_attempted_peers.insert(peer)
+    }
+
+    pub fn mark_auto_connect_waiting_for_addrs(&mut self, peer: PeerId) -> bool {
+        if self.auto_connect_attempted_peers.contains(&peer) {
+            return false;
+        }
+        self.auto_connect_waiting_for_addrs.insert(peer)
+    }
+
+    #[must_use]
+    pub fn should_auto_connect_provider_result(&self, peer: &PeerId) -> bool {
+        !self.auto_connect_attempted_peers.contains(peer)
+            && !self.auto_connect_waiting_for_addrs.contains(peer)
+    }
+
+    #[must_use]
+    pub fn should_auto_connect_after_addr_update(&self, peer: &PeerId) -> bool {
+        !self.auto_connect_attempted_peers.contains(peer)
     }
 
     fn complete_start_providing(&mut self, id: &QueryId) -> Option<String> {
