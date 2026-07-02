@@ -76,7 +76,7 @@ Acceptance criteria:
 
 ## Step 3 — Extract node metrics from `crates/node/mod.rs`
 
-Status: pending.
+Status: implemented; pending full validation.
 
 Goal: remove Prometheus formatting from node startup/orchestration.
 

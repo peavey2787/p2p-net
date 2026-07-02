@@ -173,6 +173,31 @@ fn snapshot_json_uses_derived_serialization_instead_of_duplicate_field_mapping()
 }
 
 #[test]
+fn node_prometheus_metrics_live_in_metrics_module() {
+    let root = manifest_dir();
+    let node_mod = fs::read_to_string(root.join("crates/node/mod.rs")).expect("node mod");
+    let node_metrics =
+        fs::read_to_string(root.join("crates/node/metrics.rs")).expect("node metrics");
+
+    assert!(
+        node_mod.contains("mod metrics;"),
+        "node mod must declare the focused metrics module"
+    );
+    assert!(
+        node_mod.contains("pub use metrics::snapshot_to_prometheus_metrics;"),
+        "public metrics export should be re-exported from the focused module"
+    );
+    assert!(
+        !node_mod.contains("p2p_connected_peers"),
+        "node orchestration must not contain Prometheus metric formatting"
+    );
+    assert!(
+        node_metrics.contains("pub fn snapshot_to_prometheus_metrics"),
+        "snapshot-to-Prometheus rendering belongs in crates/node/metrics.rs"
+    );
+}
+
+#[test]
 fn cargo_test_registrations_are_unique_and_complete() {
     let root = manifest_dir();
     let cargo = fs::read_to_string(root.join("Cargo.toml")).expect("Cargo.toml");
