@@ -214,11 +214,12 @@ impl ResolvedNodeConfig {
         let mut enabled_behaviours = BehaviourSet::for_role(role, &effective);
         enabled_behaviours.dcutr = effective.dcutr.enabled && enabled_behaviours.relay_client;
         let has_relay_peers = !effective.relay_peers.is_empty();
+        let has_public_relay_candidates = effective.discovery.public_bootstrap.has_relay_candidates();
         let lite_role = matches!(role, NodeRole::Lite | NodeRole::MobileLite);
         let mobile_lite = matches!(role, NodeRole::MobileLite);
         let relay_discovery_enabled = effective.discovery.relay_discovery.enabled
             && enabled_behaviours.relay_client
-            && (lite_role || has_relay_peers);
+            && (lite_role || has_relay_peers || has_public_relay_candidates);
 
         Self {
             profile,

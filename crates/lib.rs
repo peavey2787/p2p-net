@@ -55,6 +55,7 @@ pub use connectivity::namespace::{
 pub use connectivity::peer_book::{PeerBook, PeerRecord};
 pub use connectivity::public_fallback::{
     PublicBootstrapConfig, PublicFallbackDecision, PublicFallbackMode,
+    DEFAULT_PUBLIC_BOOTSTRAP_SEED_PEERS, DEFAULT_PUBLIC_RELAY_PEERS,
 };
 pub use connectivity::relay::{
     is_p2p_circuit_addr, relay_peer_id, relay_reservation_addr, RelayAccess, RelaySchedule,

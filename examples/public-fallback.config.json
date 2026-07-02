@@ -3,26 +3,18 @@
   "network_id": 7001,
   "identity_key_path": "state/client-node.identity.hex",
   "listen_addresses": [],
-  "bootstrap_peers": [
-    "/dnsaddr/bootstrap.example.net/p2p/1AceoQx66Tx8niYpff2a7Hdb1H7yi7J5JC6tfBdssJ9RUQ"
-  ],
-  "relay_peers": [
-    "/dnsaddr/relay.example.net/p2p/1AceoQx66Tx8niYpff2a7Hdb1H7yi7J5JC6tfBdssJ9RUQ"
-  ],
+  "bootstrap_peers": [],
+  "relay_peers": [],
   "reserve_configured_relays": true,
   "dnsaddr": {
     "enabled": true,
-    "doh_endpoint": "https://dns.example.net/dns-query",
+    "doh_endpoint": "https://cloudflare-dns.com/dns-query",
     "timeout_secs": 5
   },
   "discovery": {
     "peer_cache_path": "state/client-peer-cache.json",
-    "bootstrap_seed_peers": [
-      "/dnsaddr/bootstrap.example.net/p2p/1AceoQx66Tx8niYpff2a7Hdb1H7yi7J5JC6tfBdssJ9RUQ"
-    ],
-    "rendezvous_peers": [
-      "/dnsaddr/rendezvous.example.net/p2p/1AceoQx66Tx8niYpff2a7Hdb1H7yi7J5JC6tfBdssJ9RUQ"
-    ],
+    "bootstrap_seed_peers": [],
+    "rendezvous_peers": [],
     "rendezvous": {
       "client_enabled": true,
       "server_enabled": false,
@@ -61,11 +53,12 @@
     "public_bootstrap": {
       "mode": "fallback_only",
       "bootstrap_seed_peers": [
-        "/dnsaddr/bootstrap.libp2p.example.net/p2p/1AceoQx66Tx8niYpff2a7Hdb1H7yi7J5JC6tfBdssJ9RUQ"
+        "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
+        "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa",
+        "/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb",
+        "/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt"
       ],
-      "relay_peers": [
-        "/dnsaddr/relay.libp2p.example.net/p2p/1AceoQx66Tx8niYpff2a7Hdb1H7yi7J5JC6tfBdssJ9RUQ"
-      ]
+      "relay_peers": []
     }
   },
   "dcutr": {

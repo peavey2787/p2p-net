@@ -1,22 +1,23 @@
 # Private-infrastructure-first operation
 
-The default production shape is to use infrastructure you operate or explicitly trust before using any public bootstrap or relay resource.
+Private-infrastructure-first operation is an advanced/operator mode. It is for deployments that do not want the normal app default of public fallback discovery.
 
-Recommended client startup order:
+Recommended private startup order:
 
 1. Dial pinned owned bootstrap peers from `bootstrap_peers` and `discovery.bootstrap_seed_peers`.
 2. Dial owned rendezvous servers from `discovery.rendezvous_peers`.
 3. Dial and reserve through owned mediator/relay peers from `relay_peers`.
 4. Reuse healthy identity-bound peer-cache entries.
 5. Announce and query hashed application namespaces through DHT provider records.
-6. Keep public fallback disabled unless the deployment has an explicit recovery policy.
+6. Keep `discovery.public_bootstrap.mode` set to `disabled`.
 
 Use `examples/private-infrastructure-first.config.json` as the starting client config.
 
 Important properties of that example:
 
 - `discovery.public_bootstrap.mode` is `disabled`.
-- `/dnsaddr` points at an operator-owned DoH endpoint instead of a hard-coded third-party dependency.
+- Public bootstrap and public relay lists are empty.
+- `/dnsaddr` points at an operator-owned DoH endpoint instead of the default third-party endpoint.
 - `discovery.namespace.tags` are configured, while `privacy` remains `hashed` and `allow_readable_tags` remains `false`.
 - `discovery.rendezvous.client_enabled` is true so clients register and discover through owned rendezvous peers.
 - `discovery.dht` remains enabled so hashed namespace provider records can recover peers when rendezvous is unavailable.

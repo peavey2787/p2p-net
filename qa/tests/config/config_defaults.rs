@@ -1,8 +1,27 @@
 use std::fs;
 
 use p2p_net::{
-    DnsaddrConfig, NodeConfig, NodeProfile, NodeRole, RelayAccess, RelayServiceConfig,
+    DnsaddrConfig, NodeConfig, NodeProfile, NodeRole, PublicFallbackMode, RelayAccess,
+    RelayServiceConfig, DEFAULT_PUBLIC_BOOTSTRAP_SEED_PEERS,
 };
+
+
+#[test]
+fn public_fallback_is_enabled_by_default_for_normal_app_mode() {
+    let cfg = NodeConfig::default();
+
+    assert_eq!(
+        cfg.discovery.public_bootstrap.mode,
+        PublicFallbackMode::FallbackOnly
+    );
+    assert_eq!(
+        cfg.discovery.public_bootstrap.bootstrap_seed_peers.len(),
+        DEFAULT_PUBLIC_BOOTSTRAP_SEED_PEERS.len()
+    );
+    assert!(cfg.discovery.public_bootstrap.relay_peers.is_empty());
+    assert!(cfg.discovery.public_bootstrap.bootstrap_decision(0).used);
+    assert!(!cfg.discovery.public_bootstrap.bootstrap_decision(1).used);
+}
 
 #[test]
 fn relay_disabled_by_default() {

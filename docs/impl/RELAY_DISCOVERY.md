@@ -41,7 +41,7 @@ All candidates must be identity-bound `/p2p/<PeerId>` multiaddrs with a reachabl
 
 ## Runtime behavior
 
-Startup reserves through the selected relay set instead of only raw `relay_peers`. Automatic cached/rendezvous relay discovery is enabled for lite/mobile-lite roles; full/infrastructure nodes use configured relay peers only when `relay_peers` are explicitly provided.
+Startup reserves through the selected relay set instead of only raw `relay_peers`. Automatic cached/rendezvous relay discovery is enabled for lite/mobile-lite roles; full/infrastructure nodes also enable relay discovery when explicit configured relays or public fallback relay candidates are available.
 
 When `reserve_configured_relays = true`, selected candidates are converted to `/p2p-circuit` reservation listen addresses. When reservation is disabled, selected candidates are still seeded/dialed so the node can connect to known relay infrastructure without requesting reservations.
 
@@ -64,4 +64,4 @@ These fields let the GUI explain why a lite node has no relay, only one relay, o
 
 `discovery.public_bootstrap.relay_peers` can add public relay/mediator candidates when public fallback policy allows it. These candidates are tracked separately from configured, cached, and rendezvous candidates so operators can see when the node depended on public infrastructure.
 
-Public fallback relays are selected after operator-owned/cached/rendezvous candidates. They are disabled by default and require explicit config. See `docs/spec/PUBLIC_FALLBACK.md`.
+Public fallback relays are selected after operator-owned/cached/rendezvous candidates. The normal app default enables public fallback policy, but this shared library does not ship project-operated relay peers; app distributions can add public relay DNSADDR entries or use private `relay_peers`. See `docs/spec/PUBLIC_FALLBACK.md`.

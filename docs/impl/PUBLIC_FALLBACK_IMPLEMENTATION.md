@@ -1,6 +1,6 @@
 # Public fallback implementation
 
-The public fallback implementation is intentionally small and policy-driven.
+The public fallback implementation is intentionally small and policy-driven. Normal app mode enables fallback-only public bootstrap by default; private-infrastructure-first operation disables it explicitly.
 
 - `crates/connectivity/public_fallback.rs` owns `PublicBootstrapConfig`, `PublicFallbackMode`, and decision helpers.
 - `crates/connectivity/discovery.rs` embeds the policy under `DiscoveryConfig.public_bootstrap`.
@@ -10,6 +10,8 @@ The public fallback implementation is intentionally small and policy-driven.
 
 The public fallback path does not change the six application primitives. Applications still call `get_peers()` and `connect_peer(...)`; discovery policy only changes which peers can be discovered or selected internally.
 
-## Why there are no hidden defaults
+## Default behavior
 
-Public bootstrap and relay infrastructure can have availability, privacy, abuse, policy, and performance tradeoffs. The runtime therefore ships with `mode = "disabled"` and empty public peer lists. Operators can still add known public libp2p/IPFS bootstrap or relay addresses in config for recovery scenarios.
+The runtime ships with `mode = "fallback_only"` and a built-in public bootstrap seed list so regular users do not have to configure bootstrap peers manually. Public fallback DNS resolution is best-effort: bad multiaddr syntax still fails validation, but temporary public DNS/bootstrap outages do not stop local startup.
+
+The shared library does not ship a project-operated public relay fleet. App distributions that need guaranteed NAT-to-NAT default connectivity should add real public relay/mediator DNSADDR entries to `discovery.public_bootstrap.relay_peers`, or operate private relays and put them in `relay_peers`.

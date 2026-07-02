@@ -25,6 +25,7 @@ fn operator_guides_are_present_and_link_examples() {
     assert!(private.contains("public_bootstrap.mode` is `disabled"));
     assert!(public.contains("examples/public-fallback.config.json"));
     assert!(public.contains("fallback_only"));
+    assert!(public.contains("Public fallback is the normal app default"));
     for required_role in ["Bootstrap", "Rendezvous", "Mediator", "Relay"] {
         assert!(fleet.contains(required_role), "missing role {required_role}");
     }
@@ -44,8 +45,8 @@ fn operator_example_configs_validate() {
     let public = load_config("examples/public-fallback.config.json");
     public.validate().expect("public fallback config validates");
     assert_eq!(public.discovery.public_bootstrap.mode.as_str(), "fallback_only");
-    assert_eq!(public.discovery.public_bootstrap.bootstrap_seed_peers.len(), 1);
-    assert_eq!(public.discovery.public_bootstrap.relay_peers.len(), 1);
+    assert!(public.discovery.public_bootstrap.bootstrap_seed_peers.len() >= 4);
+    assert!(public.discovery.public_bootstrap.relay_peers.is_empty());
     assert_eq!(public.discovery.namespace.privacy.as_str(), "hashed");
     assert!(!public.discovery.namespace.allow_readable_tags);
 }
