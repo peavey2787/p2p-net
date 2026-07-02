@@ -298,7 +298,7 @@ async fn apply_public_ip_probe_result(
     let mut guard = snapshot.lock().await;
     guard.public_ip_probe_status = result.status.clone();
     guard.public_ip_probe_addr = result.public_ip.clone();
-    for addr in result.external_addresses {
+    for addr in &result.external_addresses {
         guard.record_public_external_addr(addr.to_string());
     }
 
