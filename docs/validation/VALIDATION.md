@@ -126,7 +126,7 @@ Use `qa/ci/run-full-validation.ps1` or `qa/ci/run-full-validation.sh` for the ex
 
 ## Public fallback checks
 
-`qa/tests/discovery/discovery.rs` and `qa/tests/relay/relay_discovery.rs` cover public bootstrap/relay fallback policy, validation, and source accounting. `qa/tests/observability/observability.rs` verifies public fallback snapshot and metrics fields. `qa/tests/discovery/network_resurrection.rs` verifies that public bootstrap/relay fallback participates only when policy allows it and fallback-only conditions are met.
+`qa/tests/discovery/discovery.rs` and `qa/tests/relay/relay_discovery.rs` cover public bootstrap/rendezvous/relay fallback policy, validation, and source accounting. `qa/tests/observability/observability.rs` verifies public fallback snapshot and metrics fields. `qa/tests/discovery/network_resurrection.rs` verifies that public bootstrap/rendezvous/relay fallback participates only when policy allows it and fallback-only conditions are met.
 
 ## DHT provider-discovery checks
 

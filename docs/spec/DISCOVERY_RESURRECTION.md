@@ -10,7 +10,7 @@ Nodes should prefer infrastructure in this order:
 2. Operator-owned rendezvous peers.
 3. Operator-owned mediators/relays.
 4. Healthy local peer-cache records.
-5. Public fallback bootstrap/relay candidates when normal app policy allows them.
+5. Public fallback bootstrap/rendezvous/relay candidates when normal app policy allows them.
 
 Public fallback is the normal consumer discovery entry point, but it is not a replacement for operating reliable infrastructure when an application needs guaranteed service capacity or stronger metadata control.
 
@@ -45,7 +45,7 @@ Two nodes that are both behind CGNAT usually still need a reachable third-party 
 
 ## Public fallback policy
 
-The implemented public fallback policy lives under `discovery.public_bootstrap`. It defaults to `fallback_only` with built-in public bootstrap seeds for normal app mode. Private-infrastructure-first operators set `mode = "disabled"` and configure owned bootstrap, rendezvous, mediator, and relay peers. See `docs/spec/PUBLIC_FALLBACK.md`.
+The implemented public fallback policy lives under `discovery.public_bootstrap`. It defaults to `fallback_only` with built-in public bootstrap seeds plus public rendezvous/relay slots for normal app mode. Private-infrastructure-first operators set `mode = "disabled"` and configure owned bootstrap, rendezvous, mediator, and relay peers. See `docs/spec/PUBLIC_FALLBACK.md`.
 
 ## DHT provider fallback
 
@@ -57,4 +57,4 @@ Startup uses DHT provider records after deriving the same hashed namespaces used
 
 The `network_resurrection` QA suite covers the recovery path that matters to applications: two users deriving the same hashed contact namespace, rediscovering a not-yet-connected peer from rendezvous/DHT-style metadata, exposing that peer through the peer-book view used by `get_peers()`, and feeding stored addresses into the `connect_peer(...)` planner.
 
-The same suite also checks that public bootstrap/relay fallback participates only when policy allows it and owned/cached candidates do not already satisfy fallback-only mode.
+The same suite also checks that public bootstrap/rendezvous/relay fallback participates only when policy allows it and owned/cached candidates do not already satisfy fallback-only mode.

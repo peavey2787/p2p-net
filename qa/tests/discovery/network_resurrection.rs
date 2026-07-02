@@ -46,7 +46,9 @@ fn public_fallback_only_participates_when_policy_allows_it() {
     let disabled = PublicBootstrapConfig {
         mode: PublicFallbackMode::Disabled,
         bootstrap_seed_peers: vec![public_seed.clone()],
+        rendezvous_peers: Vec::new(),
         relay_peers: vec![public_relay.clone()],
+        auto_connect_discovered_peers: false,
     };
     assert!(!disabled.bootstrap_decision(0).used);
     assert!(!disabled.relay_decision(0).used);
@@ -54,7 +56,9 @@ fn public_fallback_only_participates_when_policy_allows_it() {
     let fallback_only = PublicBootstrapConfig {
         mode: PublicFallbackMode::FallbackOnly,
         bootstrap_seed_peers: vec![public_seed.clone()],
+        rendezvous_peers: Vec::new(),
         relay_peers: vec![public_relay.clone()],
+        auto_connect_discovered_peers: true,
     };
     assert!(!fallback_only.bootstrap_decision(1).used);
     assert!(fallback_only.bootstrap_decision(0).used);
@@ -64,7 +68,9 @@ fn public_fallback_only_participates_when_policy_allows_it() {
     let always = PublicBootstrapConfig {
         mode: PublicFallbackMode::Always,
         bootstrap_seed_peers: vec![public_seed],
+        rendezvous_peers: Vec::new(),
         relay_peers: vec![public_relay],
+        auto_connect_discovered_peers: true,
     };
     assert!(always.bootstrap_decision(1).used);
     assert!(always.relay_decision(1).used);

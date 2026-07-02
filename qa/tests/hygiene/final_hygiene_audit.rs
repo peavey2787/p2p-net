@@ -29,7 +29,8 @@ fn original_srp_hotspots_stay_split() {
         ("crates/node/metrics/prometheus.rs", 260),
         ("crates/node/runtime.rs", 320),
         ("crates/node/snapshot.rs", 240),
-        ("crates/node/startup.rs", 280),
+        ("crates/node/startup.rs", 120),
+        ("crates/node/startup/addrs.rs", 260),
         ("crates/connectivity/relay/address.rs", 100),
         ("crates/connectivity/relay/config.rs", 320),
         ("crates/connectivity/relay/schedule.rs", 220),
@@ -92,10 +93,10 @@ fn final_audit_document_matches_current_layout() {
 
     for required in [
         "crates/connectivity/dns.rs — 471 lines",
-        "crates/node/mod.rs — 421 lines",
+        "crates/node/mod.rs — 432 lines",
         "crates/connectivity/relay.rs — 13 lines",
         "`qa/tests/` is domain-grouped",
-        "Step 9 — Final hygiene audit",
+        "crates/node/startup/addrs.rs — 224 lines",
     ] {
         assert!(
             audit.contains(required) || roadmap.contains(required),

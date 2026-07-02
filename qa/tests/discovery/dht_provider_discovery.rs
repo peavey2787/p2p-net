@@ -4,15 +4,15 @@ use p2p_net::connectivity::dht::{dht_record_key, DhtDiscoveryConfig};
 use p2p_net::DiscoveryConfig;
 
 #[test]
-fn dht_discovery_defaults_to_rendezvous_absent_fallback() {
+fn dht_discovery_defaults_to_run_alongside_rendezvous() {
     let cfg = DhtDiscoveryConfig::default();
 
     assert!(cfg.enabled);
     assert!(cfg.announce);
     assert!(cfg.discover);
-    assert!(!cfg.discover_with_rendezvous_peers);
+    assert!(cfg.discover_with_rendezvous_peers);
     assert!(cfg.should_discover(0));
-    assert!(!cfg.should_discover(1));
+    assert!(cfg.should_discover(1));
 }
 
 #[test]

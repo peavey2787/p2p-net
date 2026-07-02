@@ -1,8 +1,9 @@
 //! Kademlia provider-record discovery for application namespaces.
 //!
 //! This layer lets a node announce and search for hashed app discovery
-//! namespaces through the DHT when operator rendezvous peers are absent. It is
-//! intentionally internal plumbing behind the six public app primitives.
+//! namespaces through the DHT. Consumer app defaults keep DHT provider
+//! discovery running alongside rendezvous so public rendezvous and DHT
+//! resurrection can complement each other.
 
 use crate::common::error::config_error;
 use std::collections::{BTreeSet, HashMap};
@@ -26,8 +27,8 @@ pub struct DhtDiscoveryConfig {
     pub announce: bool,
     /// Query providers for each derived namespace key.
     pub discover: bool,
-    /// Run provider lookups even when rendezvous peers are configured. The
-    /// default keeps DHT discovery as a fallback path when rendezvous is absent.
+    /// Run provider lookups even when rendezvous peers are configured.
+    /// Consumer defaults keep this on so DHT resurrection complements rendezvous.
     pub discover_with_rendezvous_peers: bool,
     /// Bound startup work when many app tags are configured.
     pub max_namespaces_per_refresh: usize,
@@ -39,7 +40,7 @@ impl Default for DhtDiscoveryConfig {
             enabled: true,
             announce: true,
             discover: true,
-            discover_with_rendezvous_peers: false,
+            discover_with_rendezvous_peers: true,
             max_namespaces_per_refresh: 16,
         }
     }

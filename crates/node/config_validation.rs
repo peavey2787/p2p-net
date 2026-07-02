@@ -41,6 +41,16 @@ pub(crate) fn validate_node_config(cfg: &NodeConfig) -> Result<(), NetError> {
         &cfg.dnsaddr,
     )?;
     validate_peer_addrs(
+        "discovery.public_bootstrap.rendezvous_peers",
+        &cfg.discovery.public_bootstrap.rendezvous_peers,
+        true,
+    )?;
+    validate_dnsaddr_use(
+        "discovery.public_bootstrap.rendezvous_peers",
+        &cfg.discovery.public_bootstrap.rendezvous_peers,
+        &cfg.dnsaddr,
+    )?;
+    validate_peer_addrs(
         "discovery.public_bootstrap.relay_peers",
         &cfg.discovery.public_bootstrap.relay_peers,
         true,

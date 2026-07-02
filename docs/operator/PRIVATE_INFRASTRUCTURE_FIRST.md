@@ -16,7 +16,7 @@ Use `examples/private-infrastructure-first.config.json` as the starting client c
 Important properties of that example:
 
 - `discovery.public_bootstrap.mode` is `disabled`.
-- Public bootstrap and public relay lists are empty.
+- Public bootstrap, public rendezvous, and public relay lists are empty, and public auto-connect is disabled.
 - `/dnsaddr` points at an operator-owned DoH endpoint instead of the default third-party endpoint.
 - `discovery.namespace.tags` are configured, while `privacy` remains `hashed` and `allow_readable_tags` remains `false`.
 - `discovery.rendezvous.client_enabled` is true so clients register and discover through owned rendezvous peers.

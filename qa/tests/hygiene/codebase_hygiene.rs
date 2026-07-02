@@ -258,6 +258,8 @@ fn node_startup_discovery_setup_lives_in_startup_module() {
     let node_mod = fs::read_to_string(root.join("crates/node/mod.rs")).expect("node mod");
     let node_startup =
         fs::read_to_string(root.join("crates/node/startup.rs")).expect("node startup");
+    let startup_addrs = fs::read_to_string(root.join("crates/node/startup/addrs.rs"))
+        .expect("startup address module");
 
     assert!(
         node_mod.contains("mod startup;"),
@@ -280,7 +282,7 @@ fn node_startup_discovery_setup_lives_in_startup_module() {
         "startup discovery preparation belongs in crates/node/startup.rs"
     );
     assert!(
-        node_startup.contains("struct StartupAddrs"),
+        startup_addrs.contains("struct StartupAddrs"),
         "resolved startup addresses should be grouped before orchestration consumes them"
     );
 }

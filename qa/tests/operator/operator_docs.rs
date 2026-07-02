@@ -37,6 +37,8 @@ fn operator_example_configs_validate() {
     private.validate().expect("private infra config validates");
     assert_eq!(private.discovery.public_bootstrap.mode.as_str(), "disabled");
     assert!(private.discovery.public_bootstrap.bootstrap_seed_peers.is_empty());
+    assert!(private.discovery.public_bootstrap.rendezvous_peers.is_empty());
+    assert!(!private.discovery.public_bootstrap.auto_connect_discovered_peers);
     assert_eq!(private.discovery.namespace.privacy.as_str(), "hashed");
     assert!(!private.discovery.namespace.allow_readable_tags);
     assert!(private.discovery.rendezvous.client_enabled);
@@ -46,7 +48,9 @@ fn operator_example_configs_validate() {
     public.validate().expect("public fallback config validates");
     assert_eq!(public.discovery.public_bootstrap.mode.as_str(), "fallback_only");
     assert!(public.discovery.public_bootstrap.bootstrap_seed_peers.len() >= 4);
+    assert!(public.discovery.public_bootstrap.rendezvous_peers.is_empty());
     assert!(public.discovery.public_bootstrap.relay_peers.is_empty());
+    assert!(public.discovery.public_bootstrap.auto_connect_discovered_peers);
     assert_eq!(public.discovery.namespace.privacy.as_str(), "hashed");
     assert!(!public.discovery.namespace.allow_readable_tags);
 }

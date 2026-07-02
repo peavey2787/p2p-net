@@ -126,11 +126,15 @@ fn public_bootstrap_policy_is_explicit_and_prefers_owned_candidates() {
     let cfg = PublicBootstrapConfig {
         mode: PublicFallbackMode::FallbackOnly,
         bootstrap_seed_peers: vec![p2p_addr(1201).to_string()],
+        rendezvous_peers: vec![p2p_addr(1203).to_string()],
         relay_peers: vec![p2p_addr(1202).to_string()],
+        auto_connect_discovered_peers: true,
     };
 
     assert!(!cfg.bootstrap_decision(1).used);
     assert!(cfg.bootstrap_decision(0).used);
+    assert!(!cfg.rendezvous_decision(1).used);
+    assert!(cfg.rendezvous_decision(0).used);
     assert!(!cfg.relay_decision(1).used);
     assert!(cfg.relay_decision(0).used);
 }
@@ -164,7 +168,9 @@ fn public_bootstrap_config_requires_p2p_peer_id_when_present() {
             public_bootstrap: PublicBootstrapConfig {
                 mode: PublicFallbackMode::FallbackOnly,
                 bootstrap_seed_peers: vec!["/ip4/127.0.0.1/tcp/4001".to_string()],
+                rendezvous_peers: Vec::new(),
                 relay_peers: Vec::new(),
+                auto_connect_discovered_peers: true,
             },
             ..DiscoveryConfig::default()
         },
@@ -177,7 +183,9 @@ fn public_bootstrap_config_requires_p2p_peer_id_when_present() {
             public_bootstrap: PublicBootstrapConfig {
                 mode: PublicFallbackMode::FallbackOnly,
                 bootstrap_seed_peers: vec![p2p_addr(4003).to_string()],
+                rendezvous_peers: vec![p2p_addr(4005).to_string()],
                 relay_peers: vec![p2p_addr(4004).to_string()],
+                auto_connect_discovered_peers: true,
             },
             ..DiscoveryConfig::default()
         },
@@ -192,7 +200,9 @@ fn enabled_public_bootstrap_requires_at_least_one_public_candidate() {
         public_bootstrap: PublicBootstrapConfig {
             mode: PublicFallbackMode::FallbackOnly,
             bootstrap_seed_peers: Vec::new(),
+            rendezvous_peers: Vec::new(),
             relay_peers: Vec::new(),
+            auto_connect_discovered_peers: true,
         },
         ..DiscoveryConfig::default()
     };

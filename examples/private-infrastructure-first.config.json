@@ -61,7 +61,9 @@
     "public_bootstrap": {
       "mode": "disabled",
       "bootstrap_seed_peers": [],
-      "relay_peers": []
+      "rendezvous_peers": [],
+      "relay_peers": [],
+      "auto_connect_discovered_peers": false
     }
   },
   "dcutr": {
