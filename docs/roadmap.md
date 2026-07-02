@@ -109,7 +109,7 @@ Implemented notes:
 
 ## Step 4 — Auto-dial rendezvous-discovered app peers through connection strategy
 
-Status: planned.
+Status: implemented; pending full validation.
 
 Goal: move rendezvous-discovered peer dialing through the connection strategy planner instead of direct one-off dials.
 
@@ -125,6 +125,16 @@ Acceptance criteria:
 - Rendezvous discovery produces direct/relay ordered connection attempts.
 - Public relay candidates are usable as fallbacks when direct paths fail.
 - Auto-connect still does not imply contact trust.
+
+Implemented notes:
+
+- Rendezvous `Discovered` events now record peer namespaces and addresses before dialing.
+- Rendezvous-discovered peers are auto-dialed through the shared `auto_dial_peer_from_book(...)` helper.
+- The old one-off `swarm.dial(addr.clone())` path inside rendezvous discovery was removed.
+- Existing peer-cache recording and Kademlia address learning remain in place.
+- Public rendezvous discoveries preserve `public_rendezvous` source accounting when the rendezvous node itself came from the public fallback set.
+- Pending connection plans prevent duplicate dials for peers already connected or already in progress.
+- No trusted contact state is modified by rendezvous auto-connect.
 
 ## Step 5 — Complete public relay fallback for NAT-to-NAT first launch
 

@@ -271,7 +271,6 @@ pub fn on_rendezvous_client_event(
             let mut learned = 0usize;
             for registration in registrations {
                 let peer = registration.record.peer_id();
-                let mut dialed_peer = false;
                 for addr in peer_record_addrs(registration) {
                     add_peer_address_to_discovery(swarm, peer, addr.clone());
                     peer_cache::record_seen_peer_addr_with_storage(
@@ -280,10 +279,6 @@ pub fn on_rendezvous_client_event(
                         &addr,
                         storage,
                     );
-                    if !dialed_peer {
-                        let _ = swarm.dial(addr.clone());
-                        dialed_peer = true;
-                    }
                     learned = learned.saturating_add(1);
                 }
                 state.discovered_peers.insert(peer);
