@@ -1,5 +1,6 @@
 //! Discovery configuration and peer-cache policy for the standalone node.
 
+use crate::common::error::config_error;
 use libp2p_rendezvous as rendezvous;
 use serde::{Deserialize, Serialize};
 
@@ -109,12 +110,5 @@ impl DiscoveryConfig {
         network_id: u32,
     ) -> Result<Vec<DiscoveryNamespace>, crate::common::error::NetError> {
         self.namespace.derived_namespaces(network_id)
-    }
-}
-
-fn config_error(reason: impl Into<String>) -> crate::common::error::NetError {
-    crate::common::error::NetError::Config {
-        path: "<config>".to_string(),
-        reason: reason.into(),
     }
 }

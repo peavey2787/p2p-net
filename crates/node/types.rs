@@ -1,5 +1,6 @@
 //! Node configuration and live snapshot types.
 
+use crate::common::error::config_error;
 use std::collections::VecDeque;
 use std::path::Path;
 
@@ -595,11 +596,4 @@ fn validate_dnsaddr_use(
 fn extract_p2p_peer_id(raw: &str) -> Option<&str> {
     let (_, tail) = raw.split_once("/p2p/")?;
     Some(tail.split('/').next().unwrap_or(tail))
-}
-
-fn config_error(reason: impl Into<String>) -> crate::common::error::NetError {
-    crate::common::error::NetError::Config {
-        path: "<config>".to_string(),
-        reason: reason.into(),
-    }
 }

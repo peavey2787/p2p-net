@@ -4,6 +4,7 @@
 //! `libp2p` meta-crate rendezvous feature. That keeps the server on the patched
 //! implementation that includes per-peer and total registration caps.
 
+use crate::common::error::config_error;
 use std::collections::{HashMap, HashSet};
 
 use libp2p::{Multiaddr, PeerId};
@@ -277,13 +278,6 @@ pub fn peer_record_addrs(registration: &rendezvous::Registration) -> Vec<Multiad
             }
         })
         .collect()
-}
-
-fn config_error(reason: impl Into<String>) -> crate::common::error::NetError {
-    crate::common::error::NetError::Config {
-        path: "<config>".to_string(),
-        reason: reason.into(),
-    }
 }
 
 #[cfg(test)]

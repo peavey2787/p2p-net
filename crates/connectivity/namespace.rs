@@ -6,6 +6,7 @@
 //! namespace key. Readable tags are available only when explicitly enabled for
 //! local debugging.
 
+use crate::common::error::config_error;
 use serde::{Deserialize, Serialize};
 
 pub const DISCOVERY_NAMESPACE_PREFIX: &str = "p2p-net";
@@ -214,13 +215,6 @@ fn validate_tag(value: &str, field: &str) -> Result<(), crate::common::error::Ne
         )));
     }
     Ok(())
-}
-
-fn config_error(reason: impl Into<String>) -> crate::common::error::NetError {
-    crate::common::error::NetError::Config {
-        path: "<config>".to_string(),
-        reason: reason.into(),
-    }
 }
 
 #[cfg(test)]

@@ -1,89 +1,210 @@
-# Roadmap: resilient public-bootstrap discovery fallback
+# Roadmap: codebase hygiene and SRP cleanup
 
-This roadmap tracks the next discovery layer: prefer our own bootstrap, rendezvous, mediator, and relay infrastructure first, then use explicitly enabled public libp2p/IPFS bootstrap and relay resources only as a fallback when our own infrastructure and local peer cache are unavailable.
+This roadmap replaces the completed discovery-fallback roadmap. It tracks the cleanup work required by the Phase 8 audit so the repository matches the project guidelines:
 
-## Target behavior
+- organized file/folder structure;
+- clear separation of concerns;
+- consistent naming;
+- Single Responsibility Principle (SRP);
+- no legacy, deprecated, duplicated, or unused code;
+- large files split before they become dumping grounds;
+- crowded folders grouped by domain.
 
-1. A node first dials operator-pinned bootstrap, rendezvous, mediator, and relay peers.
-2. If those are unavailable, it uses cached healthy peers.
-3. If the mesh is still empty and public fallback is enabled, it dials public bootstrap seeds.
-4. Nodes publish hashed application rendezvous/DHT namespace keys instead of raw human-readable contact tags.
-5. `get_peers()` returns connected, cached, rendezvous-discovered, DHT-provider-discovered, relay-discovered, and manually configured peers with source metadata.
-6. `connect_peer(...)` uses a connection plan: direct addresses first, relayed addresses next, DCUtR upgrade after a relay path exists, and relay fallback retained when DCUtR fails.
+## Current audit findings
 
-## Phase 1 — Peer roles and API metadata
+Status before this roadmap started:
 
-Status: complete.
+1. `crates/node/mod.rs` is too large and mixes node startup, runtime orchestration, peer-book seeding, discovery setup, relay selection, snapshot updates, heartbeat publishing, and Prometheus formatting.
+2. `crates/node/types.rs` is too large and mixes user config, validation helpers, node snapshots, snapshot defaults, and multiaddr parsing helpers.
+3. `crates/connectivity/relay.rs` is too large and mixes relay service config, relay state, policy validation, reservation scheduling, address helpers, and denial classification.
+4. Configuration error construction was duplicated across many modules.
+5. Multiaddr reachability helper logic was duplicated between peer cache and relay discovery code.
+6. `qa/tests/` has grown into a flat folder with too many unrelated integration tests.
 
-- Add explicit peer-source metadata shared by the public API and future peer book.
-- Extend `PeerInfo` so `get_peers()` can represent discovered peers, not only connected peers.
-- Keep the six primitives unchanged.
-- Document the difference between bootstrap, rendezvous, relay/mediator, DHT-provider, cached, manual, and connected peers.
-- Add QA coverage so this metadata cannot regress.
+## Cleanup rules
 
-## Phase 2 — Hashed discovery namespace model
+Every step must preserve the public API and existing behavior unless the step explicitly states otherwise.
 
-Status: complete.
+Each implementation step must:
 
-- Add a deterministic namespace builder: `p2p-net/<network_id>/<app_id>/<hashed_tag>`.
-- Add config for app discovery tags without publishing raw contact names or invite phrases.
-- Support multiple tags per application.
-- Keep readable namespaces available only behind an explicit unsafe/debug option.
-- Runtime rendezvous refresh now uses derived hashed namespaces when app tags are configured, otherwise it uses the operator rendezvous namespace.
+- keep commits focused on one violation class;
+- avoid adding `#[allow(...)]` suppressions for cleanup warnings;
+- keep docs accurate with the code moved in that step;
+- run the canonical validation command before marking the step complete:
 
-## Phase 3 — Public fallback policy
+```powershell
+.\qa\ci\run-full-validation.ps1
+```
 
-Status: complete.
+## Step 1 — Centralize configuration error helpers
 
-- Added `discovery.public_bootstrap` with modes: `disabled`, `fallback_only`, and `always`.
-- Operator-owned bootstrap, rendezvous, relay, and cached peers are preferred before public fallback.
-- Public bootstrap and public relay/mediator candidates are explicit config lists, not hidden defaults.
-- Snapshots and metrics report whether public fallback was used and which public candidate class participated.
+Status: implemented; pending full validation.
 
-## Phase 4 — DHT provider-record namespace discovery
+Goal: remove duplicated local `config_error(...)` constructors and keep configuration error construction in one place.
 
-Status: complete.
+Scope:
 
-- Added Kademlia provider-record announcement for hashed discovery namespaces.
-- Added provider lookup for hashed namespace keys when rendezvous peers are absent by default.
-- Added an explicit option to run DHT provider lookup alongside rendezvous peers.
-- Added DHT provider state, snapshot fields, metrics, docs, and QA coverage.
-- Provider results are recorded in DHT provider state and feed the peer book used by `get_peers()`.
-- DHT discovery is internal; the public API remains the six primitives.
+- Add shared configuration-error constructors to `crates/common/error.rs`.
+- Replace repeated local helpers in connectivity, protocol, and node modules.
+- Preserve specialized error paths such as `<mediator>` and `<capability-resolver>` through a shared path-aware constructor.
+- Do not change runtime behavior or public API.
 
-## Phase 5 — Peer book
+Acceptance criteria:
 
-Status: complete.
+- `grep -R "fn config_error" crates` returns only the shared helper in `crates/common/error.rs`.
+- Existing validation error messages keep their previous path labels.
+- Full validation passes.
 
-- Added a single internal peer book for connected, cached, rendezvous, DHT provider, relay, bootstrap, and manual-style startup peer records.
-- Peer records track addresses, sources, namespaces, capability hints, last-seen timestamps, connection state, and failures.
-- `get_peers()` now reads from the peer book instead of only the live swarm connection set.
+## Step 2 — Centralize multiaddr classification helpers
 
-## Phase 6 — Connection strategy planner
+Status: pending.
 
-Status: complete.
+Goal: remove duplicated multiaddr reachability checks and make address classification reusable.
 
-- Added direct/relay/DCUtR connection planning behind `connect_peer(...)`.
-- Prefer QUIC/direct addresses when available.
-- Use relay paths when direct dialing fails or the peer is known to be behind NAT/CGNAT.
-- Attempt DCUtR after a relay path exists.
-- Keep relay fallback when DCUtR fails.
+Scope:
 
-## Phase 7 — Network resurrection tests
+- Add a focused helper module, likely `crates/connectivity/addr.rs` or `crates/common/multiaddr.rs`.
+- Move shared helpers such as `has_reachable_transport(...)` and `has_unspecified_ip(...)` out of peer-cache and relay-discovery modules.
+- Keep peer-cache persistence logic in `peer_cache.rs`.
+- Keep relay-selection logic in `relay_discovery.rs`.
 
-Status: complete.
+Acceptance criteria:
 
-- Added QA tests for a Joe/Alice namespace-discovery flow.
-- Verified public fallback is used only when policy allows it.
-- Verified raw tags are not published by default.
-- Verified discovered-but-not-connected peers appear in the peer list returned by the peer book used by `get_peers()`.
-- Verified `connect_peer(...)` planning can consume peer-book records through the connection planner.
+- No duplicated implementations of reachable-transport or unspecified-IP checks remain.
+- Peer-cache and relay-discovery tests still pass.
+- No new public API surface is added unless required internally by crate visibility.
 
-## Phase 8 — Operator docs and examples
+## Step 3 — Extract node metrics from `crates/node/mod.rs`
 
-Status: complete.
+Status: pending.
 
-- Added examples for private-infrastructure-first mode.
-- Added examples for public-fallback mode.
-- Documented privacy, abuse, performance, and dependency tradeoffs of public bootstrap/relay fallback.
-- Documented production guidance for running our own bootstrap/rendezvous/mediator fleet.
+Goal: remove Prometheus formatting from node startup/orchestration.
+
+Scope:
+
+- Move `snapshot_to_prometheus_metrics(...)` and metric-string helpers into `crates/node/metrics.rs`.
+- Keep metrics generation based on `NodeSnapshot` only.
+- Keep `NodeHandle` behavior unchanged.
+
+Acceptance criteria:
+
+- `crates/node/mod.rs` no longer contains Prometheus formatting logic.
+- Metrics tests continue to validate the same output.
+- The extracted metrics module has a single responsibility: snapshot-to-metrics rendering.
+
+## Step 4 — Extract node startup discovery setup
+
+Status: pending.
+
+Goal: reduce `start_node_with_platform(...)` by moving bootstrap, DNS resolution, public fallback decisions, peer-book seeding, and relay selection into focused startup helpers.
+
+Scope:
+
+- Add `crates/node/startup.rs` or similarly named focused module.
+- Move resolved startup address preparation out of `mod.rs`.
+- Move peer-book seed recording out of `mod.rs` where practical.
+- Keep the final swarm construction and task spawning visible in node orchestration.
+
+Acceptance criteria:
+
+- `start_node_with_platform(...)` becomes a readable orchestration flow instead of a long setup script.
+- Startup helper APIs are internal to the crate.
+- Public fallback, relay selection, cached peer, and rendezvous behavior remain unchanged.
+
+## Step 5 — Extract node runtime loop responsibilities
+
+Status: pending.
+
+Goal: separate event-loop mechanics from startup construction.
+
+Scope:
+
+- Add `crates/node/runtime.rs` for the long-running select loop and heartbeat/discovery tick handling.
+- Keep command routing in `crates/node/commands.rs`.
+- Keep event-specific handling in `crates/node/events.rs`.
+- Pass a small runtime context instead of many loose parameters.
+
+Acceptance criteria:
+
+- `crates/node/mod.rs` owns public node startup only.
+- Runtime loop state is grouped into named context structs.
+- No clippy `too_many_arguments` regressions are introduced.
+
+## Step 6 — Split node config, snapshot, and validation types
+
+Status: pending.
+
+Goal: reduce `crates/node/types.rs` so each file owns one concept.
+
+Scope:
+
+- Move `NodeConfig` and default config values into `crates/node/config.rs`.
+- Move `NodeSnapshot` and snapshot defaults into `crates/node/snapshot.rs`.
+- Move config parsing/validation helpers into `crates/node/config_validation.rs` if they remain large enough to justify separation.
+- Keep re-exports from `crates/node/mod.rs` so callers do not break.
+
+Acceptance criteria:
+
+- `crates/node/types.rs` is removed or reduced to small compatibility re-exports.
+- Config validation remains deterministic and covered by existing tests.
+- Snapshot fields and serialized names remain unchanged.
+
+## Step 7 — Split relay config, state, scheduling, and address helpers
+
+Status: pending.
+
+Goal: reduce `crates/connectivity/relay.rs` into cohesive modules.
+
+Scope:
+
+- Create a `crates/connectivity/relay/` module folder if the split is large enough.
+- Move relay service config and validation into `relay/config.rs`.
+- Move runtime relay state into `relay/state.rs`.
+- Move reservation-window and scheduling logic into `relay/schedule.rs`.
+- Move relay address helpers into `relay/address.rs` if not covered by Step 2.
+- Preserve existing public paths with re-exports where needed.
+
+Acceptance criteria:
+
+- Relay files each have one clear responsibility.
+- Existing relay, mediator, public fallback, and DCUtR tests still pass.
+- No duplicate relay policy checks remain.
+
+## Step 8 — Group QA tests by domain
+
+Status: pending.
+
+Goal: prevent `qa/tests/` from becoming a flat dumping ground.
+
+Scope:
+
+- Group tests by domain while keeping Cargo test targets working.
+- Candidate groups: `api`, `config`, `discovery`, `relay`, `security`, `operator`, and `observability`.
+- Update `Cargo.toml` test target paths.
+- Update docs that reference moved test files.
+
+Acceptance criteria:
+
+- Test names remain clear and domain-oriented.
+- `qa/tests/` no longer contains a long flat list of unrelated files.
+- Full validation discovers every moved test target.
+
+## Step 9 — Final hygiene audit
+
+Status: pending.
+
+Goal: confirm the repository satisfies the guidelines after refactors.
+
+Scope:
+
+- Re-run the same guideline audit used to produce this roadmap.
+- Check longest files and line counts again.
+- Search for duplicate helpers, dead compatibility shims, old phase language, stale docs, and unused modules.
+- Remove or reorganize anything that became temporary during the cleanup steps.
+
+Acceptance criteria:
+
+- No large SRP violations remain.
+- No obvious duplicate helper implementations remain.
+- Docs match the final module layout.
+- Full validation passes.

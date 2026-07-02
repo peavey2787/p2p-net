@@ -5,6 +5,7 @@
 //! preferred, when relayed fallback is retained, and how aggressively retries
 //! may be attempted.
 
+use crate::common::error::config_error;
 use serde::{Deserialize, Serialize};
 
 /// Operator policy for Direct Connection Upgrade through Relay (DCUtR).
@@ -61,12 +62,5 @@ impl DcutrPolicy {
             ));
         }
         Ok(())
-    }
-}
-
-fn config_error(reason: impl Into<String>) -> crate::common::error::NetError {
-    crate::common::error::NetError::Config {
-        path: "<config>".to_string(),
-        reason: reason.into(),
     }
 }

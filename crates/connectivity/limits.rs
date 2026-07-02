@@ -1,3 +1,4 @@
+use crate::common::error::config_error;
 use std::collections::HashMap;
 
 use libp2p::multiaddr::Protocol;
@@ -181,11 +182,4 @@ fn ensure_nonzero(field: &str, value: Option<u32>) -> Result<(), crate::common::
         return Err(config_error(format!("{field} must be null or at least 1")));
     }
     Ok(())
-}
-
-fn config_error(reason: impl Into<String>) -> crate::common::error::NetError {
-    crate::common::error::NetError::Config {
-        path: "<config>".to_string(),
-        reason: reason.into(),
-    }
 }

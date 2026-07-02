@@ -4,6 +4,7 @@
 //! facts into runtime capabilities. Runtime code consumes the returned
 //! `ResolvedNodeConfig` instead of re-implementing profile decisions.
 
+use crate::common::error::config_error_at;
 use crate::common::error::NetError;
 
 use super::environment::{EnvironmentReport, NetworkReachability};
@@ -109,83 +110,88 @@ fn validate_resolved_config(
     let behaviours = &resolved.enabled_behaviours;
 
     if matches!(role, NodeRole::Lite | NodeRole::MobileLite) && behaviours.relay_server {
-        return Err(config_error(
+        return Err(config_error_at(
+            "<capability-resolver>",
             "lite and mobile_lite profiles cannot enable relay server capability",
         ));
     }
 
     if matches!(role, NodeRole::Lite | NodeRole::MobileLite) && behaviours.rendezvous_server {
-        return Err(config_error(
+        return Err(config_error_at(
+            "<capability-resolver>",
             "lite and mobile_lite profiles cannot enable rendezvous server capability",
         ));
     }
 
     if behaviours.dcutr && !behaviours.relay_client {
-        return Err(config_error(
+        return Err(config_error_at(
+            "<capability-resolver>",
             "DCUtR requires relay client capability for relayed fallback",
         ));
     }
 
     if resolved.dcutr_enabled && !resolved.dcutr_keep_relay_fallback {
-        return Err(config_error(
+        return Err(config_error_at(
+            "<capability-resolver>",
             "DCUtR policy must keep relay fallback enabled for production-safe lite connectivity",
         ));
     }
 
     if resolved.dcutr_enabled && resolved.dcutr_max_attempts_per_peer == 0 {
-        return Err(config_error(
+        return Err(config_error_at(
+            "<capability-resolver>",
             "DCUtR max attempts per peer must be at least 1 when enabled",
         ));
     }
 
     if resolved.relay_discovery_enabled && !behaviours.relay_client {
-        return Err(config_error(
+        return Err(config_error_at(
+            "<capability-resolver>",
             "relay discovery requires relay client capability",
         ));
     }
 
     if resolved.mediator_enabled && !behaviours.relay_server {
-        return Err(config_error(
+        return Err(config_error_at(
+            "<capability-resolver>",
             "mediator capability requires relay server capability",
         ));
     }
 
     if resolved.mediator_enabled && !resolved.mediator_advertise_for_dcutr {
-        return Err(config_error(
+        return Err(config_error_at(
+            "<capability-resolver>",
             "mediator.advertise_for_dcutr must be true for mediator role",
         ));
     }
 
     if behaviours.relay_server && environment.background_restricted {
-        return Err(config_error(
+        return Err(config_error_at(
+            "<capability-resolver>",
             "relay server capability is not allowed in a background-restricted environment",
         ));
     }
 
     if behaviours.relay_server && raw.listen_addresses.is_empty() {
-        return Err(config_error(
+        return Err(config_error_at(
+            "<capability-resolver>",
             "relay server capability requires at least one listen address",
         ));
     }
 
     if behaviours.relay_server && !environment.can_listen_tcp && !environment.can_listen_quic {
-        return Err(config_error(
+        return Err(config_error_at(
+            "<capability-resolver>",
             "relay server capability requires TCP or QUIC listen support",
         ));
     }
 
     if matches!(role, NodeRole::MobileLite) && resolved.should_listen {
-        return Err(config_error(
+        return Err(config_error_at(
+            "<capability-resolver>",
             "mobile_lite resolved policy must not require public listen sockets",
         ));
     }
 
     Ok(())
-}
-
-fn config_error(reason: impl Into<String>) -> NetError {
-    NetError::Config {
-        path: "<capability-resolver>".to_string(),
-        reason: reason.into(),
-    }
 }

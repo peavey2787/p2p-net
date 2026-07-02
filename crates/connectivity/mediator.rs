@@ -6,6 +6,7 @@
 //! behaviour while keeping mediator intent visible in config, snapshots,
 //! metrics, and docs.
 
+use crate::common::error::config_error_at;
 use serde::{Deserialize, Serialize};
 
 use crate::connectivity::relay::{RelayAccess, RelayServiceConfig};
@@ -61,32 +62,45 @@ impl MediatorConfig {
             return Ok(());
         }
         if !self.allow_reservations {
-            return Err(config_error(
+            return Err(config_error_at(
+                "<mediator>",
                 "mediator.allow_reservations must be true while mediator.enabled is true",
             ));
         }
         if !self.allow_circuits {
-            return Err(config_error(
+            return Err(config_error_at(
+                "<mediator>",
                 "mediator.allow_circuits must be true while mediator.enabled is true",
             ));
         }
         if self.max_mediated_peers == 0 {
-            return Err(config_error("mediator.max_mediated_peers must be at least 1"));
+            return Err(config_error_at(
+                "<mediator>",
+                "mediator.max_mediated_peers must be at least 1",
+            ));
         }
         if self.max_reservations == 0 {
-            return Err(config_error("mediator.max_reservations must be at least 1"));
+            return Err(config_error_at(
+                "<mediator>",
+                "mediator.max_reservations must be at least 1",
+            ));
         }
         if self.max_circuits == 0 {
-            return Err(config_error("mediator.max_circuits must be at least 1"));
+            return Err(config_error_at(
+                "<mediator>",
+                "mediator.max_circuits must be at least 1",
+            ));
         }
         if self.require_authenticated_peers {
             if !matches!(relay.access, RelayAccess::AllowList) {
-                return Err(config_error(
+                return Err(config_error_at(
+                    "<mediator>",
                     "mediator.require_authenticated_peers requires relay.access = allow_list",
                 ));
             }
             if relay.allow_peers.is_empty() {
-                return Err(config_error(
+                return Err(config_error_at(
+                    "<mediator>",
                     "mediator.require_authenticated_peers requires relay.allow_peers to contain at least one trusted peer",
                 ));
             }
@@ -129,13 +143,6 @@ fn default_max_reservations() -> usize {
 
 fn default_max_circuits() -> usize {
     128
-}
-
-fn config_error(reason: impl Into<String>) -> crate::common::error::NetError {
-    crate::common::error::NetError::Config {
-        path: "<mediator>".to_string(),
-        reason: reason.into(),
-    }
 }
 
 #[cfg(test)]

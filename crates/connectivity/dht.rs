@@ -4,6 +4,7 @@
 //! namespaces through the DHT when operator rendezvous peers are absent. It is
 //! intentionally internal plumbing behind the six public app primitives.
 
+use crate::common::error::config_error;
 use std::collections::{BTreeSet, HashMap};
 
 use libp2p::kad::{self, QueryId};
@@ -278,12 +279,5 @@ fn add_peer_addr_to_kademlia(swarm: &mut Swarm<MeshBehaviour>, peer: &PeerId, ad
             .behaviour_mut()
             .kademlia
             .add_address(peer, addr.with(libp2p::multiaddr::Protocol::P2p(peer.to_owned())));
-    }
-}
-
-fn config_error(reason: impl Into<String>) -> crate::common::error::NetError {
-    crate::common::error::NetError::Config {
-        path: "<config>".to_string(),
-        reason: reason.into(),
     }
 }
