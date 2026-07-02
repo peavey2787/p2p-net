@@ -19,7 +19,7 @@ use crate::stack::{
 };
 
 use super::profile::ResolvedNodeConfig;
-use super::types::NodeConfig;
+use super::config::NodeConfig;
 
 pub(crate) struct StartupDiscoverySetup {
     pub(crate) startup_plan: StartupDiscoveryPlan,

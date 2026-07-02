@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::platform::PlatformRuntime;
 
-use super::types::NodeConfig;
+use super::config::NodeConfig;
 
 /// Optional user/platform hints used by embedders that already know facts the
 /// portable detector cannot know without network probing.

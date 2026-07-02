@@ -143,7 +143,7 @@ Acceptance criteria:
 
 ## Step 6 — Split node config, snapshot, and validation types
 
-Status: pending.
+Status: implemented; pending full validation.
 
 Goal: reduce `crates/node/types.rs` so each file owns one concept.
 
@@ -153,6 +153,13 @@ Scope:
 - Move `NodeSnapshot` and snapshot defaults into `crates/node/snapshot.rs`.
 - Move config parsing/validation helpers into `crates/node/config_validation.rs` if they remain large enough to justify separation.
 - Keep re-exports from `crates/node/mod.rs` so callers do not break.
+
+Implemented notes:
+
+- Added `crates/node/config.rs` for `NodeConfig`, defaults, config file loading, JSON rendering, profile/environment resolution helpers, and typed multiaddr accessors.
+- Added `crates/node/config_validation.rs` for deterministic config validation and shared multiaddr parsing helpers.
+- Added `crates/node/snapshot.rs` for `NodeSnapshot`, relay-state snapshot application, and network labels.
+- Removed the mixed `crates/node/types.rs` file and re-exported `NodeConfig` / `NodeSnapshot` from focused modules through `crates/node/mod.rs`.
 
 Acceptance criteria:
 

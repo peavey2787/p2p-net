@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::types::NodeConfig;
+use super::config::NodeConfig;
 
 /// User-facing node profile. `Auto` delegates role selection to the central
 /// capability resolver using advisory environment facts.

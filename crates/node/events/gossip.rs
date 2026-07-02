@@ -4,7 +4,7 @@ use libp2p::gossipsub::{MessageAcceptance, MessageId};
 use libp2p::{PeerId, Swarm};
 use tokio::sync::Mutex;
 
-use super::super::types::NodeSnapshot;
+use super::super::snapshot::NodeSnapshot;
 use crate::protocol::pulse::{
     validate_heartbeat_wire, HeartbeatValidationDecision,
 };

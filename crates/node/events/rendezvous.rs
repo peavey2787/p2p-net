@@ -58,7 +58,7 @@ fn record_rendezvous_discovery(
 }
 
 fn sync_rendezvous_snapshot(
-    snapshot: &mut super::super::types::NodeSnapshot,
+    snapshot: &mut super::super::snapshot::NodeSnapshot,
     ctx: &SwarmEventContext<'_>,
 ) {
     snapshot.rendezvous_registered_with = ctx.rendezvous_state.registered_with.len();

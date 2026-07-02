@@ -32,7 +32,8 @@ use super::events::{self, SwarmEventContext};
 use super::handle::NodeCommand;
 use super::profile::ResolvedNodeConfig;
 use super::push_pulse;
-use super::types::{NodeConfig, NodeSnapshot};
+use super::config::NodeConfig;
+use super::snapshot::NodeSnapshot;
 
 pub(crate) struct NodeRuntimeContext {
     pub(crate) cfg: NodeConfig,
