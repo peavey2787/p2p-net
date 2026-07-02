@@ -61,7 +61,7 @@ Acceptance criteria:
 
 ## Step 2 — Add public rendezvous observability and source accounting
 
-Status: planned.
+Status: implemented; pending full validation.
 
 Goal: make public rendezvous fallback obvious in snapshots, metrics, and peer-book/source reporting.
 
@@ -77,6 +77,8 @@ Acceptance criteria:
 - Public rendezvous endpoints can be supplied by app distributions without requiring manual user config.
 - Private-infrastructure-only mode never reports public rendezvous use.
 - Public fallback status shows whether bootstrap, rendezvous, or relay fallback was used.
+- `NodeSnapshot` exposes category-level public fallback booleans, reasons, and rendezvous candidate count.
+- Peer-book source accounting distinguishes public rendezvous from operator rendezvous.
 
 ## Step 3 — Auto-dial app-namespace DHT providers
 

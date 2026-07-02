@@ -23,7 +23,11 @@ pub(crate) fn snapshot_to_prometheus_metrics(snapshot: &NodeSnapshot) -> String 
     emit(&mut out, "p2p_dht_provider_queries_finished", s.dht_provider_queries_finished);
     emit(&mut out, "p2p_dht_provider_peers_discovered", s.dht_provider_peers_discovered);
     emit(&mut out, "p2p_public_fallback_used", flag(s.public_fallback_used));
+    emit(&mut out, "p2p_public_bootstrap_used", flag(s.public_bootstrap_used));
+    emit(&mut out, "p2p_public_rendezvous_used", flag(s.public_rendezvous_used));
+    emit(&mut out, "p2p_public_relay_used", flag(s.public_relay_used));
     emit(&mut out, "p2p_public_bootstrap_seed_count", s.public_bootstrap_seed_count);
+    emit(&mut out, "p2p_public_rendezvous_candidate_count", s.public_rendezvous_candidate_count);
     emit(&mut out, "p2p_public_relay_candidate_count", s.public_relay_candidate_count);
     emit(&mut out, "p2p_api_commands_processed", s.api_commands_processed);
     emit(&mut out, "p2p_api_command_failures", s.api_command_failures);

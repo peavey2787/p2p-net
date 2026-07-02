@@ -62,6 +62,7 @@ fn peer_info_exposes_discovery_sources_and_capability_hints() {
     assert!(connected.connected);
     assert!(connected.has_source(PeerSource::Connected));
     assert_eq!(PeerSource::DhtProvider.as_str(), "dht_provider");
+    assert_eq!(PeerSource::PublicRendezvous.as_str(), "public_rendezvous");
 
     let discovered = PeerInfo::discovered(
         peer,

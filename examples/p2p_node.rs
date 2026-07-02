@@ -72,7 +72,7 @@ fn draw_dashboard(frame: &mut ratatui::Frame<'_>, snap: &NodeSnapshot) {
         .constraints([
             Constraint::Length(5),
             Constraint::Length(4),
-            Constraint::Length(6),
+            Constraint::Length(7),
             Constraint::Min(6),
         ])
         .split(frame.area());
@@ -102,10 +102,16 @@ fn draw_dashboard(frame: &mut ratatui::Frame<'_>, snap: &NodeSnapshot) {
     frame.render_widget(transports, chunks[1]);
 
     let mesh = Paragraph::new(format!(
-        "Connected Peers: {} | PeerBook: known {} discovered {}\nRelay Server: {} ({}) | Mediator: {}\nServer Reservations: {} | Client Reservations: {} / attempts {} failures {}\nRelay Discovery: selected {} / candidates {} failures {}\nDHT Provider: enabled={} announced={} queries={} found={} peers={}\nActive Circuits: {} | Denied Requests: {} | Bytes Fwd: {} | DCUtR: enabled={} attempts={} successes={} failures={} fallback={} suppressed={}",
+        "Connected Peers: {} | PeerBook: known {} discovered {}\nPublic Fallback: mode={} bootstrap={} rendezvous={} relay={} public_rv_candidates={} reason={}\nRelay Server: {} ({}) | Mediator: {}\nServer Reservations: {} | Client Reservations: {} / attempts {} failures {}\nRelay Discovery: selected {} / candidates {} failures {}\nDHT Provider: enabled={} announced={} queries={} found={} peers={}\nActive Circuits: {} | Denied Requests: {} | Bytes Fwd: {} | DCUtR: enabled={} attempts={} successes={} failures={} fallback={} suppressed={}",
         snap.connected_peers,
         snap.peer_book_known_peers,
         snap.peer_book_discovered_peers,
+        snap.public_fallback_mode,
+        snap.public_bootstrap_used,
+        snap.public_rendezvous_used,
+        snap.public_relay_used,
+        snap.public_rendezvous_candidate_count,
+        snap.public_fallback_reason,
         snap.relay_server_enabled,
         snap.relay_service_health.as_str(),
         snap.mediator_enabled,

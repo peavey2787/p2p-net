@@ -53,7 +53,7 @@ impl StartupAddrs {
             } else {
                 Vec::new()
             },
-            use_public_bootstrap,
+            use_public_bootstrap || use_public_rendezvous,
         )
     }
 
@@ -74,6 +74,7 @@ impl StartupAddrs {
         use_public_bootstrap: bool,
         use_public_rendezvous: bool,
         selected_relay_peers: &[Multiaddr],
+        use_public_relay: bool,
     ) -> PeerBook {
         let mut peer_book = PeerBook::default();
         record_peer_book_addrs(&mut peer_book, &self.bootstrap_peers, PeerSource::Bootstrap);
@@ -88,14 +89,14 @@ impl StartupAddrs {
             record_peer_book_addrs(
                 &mut peer_book,
                 &self.public_bootstrap_seed_peers,
-                PeerSource::BootstrapSeed,
+                PeerSource::PublicBootstrapSeed,
             );
         }
         if use_public_rendezvous {
             record_peer_book_addrs(
                 &mut peer_book,
                 &self.public_rendezvous_peers,
-                PeerSource::Rendezvous,
+                PeerSource::PublicRendezvous,
             );
         }
         record_peer_book_addrs(
@@ -103,6 +104,13 @@ impl StartupAddrs {
             selected_relay_peers,
             PeerSource::RelayDiscovery,
         );
+        if use_public_relay {
+            record_peer_book_addrs(
+                &mut peer_book,
+                &self.public_relay_peers,
+                PeerSource::PublicRelayDiscovery,
+            );
+        }
         peer_book
     }
 

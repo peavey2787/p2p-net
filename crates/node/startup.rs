@@ -27,6 +27,9 @@ pub(crate) struct StartupDiscoverySetup {
     pub(crate) public_bootstrap_decision: PublicFallbackDecision,
     pub(crate) public_rendezvous_decision: PublicFallbackDecision,
     pub(crate) public_relay_decision: PublicFallbackDecision,
+    pub(crate) public_bootstrap_candidate_count: usize,
+    pub(crate) public_rendezvous_candidate_count: usize,
+    pub(crate) public_relay_candidate_count: usize,
 }
 
 pub(crate) async fn prepare_startup_discovery(
@@ -71,6 +74,7 @@ pub(crate) async fn prepare_startup_discovery(
         public_bootstrap_decision.used,
         public_rendezvous_decision.used,
         &relay_selection_plan.selected_addrs,
+        public_relay_decision.used,
     );
 
     Ok(StartupDiscoverySetup {
@@ -81,6 +85,9 @@ pub(crate) async fn prepare_startup_discovery(
         public_bootstrap_decision,
         public_rendezvous_decision,
         public_relay_decision,
+        public_bootstrap_candidate_count: startup_addrs.public_bootstrap_seed_peers.len(),
+        public_rendezvous_candidate_count: startup_addrs.public_rendezvous_peers.len(),
+        public_relay_candidate_count: startup_addrs.public_relay_peers.len(),
     })
 }
 

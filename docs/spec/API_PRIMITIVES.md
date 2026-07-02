@@ -57,9 +57,12 @@ Returns known peers as `PeerInfo` records. This includes connected, cached, rend
 - `connected`
 - `bootstrap`
 - `bootstrap_seed`
+- `public_bootstrap_seed`
 - `rendezvous`
+- `public_rendezvous`
 - `dht_provider`
 - `relay_discovery`
+- `public_relay_discovery`
 - `peer_cache`
 - `manual`
 

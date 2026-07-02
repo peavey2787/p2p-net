@@ -109,13 +109,23 @@ Built-in public fallback is best-effort. Invalid public multiaddrs still fail co
 
 ## Observability
 
+Snapshots and metrics expose whether public fallback participated by category. Public rendezvous candidates are recorded as `public_rendezvous`, separate from operator-provided `rendezvous` sources, so app UIs can explain when a peer came from built-in public infrastructure rather than configured private infrastructure.
+
 Snapshots and metrics expose whether public fallback participated:
 
 - `public_fallback_mode`
 - `public_fallback_used`
 - `public_fallback_reason`
+- `public_bootstrap_used` / `public_bootstrap_reason`
+- `public_rendezvous_used` / `public_rendezvous_reason`
+- `public_relay_used` / `public_relay_reason`
 - `public_bootstrap_seed_count`
+- `public_rendezvous_candidate_count`
 - `public_relay_candidate_count`
 - `p2p_public_fallback_used`
+- `p2p_public_bootstrap_used`
+- `p2p_public_rendezvous_used`
+- `p2p_public_relay_used`
 - `p2p_public_bootstrap_seed_count`
+- `p2p_public_rendezvous_candidate_count`
 - `p2p_public_relay_candidate_count`

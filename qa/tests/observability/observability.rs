@@ -67,7 +67,14 @@ fn snapshot_json_includes_accurate_relay_fields() {
         public_fallback_mode: "fallback_only".to_string(),
         public_fallback_used: true,
         public_fallback_reason: "no_operator_or_cached_startup_candidates".to_string(),
+        public_bootstrap_used: true,
+        public_bootstrap_reason: "no_operator_or_cached_startup_candidates".to_string(),
+        public_rendezvous_used: true,
+        public_rendezvous_reason: "no_operator_or_cached_rendezvous_candidates".to_string(),
+        public_relay_used: true,
+        public_relay_reason: "no_operator_cached_or_rendezvous_relay_candidates".to_string(),
         public_bootstrap_seed_count: 2,
+        public_rendezvous_candidate_count: 3,
         public_relay_candidate_count: 1,
         peer_book_known_peers: 5,
         peer_book_discovered_peers: 3,
@@ -129,7 +136,11 @@ fn snapshot_json_includes_accurate_relay_fields() {
     assert_eq!(json["dht_provider_peers_discovered"], 2);
     assert_eq!(json["public_fallback_mode"], "fallback_only");
     assert_eq!(json["public_fallback_used"].as_bool(), Some(true));
+    assert_eq!(json["public_bootstrap_used"].as_bool(), Some(true));
+    assert_eq!(json["public_rendezvous_used"].as_bool(), Some(true));
+    assert_eq!(json["public_relay_used"].as_bool(), Some(true));
     assert_eq!(json["public_bootstrap_seed_count"], 2);
+    assert_eq!(json["public_rendezvous_candidate_count"], 3);
     assert_eq!(json["public_relay_candidate_count"], 1);
     assert_eq!(json["peer_book_known_peers"], 5);
     assert_eq!(json["peer_book_discovered_peers"], 3);
@@ -161,7 +172,11 @@ fn prometheus_metrics_exports_operator_counters() {
         dht_provider_queries_finished: 2,
         dht_provider_peers_discovered: 2,
         public_fallback_used: true,
+        public_bootstrap_used: true,
+        public_rendezvous_used: true,
+        public_relay_used: true,
         public_bootstrap_seed_count: 2,
+        public_rendezvous_candidate_count: 3,
         public_relay_candidate_count: 1,
         app_subscriptions: vec!["chat/general".to_string()],
         app_messages_sent: 13,
@@ -217,7 +232,11 @@ fn prometheus_metrics_exports_operator_counters() {
     assert!(metrics.contains("p2p_dht_provider_queries_finished 2\n"));
     assert!(metrics.contains("p2p_dht_provider_peers_discovered 2\n"));
     assert!(metrics.contains("p2p_public_fallback_used 1\n"));
+    assert!(metrics.contains("p2p_public_bootstrap_used 1\n"));
+    assert!(metrics.contains("p2p_public_rendezvous_used 1\n"));
+    assert!(metrics.contains("p2p_public_relay_used 1\n"));
     assert!(metrics.contains("p2p_public_bootstrap_seed_count 2\n"));
+    assert!(metrics.contains("p2p_public_rendezvous_candidate_count 3\n"));
     assert!(metrics.contains("p2p_public_relay_candidate_count 1\n"));
     assert!(metrics.contains("p2p_api_commands_processed 17\n"));
     assert!(metrics.contains("p2p_api_command_failures 1\n"));
