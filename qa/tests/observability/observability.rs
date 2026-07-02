@@ -78,6 +78,11 @@ fn snapshot_json_includes_accurate_relay_fields() {
         public_relay_candidate_count: 1,
         peer_book_known_peers: 5,
         peer_book_discovered_peers: 3,
+        auto_connect_enabled: true,
+        auto_connect_dial_attempts: 8,
+        auto_connect_dial_failures: 2,
+        auto_connect_awaiting_address_peers: 4,
+        connection_plan_pending_peers: 6,
         app_subscriptions: vec!["chat/general".to_string()],
         app_messages_sent: 13,
         app_messages_received: 14,
@@ -144,6 +149,11 @@ fn snapshot_json_includes_accurate_relay_fields() {
     assert_eq!(json["public_relay_candidate_count"], 1);
     assert_eq!(json["peer_book_known_peers"], 5);
     assert_eq!(json["peer_book_discovered_peers"], 3);
+    assert_eq!(json["auto_connect_enabled"].as_bool(), Some(true));
+    assert_eq!(json["auto_connect_dial_attempts"], 8);
+    assert_eq!(json["auto_connect_dial_failures"], 2);
+    assert_eq!(json["auto_connect_awaiting_address_peers"], 4);
+    assert_eq!(json["connection_plan_pending_peers"], 6);
     assert_eq!(json["app_subscriptions"][0], "chat/general");
     assert_eq!(json["app_messages_sent"], 13);
     assert_eq!(json["app_messages_received"], 14);
@@ -162,6 +172,11 @@ fn prometheus_metrics_exports_operator_counters() {
         connected_peers: 7,
         peer_book_known_peers: 5,
         peer_book_discovered_peers: 3,
+        auto_connect_enabled: true,
+        auto_connect_dial_attempts: 8,
+        auto_connect_dial_failures: 2,
+        auto_connect_awaiting_address_peers: 4,
+        connection_plan_pending_peers: 6,
         discovery_namespace_count: 2,
         dht_provider_enabled: true,
         dht_provider_announce_attempts: 2,
@@ -222,6 +237,11 @@ fn prometheus_metrics_exports_operator_counters() {
     assert!(metrics.contains("p2p_connected_peers 7\n"));
     assert!(metrics.contains("p2p_peer_book_known_peers 5\n"));
     assert!(metrics.contains("p2p_peer_book_discovered_peers 3\n"));
+    assert!(metrics.contains("p2p_auto_connect_enabled 1\n"));
+    assert!(metrics.contains("p2p_auto_connect_dial_attempts 8\n"));
+    assert!(metrics.contains("p2p_auto_connect_dial_failures 2\n"));
+    assert!(metrics.contains("p2p_auto_connect_awaiting_address_peers 4\n"));
+    assert!(metrics.contains("p2p_connection_plan_pending_peers 6\n"));
     assert!(metrics.contains("p2p_discovery_namespace_count 2\n"));
     assert!(metrics.contains("p2p_dht_provider_enabled 1\n"));
     assert!(metrics.contains("p2p_dht_provider_announce_attempts 2\n"));
@@ -272,6 +292,21 @@ fn prometheus_metrics_exports_operator_counters() {
     assert!(metrics.contains("p2p_dcutr_relay_fallbacks 4\n"));
     assert!(metrics.contains("p2p_dcutr_upgrade_eligible_connections 5\n"));
     assert!(metrics.contains("p2p_dcutr_retry_suppressed 1\n"));
+}
+
+#[test]
+fn dashboard_distinguishes_discovered_pending_and_connected_peers() {
+    let dashboard = fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/p2p_node.rs"),
+    )
+    .expect("dashboard example");
+    assert!(dashboard.contains("Connected Peers: {} | PeerBook: known {} discovered {}"));
+    assert!(dashboard.contains("Auto-Connect: enabled={}"));
+    assert!(dashboard.contains("dial_attempts={}"));
+    assert!(dashboard.contains("pending_plans={}"));
+    assert!(dashboard.contains("awaiting_addrs={}"));
+    assert!(dashboard.contains("connection_plan_pending_peers"));
+    assert!(dashboard.contains("auto_connect_awaiting_address_peers"));
 }
 
 #[test]

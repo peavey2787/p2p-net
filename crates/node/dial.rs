@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use libp2p::{PeerId, Swarm};
 
 use crate::common::error::NetError;
@@ -7,6 +9,44 @@ use crate::connectivity::connection_strategy::{
 use crate::connectivity::dcutr::DcutrPolicy;
 use crate::connectivity::peer_book::PeerBook;
 use crate::stack::MeshBehaviour;
+
+#[derive(Debug, Default)]
+pub(crate) struct AutoDialStats {
+    pub(crate) dial_attempts: usize,
+    pub(crate) dial_failures: usize,
+    awaiting_address_peers: HashSet<PeerId>,
+}
+
+impl AutoDialStats {
+    pub(crate) fn record_outcome(&mut self, peer: &PeerId, outcome: &AutoDialOutcome) {
+        match outcome {
+            AutoDialOutcome::DialStarted(_) => {
+                self.dial_attempts = self.dial_attempts.saturating_add(1);
+                self.awaiting_address_peers.remove(peer);
+            }
+            AutoDialOutcome::DialFailed(_) => {
+                self.dial_attempts = self.dial_attempts.saturating_add(1);
+                self.dial_failures = self.dial_failures.saturating_add(1);
+                self.awaiting_address_peers.remove(peer);
+            }
+            AutoDialOutcome::AwaitingAddress => {
+                self.awaiting_address_peers.insert(*peer);
+            }
+            AutoDialOutcome::AlreadyConnected => {
+                self.awaiting_address_peers.remove(peer);
+            }
+            _ => {}
+        }
+    }
+
+    pub(crate) fn clear_awaiting(&mut self, peer: &PeerId) {
+        self.awaiting_address_peers.remove(peer);
+    }
+
+    pub(crate) fn awaiting_address_count(&self) -> usize {
+        self.awaiting_address_peers.len()
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum AutoDialOutcome {
@@ -35,7 +75,10 @@ impl AutoDialOutcome {
             Self::LocalPeer => format!("auto-connect skipped local peer={peer}"),
             Self::AlreadyConnected => format!("auto-connect skipped connected peer={peer}"),
             Self::AlreadyPending => format!("auto-connect skipped pending peer={peer}"),
-            Self::AwaitingAddress => format!("auto-connect awaiting address peer={peer}"),
+            Self::AwaitingAddress => format!(
+                "auto-connect awaiting dialable address peer={peer}; \
+                 peer is known/discovered but not yet dialable"
+            ),
             Self::DialStarted(plan) => format!("auto-connect dial started peer={peer} {plan}"),
             Self::DialFailed(reason) => {
                 format!("auto-connect dial failed peer={peer} reason={reason}")

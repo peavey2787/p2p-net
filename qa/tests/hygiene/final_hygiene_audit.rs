@@ -93,7 +93,7 @@ fn final_audit_document_matches_current_layout() {
 
     for required in [
         "crates/connectivity/dns.rs — 471 lines",
-        "crates/node/mod.rs — 444 lines",
+        "crates/node/mod.rs — 410 lines",
         "crates/connectivity/relay.rs — 13 lines",
         "`qa/tests/` is domain-grouped",
         "crates/node/startup/addrs.rs — 232 lines",

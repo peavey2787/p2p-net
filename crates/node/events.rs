@@ -19,6 +19,7 @@ use crate::protocol::pulse::{HeartbeatReplayCache, MessageSecurityConfig};
 use crate::protocol::reputation::ReputationStore;
 use crate::stack::{on_mesh_event, MeshBehaviour, MeshEvent};
 
+use super::dial::AutoDialStats;
 use super::snapshot::NodeSnapshot;
 
 mod app;
@@ -40,6 +41,7 @@ pub(crate) struct SwarmEventContext<'a> {
     pub(crate) dht_state: &'a mut DhtProviderState,
     pub(crate) peer_book: &'a mut PeerBook,
     pub(crate) pending_connections: &'a mut PendingConnectionPlans,
+    pub(crate) auto_dial_stats: &'a mut AutoDialStats,
     pub(crate) connection_caps: &'a mut ConnectionCapState,
     pub(crate) relay_cfg: &'a RelayServiceConfig,
     pub(crate) dcutr_policy: &'a DcutrPolicy,
@@ -53,6 +55,22 @@ pub(crate) struct SwarmEventContext<'a> {
     pub(crate) app_messages: &'a broadcast::Sender<AppMessage>,
     pub(crate) local_peer: PeerId,
     pub(crate) network_id: u32,
+}
+
+pub(crate) fn sync_peer_connectivity_snapshot(
+    snapshot: &mut NodeSnapshot,
+    ctx: &SwarmEventContext<'_>,
+) {
+    snapshot.peer_book_known_peers = ctx.peer_book.len();
+    snapshot.peer_book_discovered_peers = ctx.peer_book.discovered_count();
+    snapshot.auto_connect_enabled = ctx
+        .discovery_cfg
+        .public_bootstrap
+        .auto_connect_discovered_peers;
+    snapshot.auto_connect_dial_attempts = ctx.auto_dial_stats.dial_attempts;
+    snapshot.auto_connect_dial_failures = ctx.auto_dial_stats.dial_failures;
+    snapshot.auto_connect_awaiting_address_peers = ctx.auto_dial_stats.awaiting_address_count();
+    snapshot.connection_plan_pending_peers = ctx.pending_connections.pending_count();
 }
 
 /// Top-level swarm dispatch only. Responsibility-specific event handling lives in

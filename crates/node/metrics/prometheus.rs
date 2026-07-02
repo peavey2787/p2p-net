@@ -13,6 +13,11 @@ pub(crate) fn snapshot_to_prometheus_metrics(snapshot: &NodeSnapshot) -> String 
     emit(&mut out, "p2p_connected_peers", s.connected_peers);
     emit(&mut out, "p2p_peer_book_known_peers", s.peer_book_known_peers);
     emit(&mut out, "p2p_peer_book_discovered_peers", s.peer_book_discovered_peers);
+    emit(&mut out, "p2p_auto_connect_enabled", flag(s.auto_connect_enabled));
+    emit(&mut out, "p2p_auto_connect_dial_attempts", s.auto_connect_dial_attempts);
+    emit(&mut out, "p2p_auto_connect_dial_failures", s.auto_connect_dial_failures);
+    emit(&mut out, "p2p_auto_connect_awaiting_address_peers", s.auto_connect_awaiting_address_peers);
+    emit(&mut out, "p2p_connection_plan_pending_peers", s.connection_plan_pending_peers);
     emit(&mut out, "p2p_discovery_namespace_count", s.discovery_namespace_count);
     emit(&mut out, "p2p_dht_provider_enabled", flag(s.dht_provider_enabled));
     emit(&mut out, "p2p_dht_provider_announce_attempts", s.dht_provider_announce_attempts);

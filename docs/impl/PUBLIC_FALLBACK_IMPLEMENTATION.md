@@ -8,7 +8,7 @@ The public fallback implementation is policy-driven. Normal app mode enables fal
 - `crates/node/startup.rs` evaluates startup decisions, adds public bootstrap/rendezvous peers to startup discovery when allowed, and adds public relay candidates to relay selection when allowed.
 - `crates/connectivity/relay_discovery.rs` tracks public fallback relay candidates as their own source instead of merging them into configured relays.
 
-The public fallback path does not change the six application primitives. Applications still call `get_peers()` and `connect_peer(...)`; discovery policy only changes which peers can be discovered or selected internally. Auto-connect is network-layer only and must not add trusted contacts.
+The public fallback path does not change the six application primitives. Applications still call `get_peers()` and `connect_peer(...)`; discovery policy only changes which peers can be discovered or selected internally. Auto-connect is network-layer only and must not add trusted contacts. Runtime snapshots and Prometheus metrics expose auto-connect enabled state, dial attempts/failures, pending connection plans, and peers waiting for dialable addresses so known/discovered peer counts are not mistaken for established connections.
 
 ## Default behavior
 

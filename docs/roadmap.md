@@ -192,7 +192,7 @@ Implemented notes:
 
 ## Step 7 — Add runtime status for known vs discovered vs dialed vs connected
 
-Status: planned.
+Status: implemented; pending full validation.
 
 Goal: prevent the UI confusion seen in the current output where known/discovered peers appear but connected peers remain zero.
 
@@ -206,6 +206,15 @@ Acceptance criteria:
 
 - The dashboard can explain why `PeerBook: known/discovered` is nonzero while `Connected Peers` is zero.
 - Public fallback usage is visible per category.
+
+Implemented notes:
+
+- `NodeSnapshot` now exposes `auto_connect_enabled`, `auto_connect_dial_attempts`, `auto_connect_dial_failures`, `auto_connect_awaiting_address_peers`, and `connection_plan_pending_peers`.
+- DHT-provider and rendezvous auto-dial paths record outcomes through shared `AutoDialStats`; this tracks dial starts/failures and peers discovered before dialable addresses are available.
+- Connection establishment, connection failure, DHT discovery, rendezvous discovery, and API command handling refresh the peer-book and pending-plan snapshot counters.
+- Prometheus output now exports the same auto-connect and pending-plan counters.
+- The dashboard now has an `Auto-Connect` line so `known/discovered > 0` with `connected = 0` can be distinguished from `pending_plans > 0`, `awaiting_addrs > 0`, or no dial attempts yet.
+- Auto-connect still only attempts network-layer connectivity; it does not add trusted contacts.
 
 ## Step 8 — Add deterministic public-network resurrection tests
 

@@ -42,7 +42,7 @@ Longest runtime source files:
 
 ```text
 crates/connectivity/dns.rs — 471 lines
-crates/node/mod.rs — 444 lines
+crates/node/mod.rs — 410 lines
 crates/stack/discovery.rs — 417 lines
 crates/bindings/mod.rs — 415 lines
 crates/protocol/pulse.rs — 330 lines
@@ -56,7 +56,7 @@ crates/node/environment.rs — 307 lines
 Former hotspot status:
 
 ```text
-crates/node/mod.rs — 444 lines
+crates/node/mod.rs — 410 lines
 crates/node/config.rs — 243 lines
 crates/node/config_validation.rs — 171 lines
 crates/node/metrics.rs — 11 lines

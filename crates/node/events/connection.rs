@@ -7,7 +7,7 @@ use crate::connectivity::relay::{is_p2p_circuit_addr, update_nat_state, RelaySer
 use crate::stack::{refresh_rendezvous, MeshBehaviour};
 
 use super::super::push_pulse;
-use super::SwarmEventContext;
+use super::{sync_peer_connectivity_snapshot, SwarmEventContext};
 
 pub(crate) async fn handle_connection_established(
     peer_id: PeerId,
@@ -25,14 +25,14 @@ pub(crate) async fn handle_connection_established(
 
     ctx.peer_book.record_connected(peer_id, Some(remote_addr.clone()));
     ctx.pending_connections.complete(&peer_id);
+    ctx.auto_dial_stats.clear_awaiting(&peer_id);
 
     if ctx.relay_cfg.enabled && !ctx.relay_cfg.schedule.is_open_now_utc() {
         let _ = swarm.close_connection(connection_id);
         ctx.relay_state.health = RelayServiceHealth::ClosedBySchedule;
         let mut guard = ctx.snapshot.lock().await;
         guard.connected_peers = swarm.connected_peers().count();
-        guard.peer_book_known_peers = ctx.peer_book.len();
-        guard.peer_book_discovered_peers = ctx.peer_book.discovered_count();
+        sync_peer_connectivity_snapshot(&mut guard, ctx);
         guard.apply_relay_state(ctx.relay_state);
         guard.relay_server_enabled = false;
         push_pulse(
@@ -49,8 +49,7 @@ pub(crate) async fn handle_connection_established(
         let _ = swarm.close_connection(connection_id);
         let mut guard = ctx.snapshot.lock().await;
         guard.connected_peers = swarm.connected_peers().count();
-        guard.peer_book_known_peers = ctx.peer_book.len();
-        guard.peer_book_discovered_peers = ctx.peer_book.discovered_count();
+        sync_peer_connectivity_snapshot(&mut guard, ctx);
         guard.connection_limit_events = guard.connection_limit_events.saturating_add(1);
         guard.connection_cap_disconnects = ctx.connection_caps.cap_disconnects;
         push_pulse(
@@ -62,8 +61,7 @@ pub(crate) async fn handle_connection_established(
 
     let mut guard = ctx.snapshot.lock().await;
     guard.connected_peers = swarm.connected_peers().count();
-    guard.peer_book_known_peers = ctx.peer_book.len();
-    guard.peer_book_discovered_peers = ctx.peer_book.discovered_count();
+    sync_peer_connectivity_snapshot(&mut guard, ctx);
     guard.connection_cap_disconnects = ctx.connection_caps.cap_disconnects;
     if is_p2p_circuit_addr(&remote_addr) {
         if ctx.dcutr_policy.keep_relay_fallback {
@@ -133,8 +131,7 @@ pub(crate) async fn handle_connection_closed(
     ctx.peer_book.record_disconnected(peer_id);
     let mut guard = ctx.snapshot.lock().await;
     guard.connected_peers = swarm.connected_peers().count();
-    guard.peer_book_known_peers = ctx.peer_book.len();
-    guard.peer_book_discovered_peers = ctx.peer_book.discovered_count();
+    sync_peer_connectivity_snapshot(&mut guard, ctx);
     guard.connection_cap_disconnects = ctx.connection_caps.cap_disconnects;
 }
 
@@ -183,8 +180,7 @@ pub(crate) async fn handle_outgoing_connection_error(
     }
     let mut guard = ctx.snapshot.lock().await;
     guard.connection_limit_events = guard.connection_limit_events.saturating_add(1);
-    guard.peer_book_known_peers = ctx.peer_book.len();
-    guard.peer_book_discovered_peers = ctx.peer_book.discovered_count();
+    sync_peer_connectivity_snapshot(&mut guard, ctx);
     push_pulse(
         &mut guard.pulses,
         format!("outgoing connection error peer={peer_id:?} error={error_debug}"),

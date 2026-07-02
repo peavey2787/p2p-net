@@ -14,7 +14,6 @@ mod runtime;
 mod startup;
 mod snapshot;
 
-use std::collections::VecDeque;
 use std::sync::Arc;
 
 use libp2p::gossipsub::IdentTopic;
@@ -146,7 +145,6 @@ pub async fn start_node_with_platform(
         network_label: network_label(cfg.network_id),
         peer_id: local_peer.to_string(),
         nat_status: "unknown".to_string(),
-        public_addr: None,
         environment_platform: environment_report.platform.as_str().to_string(),
         environment_reachability: environment_report.reachability.as_str().to_string(),
         environment_nat_status: environment_report.nat_status.as_str().to_string(),
@@ -200,33 +198,15 @@ pub async fn start_node_with_platform(
         public_rendezvous_candidate_count,
         public_relay_candidate_count: public_relay_candidate_count
             .max(relay_selection_plan.public_candidates),
-        connected_peers: 0,
         peer_book_known_peers: peer_book.len(),
         peer_book_discovered_peers: peer_book.discovered_count(),
+        auto_connect_enabled: cfg.discovery.public_bootstrap.auto_connect_discovered_peers,
         relay_server_enabled: cfg.relay.is_active_now(),
         mediator_enabled: resolved_config.mediator_enabled,
         mediator_advertise_for_dcutr: resolved_config.mediator_advertise_for_dcutr,
         mediator_require_authenticated_peers: cfg.mediator.require_authenticated_peers,
-        mediator_active_reservations: 0,
-        mediator_active_circuits: 0,
-        mediator_dcutr_attempts_observed: 0,
-        mediator_denied_reservations: 0,
-        mediator_denied_circuits: 0,
-        mediator_abuse_rate_limit_events: 0,
         relay_service_health: cfg.relay.health_now(),
         relay_acl_scope: "connection_level".to_string(),
-        relay_reservations_accepted: 0,
-        relay_active_circuits: 0,
-        relay_denied_requests: 0,
-        relay_bytes_forwarded: 0,
-        relay_denied_reservations: 0,
-        relay_denied_circuits: 0,
-        relay_rate_limited_events: 0,
-        relay_at_capacity_events: 0,
-        relay_server_errors: 0,
-        connection_limit_events: 0,
-        connection_cap_disconnects: 0,
-        relay_client_reservations: 0,
         relay_client_reservation_attempts: relay_reservation_plan.attempted,
         relay_client_reservation_failures: relay_reservation_plan.errors.len(),
         relay_discovery_enabled: relay_selection_plan.enabled,
@@ -243,7 +223,6 @@ pub async fn start_node_with_platform(
             .errors
             .len()
             .saturating_add(relay_reservation_plan.errors.len()),
-        relay_discovery_replacements: 0,
         relayed_listen_addresses: relay_reservation_plan
             .listen_addrs
             .iter()
@@ -254,12 +233,6 @@ pub async fn start_node_with_platform(
         dcutr_keep_relay_fallback: resolved_config.dcutr_keep_relay_fallback,
         dcutr_retry_interval_secs: resolved_config.dcutr_retry_interval_secs,
         dcutr_max_attempts_per_peer: resolved_config.dcutr_max_attempts_per_peer,
-        dcutr_attempts: 0,
-        dcutr_successes: 0,
-        dcutr_failures: 0,
-        dcutr_relay_fallbacks: 0,
-        dcutr_upgrade_eligible_connections: 0,
-        dcutr_retry_suppressed: 0,
         rendezvous_client_enabled: cfg.discovery.rendezvous.client_enabled,
         rendezvous_server_enabled: cfg.discovery.rendezvous.server_enabled,
         rendezvous_registered_with: rendezvous_state.registered_with.len(),
@@ -271,18 +244,7 @@ pub async fn start_node_with_platform(
         rendezvous_server_registrations: rendezvous_state.server_registrations,
         rendezvous_server_discoveries_served: rendezvous_state.server_discoveries_served,
         rendezvous_server_errors: rendezvous_state.server_errors,
-        app_subscriptions: Vec::new(),
-        app_messages_sent: 0,
-        app_messages_received: 0,
-        app_messages_ignored: 0,
-        app_messages_rejected: 0,
-        api_commands_processed: 0,
-        api_command_failures: 0,
-        gossip_messages_rejected: 0,
-        gossip_messages_ignored: 0,
-        gossip_messages_accepted: 0,
-        pulses: VecDeque::new(),
-        uptime_secs: 0,
+        ..NodeSnapshot::default()
     }));
 
     {
@@ -302,7 +264,10 @@ pub async fn start_node_with_platform(
         );
     }
 
-    if public_bootstrap_decision.used || public_rendezvous_decision.used || public_relay_decision.used {
+    if public_bootstrap_decision.used
+        || public_rendezvous_decision.used
+        || public_relay_decision.used
+    {
         let mut guard = snapshot.lock().await;
         push_pulse(
             &mut guard.pulses,

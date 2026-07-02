@@ -3,7 +3,7 @@ use crate::connectivity::dht::on_kademlia_event;
 
 use super::super::dial::{auto_dial_peer_from_book, AutoDialOutcome};
 use super::super::push_pulse;
-use super::SwarmEventContext;
+use super::{sync_peer_connectivity_snapshot, SwarmEventContext};
 use crate::stack::MeshBehaviour;
 use libp2p::{Multiaddr, PeerId, Swarm};
 
@@ -112,6 +112,7 @@ fn maybe_auto_dial_dht_providers(
             ctx.dcutr_policy,
         );
 
+        ctx.auto_dial_stats.record_outcome(&peer, &outcome);
         match &outcome {
             AutoDialOutcome::DialStarted(_) | AutoDialOutcome::DialFailed(_) => {
                 ctx.dht_state.mark_auto_connect_attempted(peer);
@@ -174,6 +175,5 @@ fn sync_dht_snapshot(
     snapshot.dht_provider_records_found = ctx.dht_state.provider_records_found;
     snapshot.dht_provider_queries_finished = ctx.dht_state.provider_queries_finished;
     snapshot.dht_provider_peers_discovered = ctx.dht_state.provider_peer_count();
-    snapshot.peer_book_known_peers = ctx.peer_book.len();
-    snapshot.peer_book_discovered_peers = ctx.peer_book.discovered_count();
+    sync_peer_connectivity_snapshot(snapshot, ctx);
 }

@@ -10,7 +10,7 @@ use crate::stack::{on_rendezvous_client_event, on_rendezvous_server_event, MeshB
 
 use super::super::dial::auto_dial_peer_from_book;
 use super::super::push_pulse;
-use super::SwarmEventContext;
+use super::{sync_peer_connectivity_snapshot, SwarmEventContext};
 
 pub(crate) async fn handle_client_event(
     swarm: &mut Swarm<MeshBehaviour>,
@@ -108,6 +108,7 @@ fn maybe_auto_dial_rendezvous_peers(
             ctx.pending_connections,
             ctx.dcutr_policy,
         );
+        ctx.auto_dial_stats.record_outcome(&peer, &outcome);
         if outcome.should_pulse() {
             pulses.push(format!("rendezvous {}", outcome.describe(&peer)));
         }
@@ -128,6 +129,5 @@ fn sync_rendezvous_snapshot(
     snapshot.rendezvous_server_registrations = ctx.rendezvous_state.server_registrations;
     snapshot.rendezvous_server_discoveries_served = ctx.rendezvous_state.server_discoveries_served;
     snapshot.rendezvous_server_errors = ctx.rendezvous_state.server_errors;
-    snapshot.peer_book_known_peers = ctx.peer_book.len();
-    snapshot.peer_book_discovered_peers = ctx.peer_book.discovered_count();
+    sync_peer_connectivity_snapshot(snapshot, ctx);
 }
