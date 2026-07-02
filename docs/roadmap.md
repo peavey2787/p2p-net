@@ -169,7 +169,7 @@ Acceptance criteria:
 
 ## Step 7 — Split relay config, state, scheduling, and address helpers
 
-Status: pending.
+Status: implemented; pending full validation.
 
 Goal: reduce `crates/connectivity/relay.rs` into cohesive modules.
 
@@ -181,6 +181,14 @@ Scope:
 - Move reservation-window and scheduling logic into `relay/schedule.rs`.
 - Move relay address helpers into `relay/address.rs` if not covered by Step 2.
 - Preserve existing public paths with re-exports where needed.
+
+Implemented notes:
+
+- Kept `crates/connectivity/relay.rs` as a 13-line facade that declares focused relay submodules and re-exports the same public relay API paths.
+- Added `crates/connectivity/relay/config.rs` for `RelayServiceConfig`, `RelayAccess`, validation, peer allow/deny helpers, and libp2p relay config conversion.
+- Added `crates/connectivity/relay/schedule.rs` for `RelaySchedule`, `RelayWindow`, UTC window matching, and schedule validation.
+- Added `crates/connectivity/relay/state.rs` for `RelayState`, `RelayReservationPlan`, `RelayServiceHealth`, NAT updates, and denial-health classification.
+- Added `crates/connectivity/relay/address.rs` for relay reservation address construction and relayed multiaddr inspection.
 
 Acceptance criteria:
 
