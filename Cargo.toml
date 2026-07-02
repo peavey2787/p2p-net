@@ -187,6 +187,7 @@ libp2p = { version = "0.56", default-features = false, features = [
     "relay",
     "autonat",
     "dcutr",
+    "rsa",
     "macros",
 ] }
 libp2p-rendezvous = "0.17.1"
