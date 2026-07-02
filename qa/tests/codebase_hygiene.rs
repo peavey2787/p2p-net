@@ -297,6 +297,55 @@ fn node_runtime_loop_lives_in_runtime_module() {
     );
 }
 
+
+#[test]
+fn relay_responsibilities_live_in_focused_modules() {
+    let root = manifest_dir();
+    let relay_mod = fs::read_to_string(root.join("crates/connectivity/relay.rs")).expect("relay mod");
+    let relay_config = fs::read_to_string(root.join("crates/connectivity/relay/config.rs"))
+        .expect("relay config");
+    let relay_schedule = fs::read_to_string(root.join("crates/connectivity/relay/schedule.rs"))
+        .expect("relay schedule");
+    let relay_state = fs::read_to_string(root.join("crates/connectivity/relay/state.rs"))
+        .expect("relay state");
+    let relay_address = fs::read_to_string(root.join("crates/connectivity/relay/address.rs"))
+        .expect("relay address");
+
+    assert!(
+        relay_mod.contains("mod address;")
+            && relay_mod.contains("mod config;")
+            && relay_mod.contains("mod schedule;")
+            && relay_mod.contains("mod state;"),
+        "relay facade should declare focused relay modules"
+    );
+    assert!(
+        relay_config.contains("pub struct RelayServiceConfig")
+            && relay_config.contains("pub enum RelayAccess")
+            && !relay_config.contains("pub struct RelayState"),
+        "relay/config.rs should own relay service configuration only"
+    );
+    assert!(
+        relay_schedule.contains("pub struct RelaySchedule")
+            && relay_schedule.contains("pub struct RelayWindow")
+            && !relay_schedule.contains("pub struct RelayServiceConfig"),
+        "relay/schedule.rs should own relay scheduling only"
+    );
+    assert!(
+        relay_state.contains("pub struct RelayState")
+            && relay_state.contains("pub struct RelayReservationPlan")
+            && relay_state.contains("pub enum RelayServiceHealth")
+            && !relay_state.contains("pub struct RelayServiceConfig"),
+        "relay/state.rs should own relay runtime state only"
+    );
+    assert!(
+        relay_address.contains("pub fn relay_reservation_addr")
+            && relay_address.contains("pub fn is_p2p_circuit_addr")
+            && relay_address.contains("pub fn relay_peer_id")
+            && !relay_address.contains("pub struct RelayServiceConfig"),
+        "relay/address.rs should own relay multiaddr helpers only"
+    );
+}
+
 #[test]
 fn cargo_test_registrations_are_unique_and_complete() {
     let root = manifest_dir();
