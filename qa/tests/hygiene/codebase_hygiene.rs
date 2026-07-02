@@ -225,6 +225,8 @@ fn node_prometheus_metrics_live_in_metrics_module() {
     let node_mod = fs::read_to_string(root.join("crates/node/mod.rs")).expect("node mod");
     let node_metrics =
         fs::read_to_string(root.join("crates/node/metrics.rs")).expect("node metrics");
+    let prometheus_metrics = fs::read_to_string(root.join("crates/node/metrics/prometheus.rs"))
+        .expect("node Prometheus metrics");
 
     assert!(
         node_mod.contains("mod metrics;"),
@@ -239,8 +241,14 @@ fn node_prometheus_metrics_live_in_metrics_module() {
         "node orchestration must not contain Prometheus metric formatting"
     );
     assert!(
-        node_metrics.contains("pub fn snapshot_to_prometheus_metrics"),
-        "snapshot-to-Prometheus rendering belongs in crates/node/metrics.rs"
+        node_metrics.contains("mod prometheus;")
+            && node_metrics.contains("pub fn snapshot_to_prometheus_metrics"),
+        "crates/node/metrics.rs should stay a small facade over focused metrics implementations"
+    );
+    assert!(
+        prometheus_metrics.contains("p2p_connected_peers")
+            && prometheus_metrics.contains("pub(crate) fn snapshot_to_prometheus_metrics"),
+        "snapshot-to-Prometheus rendering belongs in crates/node/metrics/prometheus.rs"
     );
 }
 
