@@ -7,6 +7,7 @@ mod events;
 mod handle;
 mod metrics;
 mod profile;
+mod startup;
 mod types;
 
 use std::collections::{BTreeSet, VecDeque};
@@ -15,25 +16,22 @@ use std::time::Duration;
 
 use futures::StreamExt;
 use libp2p::gossipsub::IdentTopic;
-use libp2p::{Multiaddr, PeerId, Swarm};
+use libp2p::{PeerId, Swarm};
 use serde_json::Value;
 use tokio::sync::{broadcast, mpsc, Mutex};
 
-use crate::api::PeerSource;
 use crate::common::error::NetError;
 use crate::connectivity::connection_strategy::PendingConnectionPlans;
 use crate::connectivity::dht::{start_dht_namespace_discovery, DhtProviderState};
 use crate::connectivity::limits::ConnectionCapState;
-use crate::connectivity::peer_book::PeerBook;
 use crate::connectivity::relay::RelayState;
 use crate::connectivity::rendezvous::RendezvousState;
-use crate::connectivity::{dns, identity, peer_cache, relay_discovery};
+use crate::connectivity::identity;
 use crate::platform::{DesktopPlatformRuntime, NodeStorage, PlatformRuntime};
 use crate::protocol::pulse::{collect_local_heartbeat, heartbeat_topic, HeartbeatReplayCache};
 use crate::protocol::reputation::ReputationStore;
 use crate::stack::{
-    build_swarm, refresh_rendezvous, reserve_configured_relays, seed_bootstrap,
-    extract_p2p_peer_id, startup_discovery_plan, startup_discovery_plan_with_public, MeshBehaviour,
+    build_swarm, refresh_rendezvous, reserve_configured_relays, seed_bootstrap, MeshBehaviour,
 };
 
 pub use capabilities::{apply_resolved_capabilities, resolve_node_config};
@@ -78,125 +76,17 @@ pub async fn start_node_with_platform(
     let heartbeat_topic_hash = heartbeat_topic.hash().clone();
     let _ = swarm.behaviour_mut().gossipsub.subscribe(&heartbeat_topic);
 
-    let bootstrap_peers = dns::resolve_configured_multiaddrs(
-        "bootstrap_peers",
-        cfg.parsed_bootstrap_peers()?,
-        &cfg.dnsaddr,
-    )
-    .await?;
-    let bootstrap_seed_peers = dns::resolve_configured_multiaddrs(
-        "discovery.bootstrap_seed_peers",
-        cfg.parsed_bootstrap_seed_peers()?,
-        &cfg.dnsaddr,
-    )
-    .await?;
-    let public_bootstrap_seed_peers = dns::resolve_configured_multiaddrs(
-        "discovery.public_bootstrap.bootstrap_seed_peers",
-        cfg.parsed_public_bootstrap_seed_peers()?,
-        &cfg.dnsaddr,
-    )
-    .await?;
-    let public_relay_peers = dns::resolve_configured_multiaddrs(
-        "discovery.public_bootstrap.relay_peers",
-        cfg.parsed_public_relay_peers()?,
-        &cfg.dnsaddr,
-    )
-    .await?;
-    let rendezvous_peers = dns::resolve_configured_multiaddrs(
-        "discovery.rendezvous_peers",
-        cfg.parsed_rendezvous_peers()?,
-        &cfg.dnsaddr,
-    )
-    .await?;
-    let relay_peers =
-        dns::resolve_configured_multiaddrs("relay_peers", cfg.parsed_relay_peers()?, &cfg.dnsaddr)
-            .await?;
-    let cached_startup_addrs = peer_cache::load_last_addrs_with_storage(
-        &cfg.discovery,
-        cfg.startup_peer_cache_probe
-            .max(cfg.discovery.relay_discovery.max_reservations),
-        storage.as_ref(),
-    );
-    let cached_peers =
-        dns::resolve_cached_multiaddrs(cached_startup_addrs.clone(), &cfg.dnsaddr).await;
-    let cached_relay_peers =
-        dns::resolve_cached_multiaddrs(cached_startup_addrs, &cfg.dnsaddr).await;
+    let startup::StartupDiscoverySetup {
+        startup_plan,
+        rendezvous_peers,
+        peer_book,
+        relay_selection_plan,
+        public_bootstrap_decision,
+        public_relay_decision,
+    } = startup::prepare_startup_discovery(&cfg, &resolved_config, storage.as_ref()).await?;
 
-    let owned_startup_candidate_count = startup_discovery_plan(
-        bootstrap_peers.clone(),
-        bootstrap_seed_peers.clone(),
-        rendezvous_peers.clone(),
-        cached_peers.clone(),
-    )
-    .dial_addrs
-    .len();
-    let public_bootstrap_decision = cfg
-        .discovery
-        .public_bootstrap
-        .bootstrap_decision(owned_startup_candidate_count);
-    let startup_plan = startup_discovery_plan_with_public(
-        bootstrap_peers.clone(),
-        bootstrap_seed_peers.clone(),
-        rendezvous_peers.clone(),
-        cached_peers.clone(),
-        if public_bootstrap_decision.used {
-            public_bootstrap_seed_peers.clone()
-        } else {
-            Vec::new()
-        },
-        public_bootstrap_decision.used,
-    );
     seed_bootstrap(&mut swarm, &startup_plan.dial_addrs);
-
-    let mut peer_book = PeerBook::default();
-    record_peer_book_addrs(&mut peer_book, &bootstrap_peers, PeerSource::Bootstrap);
-    record_peer_book_addrs(&mut peer_book, &bootstrap_seed_peers, PeerSource::BootstrapSeed);
-    record_peer_book_addrs(&mut peer_book, &rendezvous_peers, PeerSource::Rendezvous);
-    record_peer_book_addrs(&mut peer_book, &cached_peers, PeerSource::PeerCache);
-    if public_bootstrap_decision.used {
-        record_peer_book_addrs(
-            &mut peer_book,
-            &public_bootstrap_seed_peers,
-            PeerSource::BootstrapSeed,
-        );
-    }
-
-    let relay_discovery_policy = if resolved_config.relay_discovery_enabled {
-        cfg.discovery.relay_discovery.clone()
-    } else {
-        relay_discovery::RelayDiscoveryPolicy {
-            enabled: false,
-            ..cfg.discovery.relay_discovery.clone()
-        }
-    };
-    let configured_relay_peers = relay_peers;
-    let startup_cached_relay_peers = cached_relay_peers;
-    let startup_rendezvous_relay_peers = rendezvous_peers.clone();
-    let owned_relay_selection_plan = relay_discovery::select_startup_relays(
-        &relay_discovery_policy,
-        configured_relay_peers.clone(),
-        startup_cached_relay_peers.clone(),
-        startup_rendezvous_relay_peers.clone(),
-        Vec::new(),
-    );
-    let public_relay_decision = cfg
-        .discovery
-        .public_bootstrap
-        .relay_decision(owned_relay_selection_plan.selected_addrs.len());
-    let relay_selection_plan = if public_relay_decision.used {
-        relay_discovery::select_startup_relays(
-            &relay_discovery_policy,
-            configured_relay_peers,
-            startup_cached_relay_peers,
-            startup_rendezvous_relay_peers,
-            public_relay_peers,
-        )
-    } else {
-        owned_relay_selection_plan
-    };
-
     let selected_relay_peers = relay_selection_plan.selected_addrs.clone();
-    record_peer_book_addrs(&mut peer_book, &selected_relay_peers, PeerSource::RelayDiscovery);
     let relay_reservation_plan = if resolved_config.enabled_behaviours.relay_client
         && cfg.reserve_configured_relays
     {
@@ -616,14 +506,6 @@ pub async fn start_node_with_platform(
     })
 }
 
-
-fn record_peer_book_addrs(peer_book: &mut PeerBook, addrs: &[Multiaddr], source: PeerSource) {
-    for addr in addrs {
-        if let Some(peer) = extract_p2p_peer_id(addr) {
-            peer_book.record_addr(peer, addr.clone(), source);
-        }
-    }
-}
 
 async fn publish_heartbeat(
     swarm: &mut Swarm<MeshBehaviour>,
