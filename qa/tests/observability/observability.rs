@@ -5,7 +5,7 @@ use libp2p::PeerId;
 use p2p_net::connectivity::relay::{RelayServiceHealth, RelayState};
 use p2p_net::{
     snapshot_to_json, snapshot_to_prometheus_metrics, start_node, DiscoveryConfig, NodeConfig,
-    NodeSnapshot,
+    NodeSnapshot, RendezvousConfig,
 };
 
 #[test]
@@ -383,6 +383,10 @@ async fn dashboard_does_not_claim_inactive_or_unimplemented_transports() {
             peer_cache_path: temp_path("observability-transports-cache")
                 .to_string_lossy()
                 .to_string(),
+            rendezvous: RendezvousConfig {
+                client_enabled: false,
+                ..RendezvousConfig::default()
+            },
             ..DiscoveryConfig::default()
         },
         ..NodeConfig::default()
