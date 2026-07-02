@@ -84,12 +84,13 @@ impl<T> CoreTransport for Transport<T>
 where
     T: CoreTransport + Send + Unpin + 'static,
     T::Dial: Send + 'static,
+    T::Error: Send + 'static,
 {
     type Output = T::Output;
-    type Error = Error;
-    type ListenerUpgrade = future::MapErr<T::ListenerUpgrade, fn(T::Error) -> Self::Error>;
+    type Error = Error<T::Error>;
+    type ListenerUpgrade = future::MapErr<T::ListenerUpgrade, fn(T::Error) -> Error<T::Error>>;
     type Dial = future::Either<
-        future::MapErr<T::Dial, fn(T::Error) -> Self::Error>,
+        future::MapErr<T::Dial, fn(T::Error) -> Error<T::Error>>,
         future::BoxFuture<'static, Result<Self::Output, Self::Error>>,
     >;
 
@@ -102,7 +103,7 @@ where
             .lock()
             .expect("dns transport mutex poisoned")
             .listen_on(id, addr)
-            .map_err(|e| e.map(|_| Error::Transport))
+            .map_err(|e| e.map(Error::Transport))
     }
 
     fn remove_listener(&mut self, id: ListenerId) -> bool {
@@ -123,8 +124,8 @@ where
                 .lock()
                 .expect("dns transport mutex poisoned")
                 .dial(addr, dial_opts)
-                .map_err(|e| e.map(|_| Error::Transport))?;
-            return Ok(future::Either::Left(dial.map_err(|_| Error::Transport)));
+                .map_err(|e| e.map(Error::Transport))?;
+            return Ok(future::Either::Left(dial.map_err(Error::Transport)));
         }
 
         let inner = self.inner.clone();
@@ -142,11 +143,11 @@ where
                             TransportError::MultiaddrNotSupported(a) => {
                                 Error::TransportAddressUnsupported(a)
                             }
-                            TransportError::Other(_) => Error::Transport,
+                            TransportError::Other(err) => Error::Transport(err),
                         });
 
                     match dial {
-                        Ok(dial) => match dial.await.map_err(|_| Error::Transport) {
+                        Ok(dial) => match dial.await.map_err(Error::Transport) {
                             Ok(output) => return Ok(output),
                             Err(err) => last_error = Some(err),
                         },
@@ -167,27 +168,27 @@ where
         let mut inner = self.inner.lock().expect("dns transport mutex poisoned");
         CoreTransport::poll(Pin::new(inner.deref_mut()), cx).map(|event| {
             event
-                .map_upgrade(|upgr| upgr.map_err::<_, fn(_) -> _>(|_| Error::Transport))
-                .map_err(|_| Error::Transport)
+                .map_upgrade(|upgr| {
+                    upgr.map_err::<_, fn(T::Error) -> Error<T::Error>>(Error::Transport)
+                })
+                .map_err(Error::Transport)
         })
     }
 }
 
 #[derive(Debug)]
-pub enum Error {
-    /// The wrapped transport returned an error. The concrete inner error type is
-    /// intentionally erased so this shim matches libp2p 0.56 builder bounds.
-    Transport,
+pub enum Error<E> {
+    Transport(E),
     Resolve(String),
     NoRecords(String),
     DnsaddrRequiresConfiguredPreresolver(Multiaddr),
     TransportAddressUnsupported(Multiaddr),
 }
 
-impl fmt::Display for Error {
+impl<E: fmt::Display> fmt::Display for Error<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Transport => write!(f, "transport error"),
+            Self::Transport(err) => write!(f, "{err}"),
             Self::Resolve(e) => write!(f, "DNS resolution failed: {e}"),
             Self::NoRecords(host) => write!(f, "DNS resolution returned no usable records for {host}"),
             Self::DnsaddrRequiresConfiguredPreresolver(addr) => write!(
@@ -201,7 +202,7 @@ impl fmt::Display for Error {
     }
 }
 
-impl error::Error for Error {}
+impl<E: error::Error + 'static> error::Error for Error<E> {}
 
 fn contains_dns(addr: &Multiaddr) -> bool {
     addr.iter().any(|p| {
@@ -219,7 +220,7 @@ enum DnsFamily {
     V6,
 }
 
-async fn resolve_dns_addr(addr: Multiaddr) -> Result<Vec<Multiaddr>, Error> {
+async fn resolve_dns_addr<E>(addr: Multiaddr) -> Result<Vec<Multiaddr>, Error<E>> {
     if addr.iter().any(|p| matches!(p, Protocol::Dnsaddr(_))) {
         return Err(Error::DnsaddrRequiresConfiguredPreresolver(addr));
     }
@@ -227,7 +228,7 @@ async fn resolve_dns_addr(addr: Multiaddr) -> Result<Vec<Multiaddr>, Error> {
     Ok(vec![resolve_ordinary_dns_addr(addr).await?])
 }
 
-async fn resolve_ordinary_dns_addr(addr: Multiaddr) -> Result<Multiaddr, Error> {
+async fn resolve_ordinary_dns_addr<E>(addr: Multiaddr) -> Result<Multiaddr, Error<E>> {
     let mut host = None;
     let mut family = DnsFamily::Any;
     let mut tcp_port = 0u16;
@@ -280,7 +281,11 @@ fn replace_first_plain_dns(addr: Multiaddr, replacement: Protocol<'static>) -> M
     let mut out = Multiaddr::empty();
     let mut replaced = false;
     for protocol in addr.iter() {
-        if !replaced && matches!(protocol, Protocol::Dns(_) | Protocol::Dns4(_) | Protocol::Dns6(_))
+        if !replaced
+            && matches!(
+                protocol,
+                Protocol::Dns(_) | Protocol::Dns4(_) | Protocol::Dns6(_)
+            )
         {
             out.push(replacement.clone());
             replaced = true;
