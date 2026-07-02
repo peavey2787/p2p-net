@@ -34,6 +34,7 @@ DNS support is enabled by default for configured and cached peers through p2p-ne
 crates/              Shared Rust P2P core modules
 docs/impl/          Implementation docs
 docs/spec/          Core specifications
+docs/operator/      Operator deployment guides
 docs/validation/    Validation docs
 docs/project/       Project/audit notes
 docs/future-work/   Deferred ideas and long-term proposals
@@ -113,6 +114,15 @@ Edit `p2p-node.json`. The default config is also available at:
 examples/node-config.example.json
 ```
 
+Operator-oriented configs are also available:
+
+```text
+examples/private-infrastructure-first.config.json
+examples/public-fallback.config.json
+```
+
+Operator guidance is in `docs/operator/`.
+
 Important fields:
 
 - `profile`: high-level node role selection: `auto`, `full`, `lite`, `relay`, `mediator`, `rendezvous`, `bootstrap`, or `mobile_lite`.
@@ -176,6 +186,7 @@ Normally, do not run the individual commands manually. Use `.\qa\ci\run-full-val
 - `docs/spec/DISCOVERY_RESURRECTION.md` documents private-infrastructure-first discovery fallback and peer roles.
 - `docs/spec/DISCOVERY_NAMESPACES.md` documents hashed app discovery namespace derivation.
 - `docs/spec/PUBLIC_FALLBACK.md` documents explicit public bootstrap and relay fallback.
+- `docs/operator/README.md` links deployment examples and production operator guidance.
 - `docs/spec/DHT_PROVIDER_DISCOVERY.md` documents DHT provider-record namespace discovery.
 - `docs/spec/PEER_BOOK.md` documents normalized peer metadata returned by `get_peers()`.
 - `docs/impl/DHT_PROVIDER_DISCOVERY_IMPLEMENTATION.md` documents DHT provider wiring and observability.

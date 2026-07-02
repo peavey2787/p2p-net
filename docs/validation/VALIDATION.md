@@ -107,6 +107,11 @@ sudo ./qa/tools/netem-linux.sh lo stop
 
 The test is registered in `Cargo.toml`, so `qa/ci/run-full-validation.ps1` and `qa/ci/run-full-validation.sh` pick it up through the existing `cargo test --workspace --locked -j 1` step. Host-language generated binding tests for Kotlin/Swift should live in the app shell once a generator such as UniFFI or a C ABI wrapper is chosen.
 
+
+## Operator docs and examples checks
+
+`qa/tests/operator_docs.rs` verifies that operator deployment guides exist, private-infrastructure-first and public-fallback example configs parse as `NodeConfig`, and the examples preserve the expected public-fallback policy modes.
+
 ## Manual audit and deny commands
 
 `cargo-audit` reads repository audit configuration from `.cargo/audit.toml` in the installed version this project validates against. The canonical validation scripts keep `qa/ci/audit.toml` as the source file and stage it to `.cargo/audit.toml` only while `cargo audit` runs.

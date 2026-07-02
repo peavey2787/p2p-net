@@ -81,9 +81,9 @@ Status: complete.
 
 ## Phase 8 — Operator docs and examples
 
-Status: planned.
+Status: complete.
 
-- Add examples for private-infrastructure-first mode.
-- Add examples for public-fallback mode.
-- Document privacy, abuse, performance, and dependency tradeoffs of public bootstrap/relay fallback.
-- Document production guidance for running our own bootstrap/rendezvous/mediator fleet.
+- Added examples for private-infrastructure-first mode.
+- Added examples for public-fallback mode.
+- Documented privacy, abuse, performance, and dependency tradeoffs of public bootstrap/relay fallback.
+- Documented production guidance for running our own bootstrap/rendezvous/mediator fleet.

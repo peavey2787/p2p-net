@@ -1,0 +1,78 @@
+{
+  "profile": "lite",
+  "network_id": 7001,
+  "identity_key_path": "state/client-node.identity.hex",
+  "listen_addresses": [],
+  "bootstrap_peers": [
+    "/dnsaddr/bootstrap.example.net/p2p/1AceoQx66Tx8niYpff2a7Hdb1H7yi7J5JC6tfBdssJ9RUQ"
+  ],
+  "relay_peers": [
+    "/dnsaddr/relay.example.net/p2p/1AceoQx66Tx8niYpff2a7Hdb1H7yi7J5JC6tfBdssJ9RUQ"
+  ],
+  "reserve_configured_relays": true,
+  "dnsaddr": {
+    "enabled": true,
+    "doh_endpoint": "https://dns.example.net/dns-query",
+    "timeout_secs": 5
+  },
+  "discovery": {
+    "peer_cache_path": "state/client-peer-cache.json",
+    "bootstrap_seed_peers": [
+      "/dnsaddr/bootstrap.example.net/p2p/1AceoQx66Tx8niYpff2a7Hdb1H7yi7J5JC6tfBdssJ9RUQ"
+    ],
+    "rendezvous_peers": [
+      "/dnsaddr/rendezvous.example.net/p2p/1AceoQx66Tx8niYpff2a7Hdb1H7yi7J5JC6tfBdssJ9RUQ"
+    ],
+    "rendezvous": {
+      "client_enabled": true,
+      "server_enabled": false,
+      "namespace": "p2p-net",
+      "register": true,
+      "discover": true,
+      "register_ttl_secs": 7200,
+      "discover_limit": 100
+    },
+    "namespace": {
+      "app_id": "hydra-msg",
+      "tags": [
+        "contacts:v1",
+        "inbox-resurrection:v1"
+      ],
+      "privacy": "hashed",
+      "allow_readable_tags": false
+    },
+    "dht": {
+      "enabled": true,
+      "announce": true,
+      "discover": true,
+      "discover_with_rendezvous_peers": false,
+      "max_namespaces_per_refresh": 16
+    },
+    "relay_discovery": {
+      "enabled": true,
+      "use_configured_relays": true,
+      "use_cached_relays": true,
+      "use_rendezvous_relays": true,
+      "min_reservations": 1,
+      "max_reservations": 3,
+      "prefer_configured_relays": true,
+      "replace_failed_relays": true
+    },
+    "public_bootstrap": {
+      "mode": "fallback_only",
+      "bootstrap_seed_peers": [
+        "/dnsaddr/bootstrap.libp2p.example.net/p2p/1AceoQx66Tx8niYpff2a7Hdb1H7yi7J5JC6tfBdssJ9RUQ"
+      ],
+      "relay_peers": [
+        "/dnsaddr/relay.libp2p.example.net/p2p/1AceoQx66Tx8niYpff2a7Hdb1H7yi7J5JC6tfBdssJ9RUQ"
+      ]
+    }
+  },
+  "dcutr": {
+    "enabled": true,
+    "attempt_after_relay_connection": true,
+    "keep_relay_fallback": true,
+    "retry_interval_secs": 60,
+    "max_attempts_per_peer": 3
+  }
+}
