@@ -82,7 +82,8 @@ Goal: remove Prometheus formatting from node startup/orchestration.
 
 Scope:
 
-- Move `snapshot_to_prometheus_metrics(...)` and metric-string helpers into `crates/node/metrics.rs`.
+- Move `snapshot_to_prometheus_metrics(...)` behind the focused `crates/node/metrics.rs` facade.
+- Keep Prometheus text rendering in `crates/node/metrics/prometheus.rs` so the facade remains small.
 - Keep metrics generation based on `NodeSnapshot` only.
 - Keep `NodeHandle` behavior unchanged.
 
@@ -91,6 +92,7 @@ Acceptance criteria:
 - `crates/node/mod.rs` no longer contains Prometheus formatting logic.
 - Metrics tests continue to validate the same output.
 - The extracted metrics module has a single responsibility: snapshot-to-metrics rendering.
+- `crates/node/metrics.rs` remains a small facade below the final hygiene line budget.
 
 ## Step 4 — Extract node startup discovery setup
 
