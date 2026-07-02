@@ -82,7 +82,7 @@ Acceptance criteria:
 
 ## Step 3 — Auto-dial app-namespace DHT providers
 
-Status: planned.
+Status: implemented; pending full validation.
 
 Goal: when DHT provider discovery finds peers for the app namespace, automatically attempt network-layer connection when policy allows it.
 
@@ -98,6 +98,14 @@ Acceptance criteria:
 - DHT-discovered app peers can transition from `discovered` to `connected` automatically.
 - Auto-dial is bounded and deduplicated so repeated DHT provider results do not spam dials.
 - Public/private policy can disable this behavior.
+
+Implemented notes:
+
+- `DhtProviderState` now tracks provider peers waiting for addresses and provider peers that already had one bounded auto-connect attempt.
+- `GetProviders` results record the app namespace in the peer book and trigger policy-gated network-layer dialing when addresses are available.
+- Kademlia address updates for already discovered DHT-provider peers are recorded into the peer book and can trigger the delayed auto-dial path.
+- Auto-connect uses the connection strategy planner, so direct QUIC/TCP ordering and relay fallback policy stay centralized.
+- This does not add trusted contacts; it only attempts transport-level connectivity.
 
 ## Step 4 — Auto-dial rendezvous-discovered app peers through connection strategy
 

@@ -79,3 +79,26 @@ fn dht_provider_discovery_is_wired_through_startup_and_events() {
     assert!(events_rs.contains("MeshEvent::Kademlia"));
     assert!(events_rs.contains("dht_state"));
 }
+
+
+#[test]
+fn dht_provider_auto_connect_is_policy_gated_and_deduped() {
+    let dht_rs = fs::read_to_string("crates/connectivity/dht.rs").expect("read dht module");
+    assert!(dht_rs.contains("auto_connect_attempted_peers"));
+    assert!(dht_rs.contains("auto_connect_waiting_for_addrs"));
+    assert!(dht_rs.contains("should_auto_connect_provider_result"));
+
+    let kademlia_rs = fs::read_to_string("crates/node/events/kademlia.rs")
+        .expect("read Kademlia event module");
+    assert!(kademlia_rs.contains("auto_dial_peer_from_book"));
+    assert!(kademlia_rs.contains("auto_connect_discovered_peers"));
+    assert!(kademlia_rs.contains("record_dht_provider_peers"));
+    assert!(kademlia_rs.contains("record_kademlia_provider_addrs"));
+    assert!(kademlia_rs.contains("mark_auto_connect_waiting_for_addrs"));
+    assert!(kademlia_rs.contains("mark_auto_connect_attempted"));
+
+    let strategy_rs = fs::read_to_string("crates/connectivity/connection_strategy.rs")
+        .expect("read connection strategy");
+    assert!(strategy_rs.contains("build_peer_book_connection_plan"));
+    assert!(strategy_rs.contains("is_pending"));
+}
