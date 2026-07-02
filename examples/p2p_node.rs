@@ -77,7 +77,24 @@ fn public_addr_display(snap: &NodeSnapshot) -> String {
     if snap.public_relay_candidate_count > 0 {
         return "none yet; public relay candidates available".to_string();
     }
+    if snap.public_ip_probe_enabled {
+        return format!(
+            "none yet; public_ip_probe status={} ip={}",
+            snap.public_ip_probe_status,
+            snap.public_ip_probe_addr.as_deref().unwrap_or("-")
+        );
+    }
     "none yet; no public direct/relayed addr".to_string()
+}
+
+fn public_ip_probe_display(snap: &NodeSnapshot) -> String {
+    format!(
+        "enabled={} status={} ip={} external_addrs={}",
+        snap.public_ip_probe_enabled,
+        snap.public_ip_probe_status,
+        snap.public_ip_probe_addr.as_deref().unwrap_or("-"),
+        snap.public_ip_probe_external_addresses.len()
+    )
 }
 
 fn local_listen_display(snap: &NodeSnapshot) -> String {
@@ -92,7 +109,7 @@ fn draw_dashboard(frame: &mut ratatui::Frame<'_>, snap: &NodeSnapshot) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(7),
+            Constraint::Length(8),
             Constraint::Length(4),
             Constraint::Length(8),
             Constraint::Min(6),
@@ -100,11 +117,12 @@ fn draw_dashboard(frame: &mut ratatui::Frame<'_>, snap: &NodeSnapshot) {
         .split(frame.area());
 
     let status = Paragraph::new(format!(
-        "Network: {}\nPeerID: {}\nNAT/Public: {} / {}\nLocal Listen: {}\nPlatform: {} runtime={} storage={}",
+        "Network: {}\nPeerID: {}\nNAT/Public: {} / {}\nPublic IP Probe: {}\nLocal Listen: {}\nPlatform: {} runtime={} storage={}",
         snap.network_label,
         snap.peer_id,
         snap.nat_status,
         public_addr_display(snap),
+        public_ip_probe_display(snap),
         local_listen_display(snap),
         snap.environment_platform,
         snap.platform_runtime,

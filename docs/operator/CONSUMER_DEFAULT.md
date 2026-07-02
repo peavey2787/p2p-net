@@ -25,7 +25,7 @@ run app -> public fallback joins discovery -> app peers are discovered -> networ
 
 Runtime status separates those stages. `PeerBook: known/discovered` means the node has learned about peers. `Auto-Connect` shows whether the runtime has started dial attempts, still has pending connection plans, or is waiting for dialable addresses. `Connected Peers` only counts established libp2p connections.
 
-`NAT/Public` only shows confirmed public direct or relayed reachability. Local/private listen addresses such as `127.0.0.1`, `172.17.0.1`, RFC1918 LAN ranges, and CGNAT ranges are shown separately as `Local Listen` diagnostics and are not advertised as public addresses. AutoNAT status `unknown_no_public_direct_addr_yet` means direct public probing has no public address to test yet; it does not disable relay fallback.
+`NAT/Public` only shows confirmed public direct or relayed reachability. Local/private listen addresses such as `127.0.0.1`, `172.17.0.1`, RFC1918 LAN ranges, and CGNAT ranges are shown separately as `Local Listen` diagnostics and are not advertised as public addresses. Normal consumer mode also enables `public_ip_probe` by default, which queries HTTPS public-IP endpoints and synthesizes concrete external multiaddrs from the configured listen ports. AutoNAT status `unknown_no_public_direct_addr_yet` means AutoNAT itself has no public address to test yet; it does not disable the public-IP probe or relay fallback.
 
 ## Auto-connect is not auto-trust
 

@@ -17,6 +17,7 @@ pub(crate) fn validate_node_config(cfg: &NodeConfig) -> Result<(), NetError> {
     }
 
     cfg.dnsaddr.validate()?;
+    cfg.public_ip_probe.validate()?;
     validate_listen_addrs("listen_addresses", &cfg.listen_addresses)?;
     validate_peer_addrs("bootstrap_peers", &cfg.bootstrap_peers, true)?;
     validate_dnsaddr_use("bootstrap_peers", &cfg.bootstrap_peers, &cfg.dnsaddr)?;

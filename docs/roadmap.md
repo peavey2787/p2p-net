@@ -273,3 +273,11 @@ Implemented notes:
 - Added snapshot fields for `public_direct_listen_addresses` and `local_listen_addresses`.
 - Updated the example dashboard to show local listen addresses separately from public reachability.
 - AutoNAT `NoAddresses` now displays as `unknown_no_public_direct_addr_yet`; relay fallback remains eligible when relay candidates/reservations exist.
+
+
+## Public reachability correction
+
+- Added a default consumer public-IP probe so the dashboard can show the actual public IP when HTTPS public-IP endpoints are reachable.
+- The probe synthesizes public external addresses from configured listen ports and adds them to libp2p as external addresses.
+- Local/private listen addresses remain diagnostics only and are never shown as public reachability.
+- AutoNAT `NoAddresses` is not treated as a public fallback blocker; the node can still use public-IP probe results and relay fallback.

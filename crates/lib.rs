@@ -74,7 +74,7 @@ pub use node::{
     apply_resolved_capabilities, resolve_node_config, snapshot_to_json,
     snapshot_to_prometheus_metrics, start_node, start_node_with_platform, BehaviourSet,
     EnvironmentConfig, EnvironmentReport, NatKind, NetworkReachability, NodeConfig, NodeHandle,
-    NodeProfile, NodeRole, NodeSnapshot, PlatformKind, ResolvedNodeConfig,
+    NodeProfile, NodeRole, NodeSnapshot, PlatformKind, PublicIpProbeConfig, ResolvedNodeConfig,
 };
 pub use protocol::pulse::{
     heartbeat_topic, validate_heartbeat_wire, verify_heartbeat, verify_heartbeat_with_config,

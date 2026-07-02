@@ -32,6 +32,7 @@ use super::dial::AutoDialStats;
 use super::events::{self, SwarmEventContext};
 use super::handle::NodeCommand;
 use super::profile::ResolvedNodeConfig;
+use super::public_ip::{self, PublicIpProbeResult};
 use super::push_pulse;
 use super::config::NodeConfig;
 use super::snapshot::NodeSnapshot;
@@ -92,6 +93,11 @@ async fn run_node_runtime(ctx: NodeRuntimeContext) {
     );
     let heartbeat_topic_hash = heartbeat_topic.hash().clone();
     let started_at = std::time::Instant::now();
+    let mut public_ip_probe = Box::pin(public_ip::probe_public_addresses(
+        cfg.public_ip_probe.clone(),
+        cfg.listen_addresses.clone(),
+    ));
+    let mut public_ip_probe_done = false;
 
     loop {
         tokio::select! {
@@ -106,6 +112,10 @@ async fn run_node_runtime(ctx: NodeRuntimeContext) {
                     &mut runtime_state,
                     started_at,
                 ).await;
+            }
+            public_ip_result = &mut public_ip_probe, if !public_ip_probe_done => {
+                public_ip_probe_done = true;
+                apply_public_ip_probe_result(public_ip_result, &mut swarm, &snapshot).await;
             }
             maybe_shutdown = shutdown_rx.recv() => {
                 let _ = maybe_shutdown;
@@ -274,4 +284,25 @@ async fn publish_heartbeat(
         format!("local heartbeat {} {}", env.peer_id, env.nonce_hex),
     );
     Ok(())
+}
+
+async fn apply_public_ip_probe_result(
+    result: PublicIpProbeResult,
+    swarm: &mut Swarm<MeshBehaviour>,
+    snapshot: &Arc<Mutex<NodeSnapshot>>,
+) {
+    for addr in &result.external_addresses {
+        swarm.add_external_address(addr.clone());
+    }
+
+    let mut guard = snapshot.lock().await;
+    guard.public_ip_probe_status = result.status.clone();
+    guard.public_ip_probe_addr = result.public_ip.clone();
+    for addr in result.external_addresses {
+        guard.record_public_external_addr(addr.to_string());
+    }
+
+    if let Some(pulse) = result.pulse_line() {
+        push_pulse(&mut guard.pulses, pulse);
+    }
 }
