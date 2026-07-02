@@ -281,3 +281,32 @@ Implemented notes:
 - The probe synthesizes public external addresses from configured listen ports and adds them to libp2p as external addresses.
 - Local/private listen addresses remain diagnostics only and are never shown as public reachability.
 - AutoNAT `NoAddresses` is not treated as a public fallback blocker; the node can still use public-IP probe results and relay fallback.
+
+## Step 10 — Public DHT meetup retry and relay-candidate bootstrapping
+
+Status: implemented; pending full validation.
+
+Goal: make the consumer public fallback keep progressing after startup instead of relying on a one-shot DHT provider announce/query before public reachability is known.
+
+Scope:
+
+- Refresh DHT provider announce/query work after public external addresses are learned.
+- Refresh DHT provider announce/query work on the runtime heartbeat so a node can publish/query after bootstrap routing improves.
+- Treat resolved public libp2p bootstrap peers as best-effort public relay candidates when no separate relay fleet is configured, while still reporting reservation failures honestly.
+- Keep public bootstrap peers separate from trusted contacts and app peers.
+- Keep auto-connect gated by the app namespace and peer-book connection planner.
+
+Acceptance criteria:
+
+- A node can learn its public address after startup and then re-run app namespace DHT announce/query work.
+- A node keeps retrying app namespace DHT discovery as public DHT routing changes.
+- Public bootstrap peers may be attempted as relay candidates only as best-effort infrastructure; they are not treated as app peers or trusted contacts.
+- The dashboard pulse stream shows DHT refresh attempts and failures so operators can distinguish bootstrap reachability from app-peer discovery.
+
+Implemented notes:
+
+- `runtime_tasks` now owns small periodic/public-IP-triggered runtime tasks so `runtime.rs` remains focused on the event loop.
+- Public IP probe results add public external addresses to the swarm and immediately trigger a DHT namespace refresh.
+- The heartbeat tick performs bounded DHT namespace refreshes so provider announce/query does not depend on one startup moment.
+- If `discovery.public_bootstrap.relay_peers` is empty, resolved public bootstrap seed peers are also considered best-effort public relay candidates. Nodes that support Circuit Relay v2 can accept reservations; nodes that do not support it fail visibly without blocking DHT discovery or direct dials.
+- Peer-book source accounting records these derived relay candidates as public relay discovery candidates when public relay fallback is selected.

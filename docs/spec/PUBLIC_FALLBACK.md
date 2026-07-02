@@ -137,3 +137,9 @@ Snapshots and metrics expose whether public fallback participated:
 - `p2p_public_bootstrap_seed_count`
 - `p2p_public_rendezvous_candidate_count`
 - `p2p_public_relay_candidate_count`
+
+### App namespace meetup over public DHT
+
+Public bootstrap peers are only the entry point into the public libp2p DHT. They do not automatically know which peers belong to this app. Consumer mode therefore announces and queries the app discovery namespace through Kademlia provider records, then auto-dials peers learned for that namespace only.
+
+DHT provider announce/query runs at startup, after public IP probing produces external addresses, and periodically during the runtime heartbeat. This avoids the startup race where a node tries to publish before it has useful external addresses or before public DHT routing has warmed up.

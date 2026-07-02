@@ -58,11 +58,12 @@ pub(crate) async fn prepare_startup_discovery(
         public_rendezvous_decision.used,
     );
     let relay_selection_plan = startup_addrs.relay_selection_plan(cfg, resolved_config);
+    let public_relay_candidate_count = startup_addrs.public_relay_candidate_count();
     let public_relay_decision = public_decision_for_resolved_addrs(
         cfg.discovery
             .public_bootstrap
             .relay_decision(relay_selection_plan.selected_addrs.len()),
-        startup_addrs.public_relay_peers.len(),
+        public_relay_candidate_count,
         "no_resolved_public_relay_candidates",
     );
     let relay_selection_plan = if public_relay_decision.used {
@@ -87,7 +88,7 @@ pub(crate) async fn prepare_startup_discovery(
         public_relay_decision,
         public_bootstrap_candidate_count: startup_addrs.public_bootstrap_seed_peers.len(),
         public_rendezvous_candidate_count: startup_addrs.public_rendezvous_peers.len(),
-        public_relay_candidate_count: startup_addrs.public_relay_peers.len(),
+        public_relay_candidate_count,
     })
 }
 
