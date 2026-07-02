@@ -5,6 +5,7 @@
 //! bounded DNS-over-HTTPS TXT lookup path with recursion, count, size, and
 //! timeout limits. LAN multicast discovery is intentionally not included.
 
+use crate::common::error::config_error;
 use std::{net::IpAddr, time::Duration};
 
 use serde::{Deserialize, Serialize};
@@ -91,13 +92,6 @@ impl DnsaddrConfig {
 
     fn timeout(&self) -> Duration {
         Duration::from_secs(self.timeout_secs)
-    }
-}
-
-fn config_error(reason: impl Into<String>) -> NetError {
-    NetError::Config {
-        path: "<config>".to_string(),
-        reason: reason.into(),
     }
 }
 

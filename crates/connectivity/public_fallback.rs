@@ -4,6 +4,7 @@
 //! operator-owned bootstrap, rendezvous, mediator, and relay nodes. Public seeds
 //! are used only when configured and allowed by policy.
 
+use crate::common::error::config_error;
 use serde::{Deserialize, Serialize};
 
 /// When public discovery fallback may be used.
@@ -133,13 +134,6 @@ impl PublicFallbackDecision {
             used,
             reason: reason.into(),
         }
-    }
-}
-
-fn config_error(reason: impl Into<String>) -> crate::common::error::NetError {
-    crate::common::error::NetError::Config {
-        path: "<config>".to_string(),
-        reason: reason.into(),
     }
 }
 

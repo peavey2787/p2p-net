@@ -1,3 +1,4 @@
+use crate::common::error::config_error;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::num::NonZeroU32;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -436,13 +437,6 @@ fn validate_peer_ids(field: &str, values: &[String]) -> Result<(), crate::common
         })?;
     }
     Ok(())
-}
-
-fn config_error(reason: impl Into<String>) -> crate::common::error::NetError {
-    crate::common::error::NetError::Config {
-        path: "<config>".to_string(),
-        reason: reason.into(),
-    }
 }
 
 fn is_valid_day(raw: &str) -> bool {

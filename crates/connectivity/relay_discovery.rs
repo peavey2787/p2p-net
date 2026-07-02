@@ -4,6 +4,7 @@
 //! relay candidates, and rendezvous-discovered relay candidates all flow through
 //! one selector before reservation attempts are made.
 
+use crate::common::error::config_error;
 use std::collections::BTreeSet;
 
 use libp2p::multiaddr::Protocol;
@@ -326,11 +327,4 @@ fn has_unspecified_ip(addr: &Multiaddr) -> bool {
         Protocol::Ip6(ip) => ip.is_unspecified(),
         _ => false,
     })
-}
-
-fn config_error(reason: impl Into<String>) -> crate::common::error::NetError {
-    crate::common::error::NetError::Config {
-        path: "<config>".to_string(),
-        reason: reason.into(),
-    }
 }

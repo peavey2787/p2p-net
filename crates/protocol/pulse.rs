@@ -1,3 +1,4 @@
+use crate::common::error::config_error;
 use std::collections::{HashMap, VecDeque};
 
 use libp2p::PeerId;
@@ -326,11 +327,4 @@ fn replay_key(source: PeerId, env: &HeartbeatEnvelope) -> String {
         "{}:{}:{}:{}",
         source, env.schema_version, env.timestamp_ns, env.nonce_hex
     )
-}
-
-fn config_error(reason: impl Into<String>) -> NetError {
-    NetError::Config {
-        path: "<config>".to_string(),
-        reason: reason.into(),
-    }
 }
