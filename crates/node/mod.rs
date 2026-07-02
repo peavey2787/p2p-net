@@ -7,32 +7,25 @@ mod events;
 mod handle;
 mod metrics;
 mod profile;
+mod runtime;
 mod startup;
 mod types;
 
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::VecDeque;
 use std::sync::Arc;
-use std::time::Duration;
 
-use futures::StreamExt;
 use libp2p::gossipsub::IdentTopic;
-use libp2p::{PeerId, Swarm};
+use libp2p::PeerId;
 use serde_json::Value;
 use tokio::sync::{broadcast, mpsc, Mutex};
 
 use crate::common::error::NetError;
-use crate::connectivity::connection_strategy::PendingConnectionPlans;
 use crate::connectivity::dht::{start_dht_namespace_discovery, DhtProviderState};
-use crate::connectivity::limits::ConnectionCapState;
-use crate::connectivity::relay::RelayState;
 use crate::connectivity::rendezvous::RendezvousState;
 use crate::connectivity::identity;
 use crate::platform::{DesktopPlatformRuntime, NodeStorage, PlatformRuntime};
-use crate::protocol::pulse::{collect_local_heartbeat, heartbeat_topic, HeartbeatReplayCache};
-use crate::protocol::reputation::ReputationStore;
-use crate::stack::{
-    build_swarm, refresh_rendezvous, reserve_configured_relays, seed_bootstrap, MeshBehaviour,
-};
+use crate::protocol::pulse::heartbeat_topic;
+use crate::stack::{build_swarm, refresh_rendezvous, reserve_configured_relays, seed_bootstrap};
 
 pub use capabilities::{apply_resolved_capabilities, resolve_node_config};
 pub use environment::{
@@ -73,7 +66,6 @@ pub async fn start_node_with_platform(
     let (mut swarm, transport_plan) = build_swarm(local_key, &cfg, &resolved_config).await?;
 
     let heartbeat_topic = IdentTopic::new(heartbeat_topic(cfg.network_id));
-    let heartbeat_topic_hash = heartbeat_topic.hash().clone();
     let _ = swarm.behaviour_mut().gossipsub.subscribe(&heartbeat_topic);
 
     let startup::StartupDiscoverySetup {
@@ -381,119 +373,26 @@ pub async fn start_node_with_platform(
         }
     }
 
-    let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
-    let (command_tx, mut command_rx) = mpsc::channel(128);
+    let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
+    let (command_tx, command_rx) = mpsc::channel(128);
     let (messages_tx, _) = broadcast::channel(256);
-    let task_snapshot = Arc::clone(&snapshot);
-    let rendezvous_peers_for_task = rendezvous_peers.clone();
-    let storage_for_task = Arc::clone(&storage);
-    let messages_for_task = messages_tx.clone();
-    let task = tokio::spawn(async move {
-        let heartbeat_interval = Duration::from_secs(cfg.heartbeat_interval_secs.max(1));
-        let mut ticker = tokio::time::interval(heartbeat_interval);
-        let mut rep = ReputationStore::new(cfg.message_security.reputation.clone());
-        let mut replay_cache = HeartbeatReplayCache::new(&cfg.message_security);
-        let mut relay_state = RelayState {
-            server_enabled: cfg.relay.is_active_now(),
-            health: cfg.relay.health_now(),
-            relay_client_reservation_attempts: relay_reservation_plan.attempted,
-            relay_client_reservation_failures: relay_reservation_plan.errors.len(),
-            dcutr_enabled: resolved_config.dcutr_enabled,
-            relay_discovery_selected_relays: relay_selection_plan
-                .selected_strings()
-                .into_iter()
-                .collect::<BTreeSet<_>>(),
-            relay_discovery_candidate_count: relay_selection_plan.total_candidates(),
-            relay_discovery_configured_candidates: relay_selection_plan.configured_candidates,
-            relay_discovery_cached_candidates: relay_selection_plan.cached_candidates,
-            relay_discovery_rendezvous_candidates: relay_selection_plan.rendezvous_candidates,
-            relay_discovery_public_candidates: relay_selection_plan.public_candidates,
-            relay_discovery_ignored_candidates: relay_selection_plan.ignored_candidates,
-            relay_discovery_failures: relay_selection_plan
-                .errors
-                .len()
-                .saturating_add(relay_reservation_plan.errors.len()),
-            relay_discovery_replacements: 0,
-            relayed_listen_addrs: relay_reservation_plan
-                .listen_addrs
-                .iter()
-                .map(ToString::to_string)
-                .collect(),
-            ..RelayState::default()
-        };
-        let mut rendezvous_state = rendezvous_state;
-        let mut dht_state = dht_state;
-        let mut peer_book = peer_book;
-        let mut pending_connections = PendingConnectionPlans::default();
-        let mut connection_caps = ConnectionCapState::new(&cfg.connection_limits);
-        let mut app_topic_hashes = Vec::new();
-        let started_at = std::time::Instant::now();
-
-        loop {
-            tokio::select! {
-                biased;
-                _ = ticker.tick() => {
-                    events::enforce_relay_schedule(
-                        &cfg.relay,
-                        &mut swarm,
-                        &task_snapshot,
-                        &mut relay_state,
-                    ).await;
-                    let _ = publish_heartbeat(&mut swarm, local_peer, &heartbeat_topic, &task_snapshot).await;
-                    let mut guard = task_snapshot.lock().await;
-                    guard.uptime_secs = started_at.elapsed().as_secs();
-                }
-                maybe_shutdown = shutdown_rx.recv() => {
-                    let _ = maybe_shutdown;
-                    break;
-                }
-                maybe_command = command_rx.recv() => {
-                    if let Some(command) = maybe_command {
-                        commands::handle_node_command(
-                            command,
-                            commands::NodeCommandContext {
-                                swarm: &mut swarm,
-                                local_peer,
-                                network_id: cfg.network_id,
-                                app_topic_hashes: &mut app_topic_hashes,
-                                snapshot: &task_snapshot,
-                                peer_book: &mut peer_book,
-                                pending_connections: &mut pending_connections,
-                                dcutr_policy: &cfg.dcutr,
-                            },
-                        )
-                        .await;
-                    } else {
-                        break;
-                    }
-                }
-                evt = swarm.select_next_some() => {
-                    let mut event_ctx = events::SwarmEventContext {
-                        snapshot: &task_snapshot,
-                        rep: &mut rep,
-                        relay_state: &mut relay_state,
-                        rendezvous_state: &mut rendezvous_state,
-                        dht_state: &mut dht_state,
-                        peer_book: &mut peer_book,
-                        pending_connections: &mut pending_connections,
-                        connection_caps: &mut connection_caps,
-                        relay_cfg: &cfg.relay,
-                        dcutr_policy: &cfg.dcutr,
-                        discovery_cfg: &cfg.discovery,
-                        storage: storage_for_task.as_ref(),
-                        rendezvous_peers: &rendezvous_peers_for_task,
-                        message_security: &cfg.message_security,
-                        replay_cache: &mut replay_cache,
-                        heartbeat_topic_hash: &heartbeat_topic_hash,
-                        app_topic_hashes: &app_topic_hashes,
-                        app_messages: &messages_for_task,
-                        local_peer,
-                        network_id: cfg.network_id,
-                    };
-                    events::handle_swarm_event(evt, &mut swarm, &mut event_ctx).await;
-                }
-            }
-        }
+    let task = runtime::spawn_node_runtime(runtime::NodeRuntimeContext {
+        cfg,
+        resolved_config,
+        swarm,
+        local_peer,
+        heartbeat_topic,
+        snapshot: Arc::clone(&snapshot),
+        storage,
+        rendezvous_peers,
+        relay_reservation_plan,
+        relay_selection_plan,
+        rendezvous_state,
+        dht_state,
+        peer_book,
+        shutdown_rx,
+        command_rx,
+        messages_tx: messages_tx.clone(),
     });
 
     Ok(NodeHandle {
@@ -504,27 +403,6 @@ pub async fn start_node_with_platform(
         shutdown_tx,
         task: Arc::new(Mutex::new(Some(task))),
     })
-}
-
-
-async fn publish_heartbeat(
-    swarm: &mut Swarm<MeshBehaviour>,
-    local_peer: PeerId,
-    topic: &IdentTopic,
-    snapshot: &Arc<Mutex<NodeSnapshot>>,
-) -> Result<(), NetError> {
-    let env = collect_local_heartbeat(local_peer)?;
-    let payload = serde_json::to_vec(&env).map_err(|e| NetError::GossipCodec(e.to_string()))?;
-    let _ = swarm
-        .behaviour_mut()
-        .gossipsub
-        .publish(topic.clone(), payload);
-    let mut guard = snapshot.lock().await;
-    push_pulse(
-        &mut guard.pulses,
-        format!("local heartbeat {} {}", env.peer_id, env.nonce_hex),
-    );
-    Ok(())
 }
 
 pub(crate) fn push_pulse(buf: &mut VecDeque<String>, line: String) {
