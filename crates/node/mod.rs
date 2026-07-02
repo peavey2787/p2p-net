@@ -14,6 +14,7 @@ mod runtime;
 mod startup;
 mod snapshot;
 
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 use libp2p::gossipsub::IdentTopic;
