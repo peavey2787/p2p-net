@@ -1,6 +1,6 @@
 #[test]
 fn default_dependency_graph_uses_local_no_hickory_dns_patch() {
-    let manifest = include_str!("../../Cargo.toml");
+    let manifest = include_str!("../../../Cargo.toml");
     assert!(
         manifest.contains("dns = [\"libp2p/dns\"]"),
         "WebSocket support requires libp2p/dns to activate the local patched libp2p-dns adapter"
@@ -13,7 +13,7 @@ fn default_dependency_graph_uses_local_no_hickory_dns_patch() {
 
 #[test]
 fn upstream_mdns_is_policy_patched_to_noop_placeholder() {
-    let manifest = include_str!("../../Cargo.toml");
+    let manifest = include_str!("../../../Cargo.toml");
     assert!(
         manifest.contains("libp2p-mdns = { path = \"external/libp2p-mdns-placeholder\" }"),
         "disallowed upstream libp2p-mdns must be patched away from crates.io"
@@ -22,8 +22,8 @@ fn upstream_mdns_is_policy_patched_to_noop_placeholder() {
 
 #[test]
 fn local_dns_patch_does_not_hide_doh_or_hickory() {
-    let dns_manifest = include_str!("../../external/libp2p-dns/Cargo.toml");
-    let dns_source = include_str!("../../external/libp2p-dns/src/lib.rs");
+    let dns_manifest = include_str!("../../../external/libp2p-dns/Cargo.toml");
+    let dns_source = include_str!("../../../external/libp2p-dns/src/lib.rs");
 
     assert!(
         !dns_manifest.contains("hickory") && !dns_source.contains("hickory-"),

@@ -34,121 +34,134 @@ path = "examples/six_primitives.rs"
 test = false
 bench = false
 
+# api integration tests
 [[test]]
-name = "windows_build"
-path = "qa/tests/windows_build.rs"
-
-[[test]]
-name = "swarm_smoke"
-path = "qa/tests/swarm_smoke.rs"
-
-[[test]]
-name = "pulse_validation"
-path = "qa/tests/pulse_validation.rs"
-
-[[test]]
-name = "config_defaults"
-path = "qa/tests/config_defaults.rs"
-
-[[test]]
-name = "environment_detection"
-path = "qa/tests/environment_detection.rs"
-
-[[test]]
-name = "capability_resolver"
-path = "qa/tests/capability_resolver.rs"
-
-[[test]]
-name = "mediator_role"
-path = "qa/tests/mediator_role.rs"
-
-[[test]]
-name = "event_responsibility"
-path = "qa/tests/event_responsibility.rs"
-
-[[test]]
-name = "behaviour_policy"
-path = "qa/tests/behaviour_policy.rs"
-
-[[test]]
-name = "relay_discovery"
-path = "qa/tests/relay_discovery.rs"
-
-[[test]]
-name = "dcutr_policy"
-path = "qa/tests/dcutr_policy.rs"
-
-[[test]]
-name = "platform_runtime"
-path = "qa/tests/platform_runtime.rs"
+name = "api_primitives"
+path = "qa/tests/api/api_primitives.rs"
 
 [[test]]
 name = "bindings"
-path = "qa/tests/bindings.rs"
+path = "qa/tests/api/bindings.rs"
+
+# config integration tests
+[[test]]
+name = "config_defaults"
+path = "qa/tests/config/config_defaults.rs"
 
 [[test]]
-name = "codebase_hygiene"
-path = "qa/tests/codebase_hygiene.rs"
+name = "dependency_policy"
+path = "qa/tests/config/dependency_policy.rs"
 
 [[test]]
-name = "api_primitives"
-path = "qa/tests/api_primitives.rs"
+name = "environment_detection"
+path = "qa/tests/config/environment_detection.rs"
 
 [[test]]
-name = "relay_client"
-path = "qa/tests/relay_client.rs"
+name = "windows_build"
+path = "qa/tests/config/windows_build.rs"
 
+# discovery integration tests
 [[test]]
-name = "relay_server_limits"
-path = "qa/tests/relay_server_limits.rs"
-
-[[test]]
-name = "message_security"
-path = "qa/tests/message_security.rs"
-
-[[test]]
-name = "discovery"
-path = "qa/tests/discovery.rs"
-
-[[test]]
-name = "discovery_namespace"
-path = "qa/tests/discovery_namespace.rs"
+name = "connection_strategy"
+path = "qa/tests/discovery/connection_strategy.rs"
 
 [[test]]
 name = "dht_provider_discovery"
-path = "qa/tests/dht_provider_discovery.rs"
+path = "qa/tests/discovery/dht_provider_discovery.rs"
 
 [[test]]
-name = "peer_book"
-path = "qa/tests/peer_book.rs"
+name = "discovery"
+path = "qa/tests/discovery/discovery.rs"
 
 [[test]]
-name = "connection_strategy"
-path = "qa/tests/connection_strategy.rs"
+name = "discovery_namespace"
+path = "qa/tests/discovery/discovery_namespace.rs"
 
 [[test]]
 name = "network_resurrection"
-path = "qa/tests/network_resurrection.rs"
+path = "qa/tests/discovery/network_resurrection.rs"
 
 [[test]]
-name = "operator_docs"
-path = "qa/tests/operator_docs.rs"
+name = "peer_book"
+path = "qa/tests/discovery/peer_book.rs"
 
 [[test]]
 name = "rendezvous"
-path = "qa/tests/rendezvous.rs"
+path = "qa/tests/discovery/rendezvous.rs"
 
+# hygiene integration tests
+[[test]]
+name = "codebase_hygiene"
+path = "qa/tests/hygiene/codebase_hygiene.rs"
+
+# observability integration tests
 [[test]]
 name = "observability"
-path = "qa/tests/observability.rs"
+path = "qa/tests/observability/observability.rs"
+
+# operator integration tests
+[[test]]
+name = "operator_docs"
+path = "qa/tests/operator/operator_docs.rs"
+
+# relay integration tests
+[[test]]
+name = "dcutr_policy"
+path = "qa/tests/relay/dcutr_policy.rs"
 
 [[test]]
+name = "mediator_role"
+path = "qa/tests/relay/mediator_role.rs"
+
+[[test]]
+name = "relay_client"
+path = "qa/tests/relay/relay_client.rs"
+
+[[test]]
+name = "relay_discovery"
+path = "qa/tests/relay/relay_discovery.rs"
+
+[[test]]
+name = "relay_server_limits"
+path = "qa/tests/relay/relay_server_limits.rs"
+
+# runtime integration tests
+[[test]]
+name = "behaviour_policy"
+path = "qa/tests/runtime/behaviour_policy.rs"
+
+[[test]]
+name = "capability_resolver"
+path = "qa/tests/runtime/capability_resolver.rs"
+
+[[test]]
+name = "event_responsibility"
+path = "qa/tests/runtime/event_responsibility.rs"
+
+[[test]]
+name = "platform_runtime"
+path = "qa/tests/runtime/platform_runtime.rs"
+
+[[test]]
+name = "swarm_smoke"
+path = "qa/tests/runtime/swarm_smoke.rs"
+
+# security integration tests
+[[test]]
 name = "hostile_network"
-path = "qa/tests/hostile_network.rs"
+path = "qa/tests/security/hostile_network.rs"
+
+[[test]]
+name = "message_security"
+path = "qa/tests/security/message_security.rs"
 
 [[test]]
 name = "multi_node_hostile"
-path = "qa/tests/multi_node_hostile.rs"
+path = "qa/tests/security/multi_node_hostile.rs"
+
+[[test]]
+name = "pulse_validation"
+path = "qa/tests/security/pulse_validation.rs"
 
 [dependencies]
 futures = "0.3"
@@ -180,10 +193,6 @@ tracing = "0.1"
 blake3 = "1"
 rand = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-
-[[test]]
-name = "dependency_policy"
-path = "qa/tests/dependency_policy.rs"
 
 [patch.crates-io]
 
