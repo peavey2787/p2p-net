@@ -23,6 +23,8 @@ The simple product-level summary is:
 run app -> public fallback joins discovery -> app peers are discovered -> network auto-connect attempts start -> contact trust still requires invite/QR/join-code
 ```
 
+Runtime status separates those stages. `PeerBook: known/discovered` means the node has learned about peers. `Auto-Connect` shows whether the runtime has started dial attempts, still has pending connection plans, or is waiting for dialable addresses. `Connected Peers` only counts established libp2p connections.
+
 ## Auto-connect is not auto-trust
 
 Consumer default mode may connect to discovered peers so the transport mesh can form. That must never mean the peer becomes a trusted chat/contact identity.

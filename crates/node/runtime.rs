@@ -28,6 +28,7 @@ use crate::protocol::reputation::ReputationStore;
 use crate::stack::MeshBehaviour;
 
 use super::commands::{self, NodeCommandContext};
+use super::dial::AutoDialStats;
 use super::events::{self, SwarmEventContext};
 use super::handle::NodeCommand;
 use super::profile::ResolvedNodeConfig;
@@ -139,6 +140,7 @@ async fn run_node_runtime(ctx: NodeRuntimeContext) {
                     dht_state: &mut runtime_state.dht_state,
                     peer_book: &mut runtime_state.peer_book,
                     pending_connections: &mut runtime_state.pending_connections,
+                    auto_dial_stats: &mut runtime_state.auto_dial_stats,
                     connection_caps: &mut runtime_state.connection_caps,
                     relay_cfg: &cfg.relay,
                     dcutr_policy: &cfg.dcutr,
@@ -167,6 +169,7 @@ struct RuntimeState {
     dht_state: DhtProviderState,
     peer_book: PeerBook,
     pending_connections: PendingConnectionPlans,
+    auto_dial_stats: AutoDialStats,
     connection_caps: ConnectionCapState,
     app_topic_hashes: Vec<TopicHash>,
 }
@@ -194,6 +197,7 @@ impl RuntimeState {
             dht_state,
             peer_book,
             pending_connections: PendingConnectionPlans::default(),
+            auto_dial_stats: AutoDialStats::default(),
             connection_caps: ConnectionCapState::new(&cfg.connection_limits),
             app_topic_hashes: Vec::new(),
         }

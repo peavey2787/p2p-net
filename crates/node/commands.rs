@@ -105,6 +105,7 @@ pub(crate) async fn handle_node_command(command: NodeCommand, ctx: NodeCommandCo
     let mut guard = snapshot.lock().await;
     guard.peer_book_known_peers = peer_book.len();
     guard.peer_book_discovered_peers = peer_book.discovered_count();
+    guard.connection_plan_pending_peers = pending_connections.pending_count();
     guard.api_commands_processed = guard.api_commands_processed.saturating_add(1);
     if !success {
         guard.api_command_failures = guard.api_command_failures.saturating_add(1);
