@@ -1,13 +1,13 @@
 # Public fallback tradeoffs
 
-Public fallback is the normal app default. It is meant to give regular users a no-config startup path: run the app, use the built-in public bootstrap list, discover peers, and then let peer cache, DHT provider discovery, rendezvous, and relay policy maintain connectivity.
+Public fallback is the normal app default. It is meant to give regular users a no-config startup path: run the app, use the built-in public bootstrap list plus any app-distribution public rendezvous/relay entries, discover peers, and then let peer cache, DHT provider discovery, rendezvous, relay policy, and network-layer auto-connect maintain connectivity.
 
 Power users and operators can still disable public fallback or replace it with private infrastructure.
 
 ## Policy modes
 
-- `fallback_only`: default normal app mode. Use public candidates only when owned startup candidates or owned relay candidates are empty.
-- `disabled`: advanced private-infrastructure-only mode. Never use public bootstrap or public relay candidates.
+- `fallback_only`: default normal app mode. Use public candidates only when owned startup, rendezvous, or relay candidates are empty.
+- `disabled`: advanced private-infrastructure-only mode. Never use public bootstrap, public rendezvous, or public relay candidates.
 - `always`: include public candidates after owned candidates on every startup.
 
 For consumer app defaults, use `fallback_only`. For private deployments, use `disabled` with owned bootstrap/rendezvous/relay peers.
@@ -15,11 +15,11 @@ For consumer app defaults, use `fallback_only`. For private deployments, use `di
 
 ## Example config
 
-The normal public-fallback example is tracked at `examples/public-fallback.config.json`. It keeps `fallback_only` enabled, leaves manual bootstrap overrides optional, and keeps public relay entries empty unless the application operates or contracts real relay/mediator infrastructure.
+The normal public-fallback example is tracked at `examples/public-fallback.config.json`. It keeps `fallback_only` enabled, leaves manual bootstrap overrides optional, enables network-layer auto-connect for discovered peers, and keeps public rendezvous/relay entries empty unless the application operates or contracts real infrastructure.
 
 ## Privacy tradeoffs
 
-Public bootstrap or relay operators can observe connection attempts, source IPs, timing, and relay usage. They should not receive raw application contact tags because discovery namespaces are hashed by default, but metadata can still reveal activity patterns. Use private infrastructure when contact-graph privacy matters.
+Public bootstrap, rendezvous, or relay operators can observe connection attempts, source IPs, timing, and relay usage. They should not receive raw application contact tags because discovery namespaces are hashed by default, but metadata can still reveal activity patterns. Use private infrastructure when contact-graph privacy matters.
 
 ## Abuse tradeoffs
 
@@ -37,8 +37,9 @@ A public fallback list is a dependency on external operators. Those peers can di
 
 - Keep `fallback_only` as the normal user default.
 - Put manual bootstrap/rendezvous/relay peers under Advanced settings.
+- Keep `auto_connect_discovered_peers` on for normal users, but never auto-trust those peers as contacts.
 - Offer a clear private-infrastructure-only toggle that sets public fallback to `disabled`.
 - Keep hashed discovery namespaces enabled.
 - Avoid readable discovery tags outside local debugging.
 - Watch snapshot and metrics fields for public fallback participation.
-- If your app needs NAT-to-NAT reliability for all users, operate or contract public relay/mediator peers and add them to `discovery.public_bootstrap.relay_peers`.
+- If your app needs run-two-fresh-installs reliability for all users, operate or contract public rendezvous plus relay/mediator peers and add them to `discovery.public_bootstrap.rendezvous_peers` and `discovery.public_bootstrap.relay_peers`.

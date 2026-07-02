@@ -37,7 +37,7 @@
       "enabled": true,
       "announce": true,
       "discover": true,
-      "discover_with_rendezvous_peers": false,
+      "discover_with_rendezvous_peers": true,
       "max_namespaces_per_refresh": 16
     },
     "relay_discovery": {
@@ -58,7 +58,9 @@
         "/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb",
         "/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt"
       ],
-      "relay_peers": []
+      "rendezvous_peers": [],
+      "relay_peers": [],
+      "auto_connect_discovered_peers": true
     }
   },
   "dcutr": {

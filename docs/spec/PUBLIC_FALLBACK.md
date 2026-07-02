@@ -1,6 +1,6 @@
-# Public bootstrap and relay fallback
+# Public bootstrap, rendezvous, and relay fallback
 
-Public fallback is **enabled by default for normal app mode**. A fresh consumer node with no manual `bootstrap_peers`, no owned rendezvous peers, and no healthy peer cache may use the built-in public bootstrap list to join the wider discovery layer.
+Public fallback is **enabled by default for normal app mode**. A fresh consumer node with no manual `bootstrap_peers`, no owned rendezvous peers, and no healthy peer cache may use public fallback to join the app discovery layer.
 
 Private-infrastructure-first is still supported, but it is now an advanced/operator mode: set `discovery.public_bootstrap.mode` to `disabled` and configure owned bootstrap, rendezvous, mediator, and relay peers explicitly.
 
@@ -11,6 +11,16 @@ Default consumer shape:
 ```json
 {
   "discovery": {
+    "rendezvous": {
+      "client_enabled": true,
+      "server_enabled": false
+    },
+    "dht": {
+      "enabled": true,
+      "announce": true,
+      "discover": true,
+      "discover_with_rendezvous_peers": true
+    },
     "public_bootstrap": {
       "mode": "fallback_only",
       "bootstrap_seed_peers": [
@@ -19,7 +29,9 @@ Default consumer shape:
         "/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb",
         "/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt"
       ],
-      "relay_peers": []
+      "rendezvous_peers": [],
+      "relay_peers": [],
+      "auto_connect_discovered_peers": true
     }
   }
 }
@@ -42,7 +54,9 @@ Advanced private-infrastructure-only shape:
     "public_bootstrap": {
       "mode": "disabled",
       "bootstrap_seed_peers": [],
-      "relay_peers": []
+      "rendezvous_peers": [],
+      "relay_peers": [],
+      "auto_connect_discovered_peers": false
     }
   }
 }
@@ -52,17 +66,24 @@ Advanced private-infrastructure-only shape:
 
 | Mode | Behavior |
 |---|---|
-| `disabled` | Never use public bootstrap or relay candidates. Use this for private-infrastructure-first/operator mode. |
-| `fallback_only` | Default. Use public bootstrap seeds only when there are no operator/cached startup candidates; use public relay candidates only when no operator/cached/rendezvous relays were selected. |
+| `disabled` | Never use public bootstrap, rendezvous, or relay candidates. Use this for private-infrastructure-first/operator mode. |
+| `fallback_only` | Default. Use public bootstrap/rendezvous candidates only when owned/cached candidates are absent; use public relay candidates only when no operator/cached/rendezvous relays were selected. |
 | `always` | Include public candidates after operator/cached candidates on every startup. |
 
-Manual bootstrap peers remain optional power-user config. When `bootstrap_peers`, `discovery.bootstrap_seed_peers`, or healthy peer-cache entries exist, `fallback_only` keeps those owned/cached candidates first and does not use public bootstrap unless the owned/cached startup set is empty.
+Manual bootstrap peers remain optional power-user config. When `bootstrap_peers`, `discovery.bootstrap_seed_peers`, `discovery.rendezvous_peers`, or healthy peer-cache entries exist, `fallback_only` keeps those owned/cached candidates first.
 
-## Public relay defaults
+## Auto-connect is not auto-trust
 
-The library default includes public bootstrap seeds. It does not ship a project-operated relay fleet, so the built-in `relay_peers` list is empty. App distributions that want default NAT-to-NAT relay connectivity should publish public relay/mediator DNSADDR entries and include them in `discovery.public_bootstrap.relay_peers`, or operate private relays and put them in `relay_peers`.
+`auto_connect_discovered_peers = true` means app-namespace-discovered peers may be dialed at the network layer. It must not add the peer as a trusted contact. Contact trust remains an app-level action such as QR, join code, invite acceptance, or safety-number verification.
 
-This avoids claiming a relay exists when this repo does not operate one. Public bootstrap still works as the consumer default discovery entry point; relay fallback becomes active automatically when public relay candidates are configured and policy allows them.
+## Honest infrastructure defaults
+
+The library default includes public bootstrap seeds. It does not ship a project-operated rendezvous or relay fleet, so the built-in `rendezvous_peers` and `relay_peers` lists are empty. App distributions that want reliable run-two-fresh-installs connectivity should publish real public rendezvous and relay/mediator DNSADDR entries and include them in:
+
+- `discovery.public_bootstrap.rendezvous_peers`
+- `discovery.public_bootstrap.relay_peers`
+
+This avoids claiming rendezvous or relay service exists when this repo does not operate one. Public bootstrap still works as the consumer default discovery entry point; rendezvous and relay fallback become active automatically when real candidates are configured and policy allows them.
 
 ## Preference order
 
@@ -72,7 +93,8 @@ Startup discovery order is:
 2. `discovery.bootstrap_seed_peers`
 3. `discovery.rendezvous_peers`
 4. healthy peer-cache entries
-5. `discovery.public_bootstrap.bootstrap_seed_peers` when policy allows it
+5. `discovery.public_bootstrap.rendezvous_peers` when policy allows it
+6. `discovery.public_bootstrap.bootstrap_seed_peers` when policy allows it
 
 Relay selection order is:
 

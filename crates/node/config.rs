@@ -208,6 +208,13 @@ impl NodeConfig {
         )
     }
 
+    pub fn parsed_public_rendezvous_peers(&self) -> Result<Vec<Multiaddr>, NetError> {
+        parse_multiaddrs(
+            "discovery.public_bootstrap.rendezvous_peers",
+            &self.discovery.public_bootstrap.rendezvous_peers,
+        )
+    }
+
     pub fn parsed_public_relay_peers(&self) -> Result<Vec<Multiaddr>, NetError> {
         parse_multiaddrs(
             "discovery.public_bootstrap.relay_peers",

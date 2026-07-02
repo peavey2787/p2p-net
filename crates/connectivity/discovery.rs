@@ -29,7 +29,7 @@ pub struct DiscoveryConfig {
     /// Application discovery namespace derivation. Tags are hashed by default before publication.
     #[serde(default)]
     pub namespace: DiscoveryNamespaceConfig,
-    /// Public bootstrap/relay fallback. Enabled by default for consumer app mode; disable it for private-infrastructure-only operation.
+    /// Public bootstrap/rendezvous/relay fallback and auto-connect policy. Enabled by default for consumer app mode; disable it for private-infrastructure-only operation.
     #[serde(default)]
     pub public_bootstrap: PublicBootstrapConfig,
     /// Kademlia provider-record discovery for hashed app namespaces.

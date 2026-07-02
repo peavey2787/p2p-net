@@ -77,6 +77,7 @@ pub async fn start_node_with_platform(
         peer_book,
         relay_selection_plan,
         public_bootstrap_decision,
+        public_rendezvous_decision,
         public_relay_decision,
     } = startup::prepare_startup_discovery(&cfg, &resolved_config, storage.as_ref()).await?;
 
@@ -110,6 +111,9 @@ pub async fn start_node_with_platform(
         .collect();
     if public_bootstrap_decision.used {
         active_transports.push("public-bootstrap-fallback".to_string());
+    }
+    if public_rendezvous_decision.used {
+        active_transports.push("public-rendezvous-fallback".to_string());
     }
     if public_relay_decision.used {
         active_transports.push("public-relay-fallback".to_string());
@@ -169,9 +173,13 @@ pub async fn start_node_with_platform(
         dht_provider_queries_finished: dht_state.provider_queries_finished,
         dht_provider_peers_discovered: dht_state.provider_peer_count(),
         public_fallback_mode: cfg.discovery.public_bootstrap.mode.as_str().to_string(),
-        public_fallback_used: public_bootstrap_decision.used || public_relay_decision.used,
+        public_fallback_used: public_bootstrap_decision.used
+            || public_rendezvous_decision.used
+            || public_relay_decision.used,
         public_fallback_reason: if public_bootstrap_decision.used {
             public_bootstrap_decision.reason.clone()
+        } else if public_rendezvous_decision.used {
+            public_rendezvous_decision.reason.clone()
         } else if public_relay_decision.used {
             public_relay_decision.reason.clone()
         } else {
@@ -281,16 +289,19 @@ pub async fn start_node_with_platform(
         );
     }
 
-    if public_bootstrap_decision.used || public_relay_decision.used {
+    if public_bootstrap_decision.used || public_rendezvous_decision.used || public_relay_decision.used {
         let mut guard = snapshot.lock().await;
         push_pulse(
             &mut guard.pulses,
             format!(
-                "public_fallback mode={} bootstrap_used={} relay_used={} bootstrap_reason={} relay_reason={}",
+                "public_fallback mode={} bootstrap_used={} rendezvous_used={} relay_used={} auto_connect_discovered_peers={} bootstrap_reason={} rendezvous_reason={} relay_reason={}",
                 cfg.discovery.public_bootstrap.mode.as_str(),
                 public_bootstrap_decision.used,
+                public_rendezvous_decision.used,
                 public_relay_decision.used,
+                cfg.discovery.public_bootstrap.auto_connect_discovered_peers,
                 public_bootstrap_decision.reason,
+                public_rendezvous_decision.reason,
                 public_relay_decision.reason
             ),
         );

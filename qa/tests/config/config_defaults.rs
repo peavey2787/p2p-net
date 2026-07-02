@@ -2,7 +2,7 @@ use std::fs;
 
 use p2p_net::{
     DnsaddrConfig, NodeConfig, NodeProfile, NodeRole, PublicFallbackMode, RelayAccess,
-    RelayServiceConfig, DEFAULT_PUBLIC_BOOTSTRAP_SEED_PEERS,
+    RelayServiceConfig, DEFAULT_PUBLIC_BOOTSTRAP_SEED_PEERS, DEFAULT_PUBLIC_RENDEZVOUS_PEERS,
 };
 
 
@@ -18,7 +18,15 @@ fn public_fallback_is_enabled_by_default_for_normal_app_mode() {
         cfg.discovery.public_bootstrap.bootstrap_seed_peers.len(),
         DEFAULT_PUBLIC_BOOTSTRAP_SEED_PEERS.len()
     );
+    assert_eq!(
+        cfg.discovery.public_bootstrap.rendezvous_peers.len(),
+        DEFAULT_PUBLIC_RENDEZVOUS_PEERS.len()
+    );
     assert!(cfg.discovery.public_bootstrap.relay_peers.is_empty());
+    assert!(cfg.discovery.public_bootstrap.auto_connect_discovered_peers);
+    assert!(cfg.discovery.rendezvous.client_enabled);
+    assert!(!cfg.discovery.rendezvous.server_enabled);
+    assert!(cfg.discovery.dht.discover_with_rendezvous_peers);
     assert!(cfg.discovery.public_bootstrap.bootstrap_decision(0).used);
     assert!(!cfg.discovery.public_bootstrap.bootstrap_decision(1).used);
 }
@@ -40,6 +48,7 @@ fn default_profile_is_auto_and_resolves_to_current_full_role() {
     assert!(resolved.enabled_behaviours.gossipsub);
     assert!(resolved.enabled_behaviours.kademlia_server);
     assert!(resolved.enabled_behaviours.relay_client);
+    assert!(resolved.enabled_behaviours.rendezvous_client);
     assert!(resolved.enabled_behaviours.dcutr);
     assert!(!resolved.enabled_behaviours.relay_server);
 }

@@ -44,7 +44,7 @@ pub struct RendezvousConfig {
 impl Default for RendezvousConfig {
     fn default() -> Self {
         Self {
-            client_enabled: false,
+            client_enabled: true,
             server_enabled: false,
             namespace: "p2p-net".to_string(),
             register: true,
@@ -285,9 +285,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rendezvous_defaults_are_client_server_disabled() {
+    fn rendezvous_defaults_enable_client_not_server() {
         let cfg = RendezvousConfig::default();
-        assert!(!cfg.client_enabled);
+        assert!(cfg.client_enabled);
         assert!(!cfg.server_enabled);
         cfg.validate().expect("default rendezvous config validates");
     }

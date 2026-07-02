@@ -5,9 +5,9 @@ use p2p_net::connectivity::rendezvous::RendezvousActionPlan;
 use p2p_net::{snapshot_to_json, start_node, DiscoveryConfig, NodeConfig, RendezvousConfig};
 
 #[test]
-fn rendezvous_config_defaults_to_off_and_validates() {
+fn rendezvous_config_defaults_to_client_on_server_off_and_validates() {
     let cfg = RendezvousConfig::default();
-    assert!(!cfg.client_enabled);
+    assert!(cfg.client_enabled);
     assert!(!cfg.server_enabled);
     cfg.validate().expect("default rendezvous config validates");
 }
@@ -74,6 +74,7 @@ async fn rendezvous_server_can_be_enabled_without_client() {
         discovery: DiscoveryConfig {
             peer_cache_path: temp_path("rzv-server-cache").to_string_lossy().to_string(),
             rendezvous: RendezvousConfig {
+                client_enabled: false,
                 server_enabled: true,
                 ..RendezvousConfig::default()
             },
