@@ -198,6 +198,39 @@ fn node_prometheus_metrics_live_in_metrics_module() {
 }
 
 #[test]
+fn node_startup_discovery_setup_lives_in_startup_module() {
+    let root = manifest_dir();
+    let node_mod = fs::read_to_string(root.join("crates/node/mod.rs")).expect("node mod");
+    let node_startup =
+        fs::read_to_string(root.join("crates/node/startup.rs")).expect("node startup");
+
+    assert!(
+        node_mod.contains("mod startup;"),
+        "node mod must declare the focused startup module"
+    );
+    assert!(
+        node_mod.contains("prepare_startup_discovery"),
+        "node orchestration should delegate startup discovery preparation"
+    );
+    assert!(
+        !node_mod.contains("resolve_configured_multiaddrs"),
+        "DNS-backed startup address resolution belongs in crates/node/startup.rs"
+    );
+    assert!(
+        !node_mod.contains("load_last_addrs_with_storage"),
+        "cached startup address loading belongs in crates/node/startup.rs"
+    );
+    assert!(
+        node_startup.contains("pub(crate) async fn prepare_startup_discovery"),
+        "startup discovery preparation belongs in crates/node/startup.rs"
+    );
+    assert!(
+        node_startup.contains("struct StartupAddrs"),
+        "resolved startup addresses should be grouped before orchestration consumes them"
+    );
+}
+
+#[test]
 fn cargo_test_registrations_are_unique_and_complete() {
     let root = manifest_dir();
     let cargo = fs::read_to_string(root.join("Cargo.toml")).expect("Cargo.toml");

@@ -94,7 +94,7 @@ Acceptance criteria:
 
 ## Step 4 — Extract node startup discovery setup
 
-Status: pending.
+Status: implemented; pending full validation.
 
 Goal: reduce `start_node_with_platform(...)` by moving bootstrap, DNS resolution, public fallback decisions, peer-book seeding, and relay selection into focused startup helpers.
 
@@ -104,6 +104,11 @@ Scope:
 - Move resolved startup address preparation out of `mod.rs`.
 - Move peer-book seed recording out of `mod.rs` where practical.
 - Keep the final swarm construction and task spawning visible in node orchestration.
+
+Implemented notes:
+
+- Added `crates/node/startup.rs` for startup DNS resolution, cached peer loading, public fallback decisions, startup relay selection, and initial peer-book seeding.
+- `crates/node/mod.rs` now asks the startup module for a `StartupDiscoverySetup`, then keeps visible orchestration steps for swarm seeding, relay reservation, rendezvous refresh, DHT startup, snapshot initialization, and task spawning.
 
 Acceptance criteria:
 
