@@ -137,3 +137,32 @@ fn p2p_addr(port: u16) -> Multiaddr {
 fn temp_path(prefix: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("p2p-net-{prefix}-{}", PeerId::random()))
 }
+
+#[test]
+fn rendezvous_discovery_uses_connection_planner_auto_dial() {
+    let stack_discovery = fs::read_to_string("crates/stack/discovery.rs")
+        .expect("read stack discovery module");
+    let rendezvous_events = fs::read_to_string("crates/node/events/rendezvous.rs")
+        .expect("read node rendezvous events module");
+
+    assert!(
+        !stack_discovery.contains("let mut dialed_peer"),
+        "rendezvous discovery must not keep the old first-address direct-dial path"
+    );
+    assert!(
+        rendezvous_events.contains("auto_dial_peer_from_book"),
+        "rendezvous discovery should use the shared auto-dial planner"
+    );
+    assert!(
+        rendezvous_events.contains("ctx.pending_connections"),
+        "rendezvous auto-dial should use pending connection-plan dedupe"
+    );
+    assert!(
+        rendezvous_events.contains("auto_connect_discovered_peers"),
+        "rendezvous auto-dial must remain policy-gated"
+    );
+    assert!(
+        rendezvous_events.contains("PeerSource::PublicRendezvous"),
+        "public rendezvous discoveries should stay source-accounted separately"
+    );
+}
