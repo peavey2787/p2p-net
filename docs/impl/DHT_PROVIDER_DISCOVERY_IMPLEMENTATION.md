@@ -24,6 +24,10 @@ Handled results include:
 - provider announce success/failure
 - provider lookup results
 - provider lookup completion/failure
+- peer-ID auto-dials that allow Kademlia's routing/query state to supply
+  addresses before they have been copied into the application peer book
+- failed asynchronous provider dials become eligible for the next periodic
+  provider result instead of being suppressed for the rest of the process
 - routing updates and routable-peer address learning
 
 Kademlia address-learning events are written to the peer cache so later startup can prefer healthy cached peers before public fallback.

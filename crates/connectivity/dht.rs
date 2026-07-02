@@ -120,6 +120,11 @@ impl DhtProviderState {
         self.auto_connect_waiting_for_addrs.insert(peer)
     }
 
+    pub fn mark_auto_connect_failed(&mut self, peer: &PeerId) -> bool {
+        self.auto_connect_waiting_for_addrs.remove(peer);
+        self.auto_connect_attempted_peers.remove(peer)
+    }
+
     #[must_use]
     pub fn should_auto_connect_provider_result(&self, peer: &PeerId) -> bool {
         !self.auto_connect_attempted_peers.contains(peer)

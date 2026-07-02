@@ -32,7 +32,6 @@ use super::events::{self, SwarmEventContext};
 use super::handle::NodeCommand;
 use super::profile::ResolvedNodeConfig;
 use super::public_ip;
-use super::push_pulse;
 use super::runtime_tasks::{
     apply_dht_refresh_snapshot, apply_public_ip_probe_result, publish_heartbeat,
 };

@@ -1,7 +1,7 @@
 use crate::api::PeerSource;
 use crate::connectivity::dht::on_kademlia_event;
 
-use super::super::dial::{auto_dial_peer_from_book, AutoDialOutcome};
+use super::super::dial::{auto_dial_dht_provider, AutoDialOutcome};
 use super::super::push_pulse;
 use super::{sync_peer_connectivity_snapshot, SwarmEventContext};
 use crate::stack::MeshBehaviour;
@@ -102,7 +102,7 @@ fn maybe_auto_dial_dht_providers(
         if !should_attempt {
             continue;
         }
-        let outcome = auto_dial_peer_from_book(
+        let outcome = auto_dial_dht_provider(
             peer,
             ctx.local_peer,
             enabled,
