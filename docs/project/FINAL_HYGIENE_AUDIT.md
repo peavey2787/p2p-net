@@ -60,7 +60,7 @@ crates/node/mod.rs — 421 lines
 crates/node/config.rs — 236 lines
 crates/node/config_validation.rs — 161 lines
 crates/node/metrics.rs — 11 lines
-crates/node/metrics/prometheus.rs — 222 lines
+crates/node/metrics/prometheus.rs — 79 lines
 crates/node/snapshot.rs — 204 lines
 crates/connectivity/relay.rs — 13 lines
 crates/connectivity/relay/address.rs — 67 lines
