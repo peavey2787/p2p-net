@@ -87,10 +87,11 @@ fn dht_provider_auto_connect_is_policy_gated_and_deduped() {
     assert!(dht_rs.contains("auto_connect_attempted_peers"));
     assert!(dht_rs.contains("auto_connect_waiting_for_addrs"));
     assert!(dht_rs.contains("should_auto_connect_provider_result"));
+    assert!(dht_rs.contains("mark_auto_connect_failed"));
 
     let kademlia_rs = fs::read_to_string("crates/node/events/kademlia.rs")
         .expect("read Kademlia event module");
-    assert!(kademlia_rs.contains("auto_dial_peer_from_book"));
+    assert!(kademlia_rs.contains("auto_dial_dht_provider"));
     assert!(kademlia_rs.contains("auto_connect_discovered_peers"));
     assert!(kademlia_rs.contains("record_dht_provider_peers"));
     assert!(kademlia_rs.contains("record_kademlia_provider_addrs"));
@@ -101,4 +102,12 @@ fn dht_provider_auto_connect_is_policy_gated_and_deduped() {
         .expect("read connection strategy");
     assert!(strategy_rs.contains("build_peer_book_connection_plan"));
     assert!(strategy_rs.contains("is_pending"));
+
+    let dial_rs = fs::read_to_string("crates/node/dial.rs").expect("read node dial module");
+    assert!(dial_rs.contains("source=kademlia address_resolution=behaviour"));
+    assert!(dial_rs.contains("swarm.dial(peer)"));
+
+    let connection_rs =
+        fs::read_to_string("crates/node/events/connection.rs").expect("read connection events");
+    assert!(connection_rs.contains("dht provider auto-connect retry scheduled"));
 }

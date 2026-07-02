@@ -93,6 +93,8 @@ fn dht_provider_discovery_plans_auto_connect_from_fake_addresses() {
     assert!(dht.mark_auto_connect_attempted(provider));
     assert!(!dht.should_auto_connect_provider_result(&provider));
     assert!(!dht.should_auto_connect_after_addr_update(&provider));
+    assert!(dht.mark_auto_connect_failed(&provider));
+    assert!(dht.should_auto_connect_provider_result(&provider));
 }
 
 #[test]

@@ -43,6 +43,11 @@ impl AutoDialStats {
         self.awaiting_address_peers.remove(peer);
     }
 
+    pub(crate) fn record_async_failure(&mut self, peer: &PeerId) {
+        self.dial_failures = self.dial_failures.saturating_add(1);
+        self.awaiting_address_peers.remove(peer);
+    }
+
     pub(crate) fn awaiting_address_count(&self) -> usize {
         self.awaiting_address_peers.len()
     }
@@ -118,6 +123,43 @@ pub(crate) fn auto_dial_peer_from_book(
     match dial_connection_plan(swarm, pending_connections, &plan) {
         Ok(()) => AutoDialOutcome::DialStarted(description),
         Err(err) => AutoDialOutcome::DialFailed(err.to_string()),
+    }
+}
+
+pub(crate) fn auto_dial_dht_provider(
+    peer: PeerId,
+    local_peer: PeerId,
+    enabled: bool,
+    swarm: &mut Swarm<MeshBehaviour>,
+    peer_book: &PeerBook,
+    pending_connections: &mut PendingConnectionPlans,
+    dcutr_policy: &DcutrPolicy,
+) -> AutoDialOutcome {
+    let outcome = auto_dial_peer_from_book(
+        peer,
+        local_peer,
+        enabled,
+        swarm,
+        peer_book,
+        pending_connections,
+        dcutr_policy,
+    );
+    if !matches!(outcome, AutoDialOutcome::AwaitingAddress) {
+        return outcome;
+    }
+
+    // GetProviders returns peer IDs, while the corresponding addresses can
+    // still live only in Kademlia's routing table or active query state.
+    // Dialing by PeerId lets NetworkBehaviour::handle_pending_outbound_connection
+    // contribute those addresses instead of waiting for a later peer-book event
+    // that may never arrive.
+    match swarm.dial(peer) {
+        Ok(()) => {
+            AutoDialOutcome::DialStarted("source=kademlia address_resolution=behaviour".to_string())
+        }
+        Err(err) => {
+            AutoDialOutcome::DialFailed(format!("Kademlia peer-id dial failed immediately: {err}"))
+        }
     }
 }
 

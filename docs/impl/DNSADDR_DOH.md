@@ -12,6 +12,11 @@ queries:
 _dnsaddr.bootstrap.example.com TXT
 ```
 
+When the configured address has a suffix such as `/p2p/<PeerId>`, the resolver
+recursively resolves the TXT records and keeps only results ending in that
+suffix. It does not append the suffix to TXT results, because DNSADDR records
+normally already contain their target peer ID.
+
 ## Default behavior
 
 DNS support remains enabled by default.

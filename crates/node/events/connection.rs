@@ -189,9 +189,11 @@ pub(crate) async fn handle_outgoing_connection_error(
         peer_cache::record_peer_addr_failure_with_storage(ctx.discovery_cfg, peer, ctx.storage);
         ctx.peer_book.record_failure(peer.to_owned());
 
+        let mut fallback_dial_started = false;
         while let Some(attempt) = ctx.pending_connections.next_after_failure(peer) {
             match swarm.dial(attempt.addr.clone()) {
                 Ok(()) => {
+                    fallback_dial_started = true;
                     planner_pulses.push(format!(
                         "connection planner fallback dial peer={peer} kind={} addr={}",
                         attempt.kind.as_str(),
@@ -206,6 +208,12 @@ pub(crate) async fn handle_outgoing_connection_error(
                     err
                 )),
             }
+        }
+        if !fallback_dial_started && ctx.dht_state.mark_auto_connect_failed(peer) {
+            ctx.auto_dial_stats.record_async_failure(peer);
+            planner_pulses.push(format!(
+                "dht provider auto-connect retry scheduled peer={peer} on next provider result"
+            ));
         }
     }
     let mut guard = ctx.snapshot.lock().await;

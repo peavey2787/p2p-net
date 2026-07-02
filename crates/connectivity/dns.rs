@@ -246,12 +246,9 @@ async fn resolve_dnsaddr(
             ));
         }
 
-        let mut candidate: Multiaddr = raw_addr
+        let candidate: Multiaddr = raw_addr
             .parse()
             .map_err(|err| format!("invalid dnsaddr multiaddr `{raw_addr}`: {err}"))?;
-        for protocol in suffix.iter().cloned() {
-            candidate.push(protocol);
-        }
 
         let mut resolved = if has_dnsaddr(&candidate) {
             Box::pin(resolve_dnsaddr(
@@ -266,6 +263,9 @@ async fn resolve_dnsaddr(
         } else {
             vec![candidate]
         };
+        if !suffix.is_empty() {
+            resolved.retain(|candidate| multiaddr_ends_with(candidate, &suffix));
+        }
         out.append(&mut resolved);
         if total_records + out.len() > MAX_DNSADDR_TOTAL_RECORDS {
             return Err(format!(
@@ -424,6 +424,14 @@ fn dnsaddr_query_name(domain: &str) -> String {
     format!("{DNSADDR_QUERY_PREFIX}{trimmed}.")
 }
 
+fn multiaddr_ends_with(addr: &Multiaddr, suffix: &[Protocol<'static>]) -> bool {
+    let protocols = addr
+        .iter()
+        .map(Protocol::acquire)
+        .collect::<Vec<Protocol<'static>>>();
+    protocols.ends_with(suffix)
+}
+
 fn dedup_multiaddrs(addrs: Vec<Multiaddr>) -> Vec<Multiaddr> {
     let mut out = Vec::new();
     for addr in addrs {
@@ -435,37 +443,4 @@ fn dedup_multiaddrs(addrs: Vec<Multiaddr>) -> Vec<Multiaddr> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn detects_dnsaddr_as_resolvable_dns_kind() {
-        let addr: Multiaddr = concat!(
-            "/dnsaddr/example.com/p2p/",
-            "12D3KooWQnQJ6pVwbQzqJ2m6SfqxJrQx7dUMJzE3p9Fv4v2o2hQZ"
-        )
-        .parse()
-        .unwrap();
-        assert!(has_dnsaddr(&addr));
-        assert!(has_any_dns(&addr));
-    }
-
-    #[test]
-    fn detects_plain_dns_as_resolvable() {
-        let addr: Multiaddr = "/dns4/example.com/tcp/4001".parse().unwrap();
-        assert!(has_resolvable_dns(&addr));
-        assert!(!has_dnsaddr(&addr));
-    }
-
-    #[test]
-    fn dnsaddr_query_name_adds_prefix() {
-        assert_eq!(
-            dnsaddr_query_name("bootstrap.libp2p.io"),
-            "_dnsaddr.bootstrap.libp2p.io."
-        );
-        assert_eq!(
-            dnsaddr_query_name("bootstrap.libp2p.io."),
-            "_dnsaddr.bootstrap.libp2p.io."
-        );
-    }
-}
+mod tests;
