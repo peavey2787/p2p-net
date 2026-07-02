@@ -16,17 +16,29 @@ use crate::stack::{extract_p2p_peer_id, MeshBehaviour};
 use super::handle::NodeCommand;
 use super::types::NodeSnapshot;
 
-pub(crate) async fn handle_node_command(
-    command: NodeCommand,
-    swarm: &mut Swarm<MeshBehaviour>,
-    local_peer: PeerId,
-    network_id: u32,
-    app_topic_hashes: &mut Vec<TopicHash>,
-    snapshot: &Arc<Mutex<NodeSnapshot>>,
-    peer_book: &mut PeerBook,
-    pending_connections: &mut PendingConnectionPlans,
-    dcutr_policy: &DcutrPolicy,
-) {
+pub(crate) struct NodeCommandContext<'a> {
+    pub(crate) swarm: &'a mut Swarm<MeshBehaviour>,
+    pub(crate) local_peer: PeerId,
+    pub(crate) network_id: u32,
+    pub(crate) app_topic_hashes: &'a mut Vec<TopicHash>,
+    pub(crate) snapshot: &'a Arc<Mutex<NodeSnapshot>>,
+    pub(crate) peer_book: &'a mut PeerBook,
+    pub(crate) pending_connections: &'a mut PendingConnectionPlans,
+    pub(crate) dcutr_policy: &'a DcutrPolicy,
+}
+
+pub(crate) async fn handle_node_command(command: NodeCommand, ctx: NodeCommandContext<'_>) {
+    let NodeCommandContext {
+        swarm,
+        local_peer,
+        network_id,
+        app_topic_hashes,
+        snapshot,
+        peer_book,
+        pending_connections,
+        dcutr_policy,
+    } = ctx;
+
     let (success, sent_app_message) = match command {
         NodeCommand::ConnectPeer { addr, reply } => {
             if let Some(peer) = extract_p2p_peer_id(&addr) {

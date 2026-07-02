@@ -225,9 +225,8 @@ pub fn on_mesh_event(
     storage: &dyn NodeStorage,
     peer_book: &mut PeerBook,
 ) {
-    match event {
-        MeshEvent::Identify(ev) => on_identify_event(swarm, ev, discovery_cfg, storage, peer_book),
-        _ => {}
+    if let MeshEvent::Identify(ev) = event {
+        on_identify_event(swarm, ev, discovery_cfg, storage, peer_book);
     }
 }
 
