@@ -7,10 +7,10 @@
 use crate::common::error::config_error;
 use std::collections::BTreeSet;
 
-use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
 
+use super::addr::{has_reachable_transport, has_unspecified_ip};
 use super::relay::{is_p2p_circuit_addr, relay_peer_id};
 
 /// Operator policy for finding relay/mediator candidates.
@@ -306,25 +306,4 @@ impl RelayCandidateAddr {
             source: self.source,
         }
     }
-}
-
-fn has_reachable_transport(addr: &Multiaddr) -> bool {
-    addr.iter().any(|protocol| {
-        matches!(
-            protocol,
-            Protocol::Ip4(_)
-                | Protocol::Ip6(_)
-                | Protocol::Dns(_)
-                | Protocol::Dns4(_)
-                | Protocol::Dns6(_)
-        )
-    })
-}
-
-fn has_unspecified_ip(addr: &Multiaddr) -> bool {
-    addr.iter().any(|protocol| match protocol {
-        Protocol::Ip4(ip) => ip.is_unspecified(),
-        Protocol::Ip6(ip) => ip.is_unspecified(),
-        _ => false,
-    })
 }
