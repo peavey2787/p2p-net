@@ -7,7 +7,7 @@ The domain folders keep `qa/tests/` from becoming a flat dumping ground:
 - `api/` — public primitives and binding facade checks.
 - `config/` — config defaults, environment detection, dependency policy, and platform build assumptions.
 - `discovery/` — discovery namespaces, DHT provider records, peer book behavior, connection planning, rendezvous, and resurrection tests.
-- `hygiene/` — repository layout, registration, SRP, and documentation drift checks.
+- `hygiene/` — repository layout, registration, SRP, final-audit, and documentation drift checks.
 - `observability/` — snapshot JSON and Prometheus metric checks.
 - `operator/` — operator docs and example config validation.
 - `relay/` — relay client/server, relay discovery, mediator, and DCUtR policy checks.

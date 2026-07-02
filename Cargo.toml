@@ -94,6 +94,10 @@ path = "qa/tests/discovery/rendezvous.rs"
 name = "codebase_hygiene"
 path = "qa/tests/hygiene/codebase_hygiene.rs"
 
+[[test]]
+name = "final_hygiene_audit"
+path = "qa/tests/hygiene/final_hygiene_audit.rs"
+
 # observability integration tests
 [[test]]
 name = "observability"
