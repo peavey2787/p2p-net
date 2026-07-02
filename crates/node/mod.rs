@@ -12,6 +12,7 @@ mod metrics;
 mod profile;
 mod public_ip;
 mod runtime;
+mod runtime_tasks;
 mod startup;
 mod snapshot;
 

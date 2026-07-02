@@ -14,16 +14,15 @@ use tokio::sync::{broadcast, mpsc, Mutex};
 use tokio::task::JoinHandle;
 
 use crate::api::AppMessage;
-use crate::common::error::NetError;
 use crate::connectivity::connection_strategy::PendingConnectionPlans;
-use crate::connectivity::dht::DhtProviderState;
+use crate::connectivity::dht::{start_dht_namespace_discovery, DhtProviderState};
 use crate::connectivity::limits::ConnectionCapState;
 use crate::connectivity::peer_book::PeerBook;
 use crate::connectivity::relay::{RelayReservationPlan, RelayState};
 use crate::connectivity::relay_discovery::RelaySelectionPlan;
 use crate::connectivity::rendezvous::RendezvousState;
 use crate::platform::NodeStorage;
-use crate::protocol::pulse::{collect_local_heartbeat, HeartbeatReplayCache};
+use crate::protocol::pulse::HeartbeatReplayCache;
 use crate::protocol::reputation::ReputationStore;
 use crate::stack::MeshBehaviour;
 
@@ -32,10 +31,15 @@ use super::dial::AutoDialStats;
 use super::events::{self, SwarmEventContext};
 use super::handle::NodeCommand;
 use super::profile::ResolvedNodeConfig;
-use super::public_ip::{self, PublicIpProbeResult};
+use super::public_ip;
 use super::push_pulse;
+use super::runtime_tasks::{
+    apply_dht_refresh_snapshot, apply_public_ip_probe_result, publish_heartbeat,
+};
 use super::config::NodeConfig;
 use super::snapshot::NodeSnapshot;
+
+const DHT_REFRESH_TICKS: usize = 1;
 
 pub(crate) struct NodeRuntimeContext {
     pub(crate) cfg: NodeConfig,
@@ -115,7 +119,14 @@ async fn run_node_runtime(ctx: NodeRuntimeContext) {
             }
             public_ip_result = &mut public_ip_probe, if !public_ip_probe_done => {
                 public_ip_probe_done = true;
-                apply_public_ip_probe_result(public_ip_result, &mut swarm, &snapshot).await;
+                apply_public_ip_probe_result(
+                    public_ip_result,
+                    &cfg,
+                    &mut swarm,
+                    &snapshot,
+                    &mut runtime_state.dht_state,
+                    rendezvous_peers.len(),
+                ).await;
             }
             maybe_shutdown = shutdown_rx.recv() => {
                 let _ = maybe_shutdown;
@@ -182,6 +193,7 @@ struct RuntimeState {
     auto_dial_stats: AutoDialStats,
     connection_caps: ConnectionCapState,
     app_topic_hashes: Vec<TopicHash>,
+    dht_refresh_ticks: usize,
 }
 
 impl RuntimeState {
@@ -210,6 +222,7 @@ impl RuntimeState {
             auto_dial_stats: AutoDialStats::default(),
             connection_caps: ConnectionCapState::new(&cfg.connection_limits),
             app_topic_hashes: Vec::new(),
+            dht_refresh_ticks: 0,
         }
     }
 }
@@ -262,47 +275,23 @@ async fn tick_runtime(
     events::enforce_relay_schedule(&cfg.relay, swarm, snapshot, &mut runtime_state.relay_state)
         .await;
     let _ = publish_heartbeat(swarm, local_peer, heartbeat_topic, snapshot).await;
+    runtime_state.dht_refresh_ticks = runtime_state.dht_refresh_ticks.saturating_add(1);
+    let dht_plan = if runtime_state.dht_refresh_ticks >= DHT_REFRESH_TICKS {
+        runtime_state.dht_refresh_ticks = 0;
+        Some(start_dht_namespace_discovery(
+            swarm,
+            cfg.network_id,
+            &cfg.discovery,
+            runtime_state.rendezvous_state.registered_with.len(),
+            &mut runtime_state.dht_state,
+        ))
+    } else {
+        None
+    };
+
     let mut guard = snapshot.lock().await;
     guard.uptime_secs = started_at.elapsed().as_secs();
-}
-
-async fn publish_heartbeat(
-    swarm: &mut Swarm<MeshBehaviour>,
-    local_peer: PeerId,
-    topic: &IdentTopic,
-    snapshot: &Arc<Mutex<NodeSnapshot>>,
-) -> Result<(), NetError> {
-    let env = collect_local_heartbeat(local_peer)?;
-    let payload = serde_json::to_vec(&env).map_err(|e| NetError::GossipCodec(e.to_string()))?;
-    let _ = swarm
-        .behaviour_mut()
-        .gossipsub
-        .publish(topic.clone(), payload);
-    let mut guard = snapshot.lock().await;
-    push_pulse(
-        &mut guard.pulses,
-        format!("local heartbeat {} {}", env.peer_id, env.nonce_hex),
-    );
-    Ok(())
-}
-
-async fn apply_public_ip_probe_result(
-    result: PublicIpProbeResult,
-    swarm: &mut Swarm<MeshBehaviour>,
-    snapshot: &Arc<Mutex<NodeSnapshot>>,
-) {
-    for addr in &result.external_addresses {
-        swarm.add_external_address(addr.clone());
-    }
-
-    let mut guard = snapshot.lock().await;
-    guard.public_ip_probe_status = result.status.clone();
-    guard.public_ip_probe_addr = result.public_ip.clone();
-    for addr in &result.external_addresses {
-        guard.record_public_external_addr(addr.to_string());
-    }
-
-    if let Some(pulse) = result.pulse_line() {
-        push_pulse(&mut guard.pulses, pulse);
+    if let Some(plan) = dht_plan {
+        apply_dht_refresh_snapshot(&mut guard, &runtime_state.dht_state, &plan, "periodic");
     }
 }

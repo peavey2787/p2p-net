@@ -107,7 +107,7 @@ impl StartupAddrs {
         if use_public_relay {
             record_peer_book_addrs(
                 &mut peer_book,
-                &self.public_relay_peers,
+                &self.public_relay_candidates(),
                 PeerSource::PublicRelayDiscovery,
             );
         }
@@ -128,6 +128,10 @@ impl StartupAddrs {
         )
     }
 
+    pub(super) fn public_relay_candidate_count(&self) -> usize {
+        self.public_relay_candidates().len()
+    }
+
     pub(super) fn relay_selection_plan_with_public(
         &self,
         cfg: &NodeConfig,
@@ -138,8 +142,20 @@ impl StartupAddrs {
             self.relay_peers.clone(),
             self.cached_relay_peers.clone(),
             self.rendezvous_peers.clone(),
-            self.public_relay_peers.clone(),
+            self.public_relay_candidates(),
         )
+    }
+
+    fn public_relay_candidates(&self) -> Vec<Multiaddr> {
+        if self.public_relay_peers.is_empty() {
+            // Consumer public fallback has no separate bundled relay fleet.
+            // Treat resolved public libp2p bootstrap peers as best-effort relay
+            // candidates too: nodes that support Circuit Relay v2 will accept a
+            // reservation, while non-relays fail visibly and do not block DHT
+            // discovery or direct dials.
+            return self.public_bootstrap_seed_peers.clone();
+        }
+        self.public_relay_peers.clone()
     }
 }
 
