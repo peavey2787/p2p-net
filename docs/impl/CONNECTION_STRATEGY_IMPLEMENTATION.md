@@ -25,7 +25,7 @@ Capability hints remain exposed through `PeerInfo`:
 
 ## Validation coverage
 
-`qa/tests/connection_strategy.rs` covers:
+`qa/tests/discovery/connection_strategy.rs` covers:
 
 - direct QUIC before direct TCP before relay
 - relay-preferred peers using relay before direct candidates

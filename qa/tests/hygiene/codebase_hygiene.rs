@@ -63,6 +63,15 @@ fn repository_layout_matches_modular_baseline() {
         "qa/tools",
         "qa/vectors",
         "qa/tests",
+        "qa/tests/api",
+        "qa/tests/config",
+        "qa/tests/discovery",
+        "qa/tests/hygiene",
+        "qa/tests/observability",
+        "qa/tests/operator",
+        "qa/tests/relay",
+        "qa/tests/runtime",
+        "qa/tests/security",
         "examples",
         "external",
     ] {
@@ -78,7 +87,7 @@ fn repository_layout_matches_modular_baseline() {
 
     assert!(
         root.join("docs/roadmap.md").is_file(),
-        "active discovery roadmap should live at docs/roadmap.md"
+        "active roadmap should live at docs/roadmap.md"
     );
     assert!(
         !root.join(Path::new("crates").join("p2p-net")).exists(),
@@ -383,14 +392,36 @@ fn cargo_test_registrations_are_unique_and_complete() {
     assert!(duplicate_names.is_empty(), "duplicate test names: {duplicate_names:?}");
     assert!(duplicate_paths.is_empty(), "duplicate test paths: {duplicate_paths:?}");
 
+    let mut root_level_tests = Vec::new();
     for entry in fs::read_dir(root.join("qa/tests")).expect("qa/tests dir") {
         let entry = entry.expect("unit test entry");
         let path = entry.path();
-        if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
-            continue;
+        if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+            root_level_tests.push(path.file_name().unwrap().to_string_lossy().into_owned());
         }
+    }
+    assert!(
+        root_level_tests.is_empty(),
+        "integration tests must live under domain folders, not directly under qa/tests/: {root_level_tests:?}"
+    );
+
+    let mut test_files = Vec::new();
+    collect_rust_files(&root.join("qa/tests"), &mut test_files);
+    for path in test_files {
         let rel = path.strip_prefix(&root).unwrap().to_string_lossy().replace('\\', "/");
         assert!(paths.contains(rel.as_str()), "unregistered integration test: {rel}");
+    }
+}
+
+fn collect_rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    for entry in fs::read_dir(dir).expect("read dir") {
+        let entry = entry.expect("dir entry");
+        let path = entry.path();
+        if path.is_dir() {
+            collect_rust_files(&path, out);
+        } else if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+            out.push(path);
+        }
     }
 }
 

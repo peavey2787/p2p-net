@@ -79,7 +79,7 @@ These defaults are advisory. Hosts can override listen/background hints in `Bind
 
 ## Validation
 
-`qa/tests/bindings.rs` checks that:
+`qa/tests/api/bindings.rs` checks that:
 
 - all app shells use one shared Rust core
 - Android/iOS resolve `profile = auto` to `mobile_lite`

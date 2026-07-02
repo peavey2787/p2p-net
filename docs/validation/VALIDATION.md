@@ -76,28 +76,28 @@ sudo ./qa/tools/netem-linux.sh lo stop
 
 ## Relay discovery validation
 
-`qa/tests/relay_discovery.rs` covers relay candidate filtering, source ordering, duplicate removal, policy validation, and lite-profile resolution. The test is registered in `Cargo.toml`, so `qa/ci/run-full-validation.ps1` picks it up through the existing `cargo test --workspace --locked -j 1` step.
+`qa/tests/relay/relay_discovery.rs` covers relay candidate filtering, source ordering, duplicate removal, policy validation, and lite-profile resolution. The test is registered in `Cargo.toml`, so `qa/ci/run-full-validation.ps1` picks it up through the existing `cargo test --workspace --locked -j 1` step.
 
 
 ## DCUtR policy validation
 
-`qa/tests/dcutr_policy.rs` covers default DCUtR policy safety, disabling the DCUtR capability, rejecting upgrade-without-fallback config, resolved retry policy fields, and snapshot relay-fallback counters. The test is registered in `Cargo.toml`, so `qa/ci/run-full-validation.ps1` picks it up through the existing `cargo test --workspace --locked -j 1` step.
+`qa/tests/relay/dcutr_policy.rs` covers default DCUtR policy safety, disabling the DCUtR capability, rejecting upgrade-without-fallback config, resolved retry policy fields, and snapshot relay-fallback counters. The test is registered in `Cargo.toml`, so `qa/ci/run-full-validation.ps1` picks it up through the existing `cargo test --workspace --locked -j 1` step.
 
 `platform_runtime` is picked up by `cargo test --workspace`.
 
 ## Application API validation
 
-`qa/tests/discovery_namespace.rs` verifies hashed app discovery namespace derivation, duplicate tag removal, readable-debug guardrails, and node-config validation. The test is registered in `Cargo.toml`, so the canonical validation script picks it up automatically.
+`qa/tests/discovery/discovery_namespace.rs` verifies hashed app discovery namespace derivation, duplicate tag removal, readable-debug guardrails, and node-config validation. The test is registered in `Cargo.toml`, so the canonical validation script picks it up automatically.
 
-`qa/tests/api_primitives.rs` verifies the six public primitives on `NodeHandle`, app-topic namespacing and validation, `AppMessage` encode/decode behavior, addressed-message filtering, and payload size bounds. The test is registered in `Cargo.toml`, so the canonical validation script picks it up automatically.
+`qa/tests/api/api_primitives.rs` verifies the six public primitives on `NodeHandle`, app-topic namespacing and validation, `AppMessage` encode/decode behavior, addressed-message filtering, and payload size bounds. The test is registered in `Cargo.toml`, so the canonical validation script picks it up automatically.
 
 ## Codebase hygiene validation
 
-`qa/tests/codebase_hygiene.rs` guards the cleanup/audit pass by checking that runtime docs do not reintroduce transitional wording, startup does not duplicate profile-to-role decisions, stack builders consume resolved policy instead of user-facing profiles, snapshot JSON derives from `NodeSnapshot` instead of a hand-maintained field list, and every integration test under `qa/tests/` is registered exactly once in `Cargo.toml`.
+`qa/tests/hygiene/codebase_hygiene.rs` guards the cleanup/audit pass by checking that runtime docs do not reintroduce transitional wording, startup does not duplicate profile-to-role decisions, stack builders consume resolved policy instead of user-facing profiles, snapshot JSON derives from `NodeSnapshot` instead of a hand-maintained field list, and every integration test under `qa/tests/` is registered exactly once in `Cargo.toml`.
 
 ## Binding facade validation
 
-`qa/tests/bindings.rs` covers the cross-platform binding-safe facade:
+`qa/tests/api/bindings.rs` covers the cross-platform binding-safe facade:
 
 - the support matrix confirms one shared Rust core and no separate node implementations
 - Android runtime specs resolve `profile = auto` to `mobile_lite`
@@ -110,7 +110,7 @@ The test is registered in `Cargo.toml`, so `qa/ci/run-full-validation.ps1` and `
 
 ## Operator docs and examples checks
 
-`qa/tests/operator_docs.rs` verifies that operator deployment guides exist, private-infrastructure-first and public-fallback example configs parse as `NodeConfig`, and the examples preserve the expected public-fallback policy modes.
+`qa/tests/operator/operator_docs.rs` verifies that operator deployment guides exist, private-infrastructure-first and public-fallback example configs parse as `NodeConfig`, and the examples preserve the expected public-fallback policy modes.
 
 ## Manual audit and deny commands
 
@@ -126,11 +126,11 @@ Use `qa/ci/run-full-validation.ps1` or `qa/ci/run-full-validation.sh` for the ex
 
 ## Public fallback checks
 
-`qa/tests/discovery.rs` and `qa/tests/relay_discovery.rs` cover explicit public bootstrap/relay fallback policy, validation, and source accounting. `qa/tests/observability.rs` verifies public fallback snapshot and metrics fields. `qa/tests/network_resurrection.rs` verifies that public bootstrap/relay fallback participates only when the configured policy allows it.
+`qa/tests/discovery/discovery.rs` and `qa/tests/relay/relay_discovery.rs` cover explicit public bootstrap/relay fallback policy, validation, and source accounting. `qa/tests/observability/observability.rs` verifies public fallback snapshot and metrics fields. `qa/tests/discovery/network_resurrection.rs` verifies that public bootstrap/relay fallback participates only when the configured policy allows it.
 
 ## DHT provider-discovery checks
 
-`qa/tests/dht_provider_discovery.rs` covers Kademlia provider-record discovery policy, deterministic namespace record-key derivation, startup/event wiring, and DHT provider snapshot/metric coverage. The test is registered in `Cargo.toml`, so the canonical validation script picks it up automatically.
+`qa/tests/discovery/dht_provider_discovery.rs` covers Kademlia provider-record discovery policy, deterministic namespace record-key derivation, startup/event wiring, and DHT provider snapshot/metric coverage. The test is registered in `Cargo.toml`, so the canonical validation script picks it up automatically.
 
 - `peer_book` verifies merged discovery-source peer metadata for `get_peers()`.
 - `network_resurrection` verifies Joe/Alice hashed namespace recovery, hidden raw tags, discovered-but-not-connected peer visibility, and peer-book-fed connection planning.

@@ -13,7 +13,7 @@ This pass reorganized the repository to match the modular baseline:
 - Project/audit notes under `docs/project/`.
 - Deferred work under `docs/future-work/`.
 - CI and master validation scripts under `qa/ci/`.
-- Global/system/invariant tests under `qa/tests/`.
+- Domain-grouped global/system/invariant tests under `qa/tests/`.
 - Fuzzing under `qa/fuzz/`.
 - QA utilities under `qa/tools/`.
 - Test vectors under `qa/vectors/`.

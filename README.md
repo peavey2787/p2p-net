@@ -40,7 +40,7 @@ docs/project/       Project/audit notes
 docs/future-work/   Deferred ideas and long-term proposals
 docs/roadmap.md      Active roadmap, when one exists
 qa/ci/              Canonical validation scripts and CI helpers
-qa/tests/           Global/system/invariant integration tests
+qa/tests/           Domain-grouped global/system/invariant integration tests
 qa/fuzz/            Fuzz targets
 qa/tools/           Internal QA utilities
 qa/vectors/         Protocol fixtures and test vectors
@@ -193,4 +193,4 @@ Normally, do not run the individual commands manually. Use `.\qa\ci\run-full-val
 - `docs/impl/PEER_BOOK_IMPLEMENTATION.md` documents peer-book update paths and observability.
 - `docs/impl/PUBLIC_FALLBACK_IMPLEMENTATION.md` documents the startup wiring for public fallback.
 - `docs/impl/API_IMPLEMENTATION.md` documents API command routing and message delivery.
-- `qa/tests/codebase_hygiene.rs` guards against stale transitional docs, duplicate test registration, and profile-decision drift outside the resolver.
+- `qa/tests/hygiene/codebase_hygiene.rs` guards against stale transitional docs, grouped test registration, and profile-decision drift outside the resolver.

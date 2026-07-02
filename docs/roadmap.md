@@ -198,7 +198,7 @@ Acceptance criteria:
 
 ## Step 8 — Group QA tests by domain
 
-Status: pending.
+Status: implemented; pending full validation.
 
 Goal: prevent `qa/tests/` from becoming a flat dumping ground.
 
@@ -208,6 +208,13 @@ Scope:
 - Candidate groups: `api`, `config`, `discovery`, `relay`, `security`, `operator`, and `observability`.
 - Update `Cargo.toml` test target paths.
 - Update docs that reference moved test files.
+
+Implemented notes:
+
+- Moved all integration tests out of the `qa/tests/` root into focused domain folders: `api`, `config`, `discovery`, `hygiene`, `observability`, `operator`, `relay`, `runtime`, and `security`.
+- Updated all root `Cargo.toml` `[[test]]` paths to preserve the same test target names after the move.
+- Updated validation, implementation, README, and project audit docs that named moved test files.
+- Updated `codebase_hygiene` so it recursively validates registered tests and rejects root-level `.rs` files under `qa/tests/`.
 
 Acceptance criteria:
 
