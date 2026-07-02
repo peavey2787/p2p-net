@@ -559,15 +559,18 @@ pub async fn start_node_with_platform(
                     if let Some(command) = maybe_command {
                         commands::handle_node_command(
                             command,
-                            &mut swarm,
-                            local_peer,
-                            cfg.network_id,
-                            &mut app_topic_hashes,
-                            &task_snapshot,
-                            &mut peer_book,
-                            &mut pending_connections,
-                            &cfg.dcutr,
-                        ).await;
+                            commands::NodeCommandContext {
+                                swarm: &mut swarm,
+                                local_peer,
+                                network_id: cfg.network_id,
+                                app_topic_hashes: &mut app_topic_hashes,
+                                snapshot: &task_snapshot,
+                                peer_book: &mut peer_book,
+                                pending_connections: &mut pending_connections,
+                                dcutr_policy: &cfg.dcutr,
+                            },
+                        )
+                        .await;
                     } else {
                         break;
                     }

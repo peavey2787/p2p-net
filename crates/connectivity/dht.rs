@@ -255,8 +255,8 @@ pub fn on_kademlia_event(
         kad::Event::RoutingUpdated {
             peer, addresses, ..
         } => {
-            for addr in addresses.iter().cloned() {
-                peer_cache::record_seen_peer_addr_with_storage(discovery_cfg, peer, &addr, storage);
+            for addr in addresses.iter() {
+                peer_cache::record_seen_peer_addr_with_storage(discovery_cfg, peer, addr, storage);
             }
             None
         }
