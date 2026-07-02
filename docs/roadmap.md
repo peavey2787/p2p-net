@@ -57,7 +57,7 @@ Acceptance criteria:
 
 ## Step 2 — Centralize multiaddr classification helpers
 
-Status: pending.
+Status: implemented; pending full validation.
 
 Goal: remove duplicated multiaddr reachability checks and make address classification reusable.
 

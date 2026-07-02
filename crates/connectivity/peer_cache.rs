@@ -6,6 +6,7 @@ use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
 
+use super::addr::{has_reachable_transport, has_unspecified_ip};
 use super::discovery::DiscoveryConfig;
 use crate::platform::{DesktopPlatformRuntime, NodeStorage};
 
@@ -160,32 +161,11 @@ pub fn is_cacheable_peer_addr(addr: &Multiaddr, expected_peer: Option<&PeerId>) 
         return false;
     }
 
-    let mut has_reachable_transport = false;
-    for protocol in addr.iter() {
-        match protocol {
-            Protocol::Ip4(ip) => {
-                if ip.is_unspecified() {
-                    return false;
-                }
-                has_reachable_transport = true;
-            }
-            Protocol::Ip6(ip) => {
-                if ip.is_unspecified() {
-                    return false;
-                }
-                has_reachable_transport = true;
-            }
-            Protocol::Dns(_) | Protocol::Dns4(_) | Protocol::Dns6(_) => {
-                has_reachable_transport = true;
-            }
-            Protocol::Dnsaddr(_) => {
-                return false;
-            }
-            _ => {}
-        }
+    if has_unspecified_ip(addr) || contains_dnsaddr(addr) {
+        return false;
     }
 
-    has_reachable_transport
+    has_reachable_transport(addr)
 }
 
 pub fn normalize_peer_addr(peer: &PeerId, addr: &Multiaddr) -> Option<Multiaddr> {
@@ -265,25 +245,9 @@ fn contains_any_p2p(addr: &Multiaddr) -> bool {
         .any(|protocol| matches!(protocol, Protocol::P2p(_)))
 }
 
-fn has_reachable_transport(addr: &Multiaddr) -> bool {
-    addr.iter().any(|protocol| {
-        matches!(
-            protocol,
-            Protocol::Ip4(_)
-                | Protocol::Ip6(_)
-                | Protocol::Dns(_)
-                | Protocol::Dns4(_)
-                | Protocol::Dns6(_)
-        )
-    })
-}
-
-fn has_unspecified_ip(addr: &Multiaddr) -> bool {
-    addr.iter().any(|protocol| match protocol {
-        Protocol::Ip4(ip) => ip.is_unspecified(),
-        Protocol::Ip6(ip) => ip.is_unspecified(),
-        _ => false,
-    })
+fn contains_dnsaddr(addr: &Multiaddr) -> bool {
+    addr.iter()
+        .any(|protocol| matches!(protocol, Protocol::Dnsaddr(_)))
 }
 
 fn now_unix_secs() -> u64 {
