@@ -131,6 +131,10 @@ name = "network_resurrection"
 path = "qa/tests/network_resurrection.rs"
 
 [[test]]
+name = "operator_docs"
+path = "qa/tests/operator_docs.rs"
+
+[[test]]
 name = "rendezvous"
 path = "qa/tests/rendezvous.rs"
 
