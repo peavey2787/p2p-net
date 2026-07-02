@@ -21,9 +21,12 @@ Public fallback is the normal consumer discovery entry point, but it is not a re
 | Connected peer | A peer with an active swarm connection. |
 | Bootstrap peer | A trusted configured peer used to enter the network. |
 | Bootstrap seed peer | A seed peer used to jump-start Kademlia/routing-table discovery. |
+| Public bootstrap seed peer | A seed peer supplied by the public fallback policy rather than private/operator config. |
 | Rendezvous peer | A peer that accepts namespace registration and discovery requests. |
+| Public rendezvous peer | A rendezvous peer supplied by the public fallback policy rather than private/operator config. |
 | DHT provider peer | A peer discovered as a provider of a hashed application namespace key. |
 | Relay-discovery peer | A peer learned as a potential relay/mediator candidate. |
+| Public relay-discovery peer | A relay/mediator candidate supplied by public fallback rather than private/operator config. |
 | Cached peer | A previously seen identity-bound address loaded from local storage. |
 | Manual peer | A peer supplied directly by the user or embedding application. |
 

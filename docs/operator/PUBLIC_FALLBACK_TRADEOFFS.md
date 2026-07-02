@@ -31,7 +31,7 @@ Public fallback usually adds more latency, more variable availability, and less 
 
 ## Dependency tradeoffs
 
-A public fallback list is a dependency on external operators. Those peers can disappear, change policy, or become overloaded without notice. Keep the fallback mode visible in settings, monitor `public_fallback_used`, and let advanced users disable public fallback or replace it with explicit bootstrap peers.
+A public fallback list is a dependency on external operators. Those peers can disappear, change policy, or become overloaded without notice. Keep the fallback mode visible in settings, monitor `public_fallback_used` plus the category-specific `public_bootstrap_used`, `public_rendezvous_used`, and `public_relay_used` fields, and let advanced users disable public fallback or replace it with explicit bootstrap peers.
 
 ## Safer public-fallback checklist
 

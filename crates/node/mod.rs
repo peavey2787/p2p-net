@@ -79,6 +79,9 @@ pub async fn start_node_with_platform(
         public_bootstrap_decision,
         public_rendezvous_decision,
         public_relay_decision,
+        public_bootstrap_candidate_count,
+        public_rendezvous_candidate_count,
+        public_relay_candidate_count,
     } = startup::prepare_startup_discovery(&cfg, &resolved_config, storage.as_ref()).await?;
 
     seed_bootstrap(&mut swarm, &startup_plan.dial_addrs);
@@ -185,8 +188,17 @@ pub async fn start_node_with_platform(
         } else {
             "not_used".to_string()
         },
-        public_bootstrap_seed_count: startup_plan.public_bootstrap_seed_count,
-        public_relay_candidate_count: relay_selection_plan.public_candidates,
+        public_bootstrap_used: public_bootstrap_decision.used,
+        public_bootstrap_reason: public_bootstrap_decision.reason.clone(),
+        public_rendezvous_used: public_rendezvous_decision.used,
+        public_rendezvous_reason: public_rendezvous_decision.reason.clone(),
+        public_relay_used: public_relay_decision.used,
+        public_relay_reason: public_relay_decision.reason.clone(),
+        public_bootstrap_seed_count: public_bootstrap_candidate_count
+            .max(startup_plan.public_bootstrap_seed_count),
+        public_rendezvous_candidate_count,
+        public_relay_candidate_count: public_relay_candidate_count
+            .max(relay_selection_plan.public_candidates),
         connected_peers: 0,
         peer_book_known_peers: peer_book.len(),
         peer_book_discovered_peers: peer_book.discovered_count(),

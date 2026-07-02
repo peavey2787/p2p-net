@@ -29,6 +29,17 @@ fn public_fallback_is_enabled_by_default_for_normal_app_mode() {
     assert!(cfg.discovery.dht.discover_with_rendezvous_peers);
     assert!(cfg.discovery.public_bootstrap.bootstrap_decision(0).used);
     assert!(!cfg.discovery.public_bootstrap.bootstrap_decision(1).used);
+    assert!(!cfg.discovery.public_bootstrap.rendezvous_decision(1).used);
+}
+
+#[test]
+fn private_infrastructure_only_disables_public_rendezvous_reporting_policy() {
+    let cfg = p2p_net::PublicBootstrapConfig::private_infrastructure_only();
+
+    assert_eq!(cfg.mode, PublicFallbackMode::Disabled);
+    assert!(!cfg.rendezvous_decision(0).used);
+    assert!(!cfg.relay_decision(0).used);
+    assert!(!cfg.auto_connect_discovered_peers);
 }
 
 #[test]

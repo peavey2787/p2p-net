@@ -118,6 +118,8 @@ That means regular users should not have to edit bootstrap settings before first
 
 The shared crate ships public bootstrap defaults, but it does not ship a project-operated public rendezvous or relay fleet. Apps that need reliable run-two-fresh-installs connectivity should add real public rendezvous DNSADDR entries under `discovery.public_bootstrap.rendezvous_peers` and real public relay/mediator DNSADDR entries under `discovery.public_bootstrap.relay_peers`, or operate private infrastructure.
 
+Runtime snapshots and Prometheus metrics report public fallback by category: `public_bootstrap_used`, `public_rendezvous_used`, and `public_relay_used`. Peer metadata also distinguishes `public_rendezvous` from operator-provided `rendezvous` sources.
+
 Private-infrastructure-first operation is still supported by setting `discovery.public_bootstrap.mode` to `disabled` and configuring owned bootstrap/rendezvous/relay infrastructure explicitly.
 
 ## Configure a node

@@ -40,3 +40,20 @@ fn peer_book_reports_discovered_peers_before_connection() {
     assert!(!peers[0].connected);
     assert!(peers[0].has_source(PeerSource::Rendezvous));
 }
+
+#[test]
+fn peer_book_distinguishes_public_fallback_sources() {
+    let peer = PeerId::random();
+    let mut book = PeerBook::default();
+
+    book.record_addr(peer, peer_addr(peer), PeerSource::PublicRendezvous);
+    book.record_peer(peer, PeerSource::PublicBootstrapSeed);
+    book.record_peer(peer, PeerSource::PublicRelayDiscovery);
+
+    let peers = book.peers();
+    assert_eq!(peers.len(), 1);
+    assert!(peers[0].has_source(PeerSource::PublicRendezvous));
+    assert!(peers[0].has_source(PeerSource::PublicBootstrapSeed));
+    assert!(peers[0].has_source(PeerSource::PublicRelayDiscovery));
+    assert!(!peers[0].has_source(PeerSource::Rendezvous));
+}
