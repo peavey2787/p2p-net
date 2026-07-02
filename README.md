@@ -6,7 +6,7 @@
 
 - TCP, QUIC, WebSocket, DNS, Noise, Yamux
 - Gossipsub heartbeat mesh with strict/manual validation
-- Kademlia, peer cache, bootstrap seeds, and explicit public fallback policy
+- Kademlia, peer cache, bootstrap seeds, and default public fallback policy
 - Persistent node identity key and stable `PeerId`
 - AutoNAT, relay client, relay reservation, DCUtR upgrade path
 - Optional relay server with limits, ACLs, schedule, and abuse telemetry
@@ -21,7 +21,7 @@
 - Platform runtime/storage abstraction for desktop and mobile adapters
 - Binding-safe facade for desktop, Android, iOS/iPadOS, and WASM/WebView shells
 - Six stable application primitives exposed on `NodeHandle`: `connect_peer`, `disconnect_peer`, `send_message`, `broadcast`, `subscribe`, and `get_peers`
-- Private-infrastructure-first fallback to explicitly configured public bootstrap/relay resources
+- Consumer-default public fallback with advanced private-infrastructure-first override
 - Hashed application discovery namespaces for contact/group tags without raw tag publication
 - Kademlia provider-record discovery for hashed namespaces when rendezvous is unavailable
 
@@ -106,6 +106,20 @@ cargo run --features dashboard --example p2p_node -- --config p2p-node.json
 
 Press `q` or `Esc` to stop the dashboard node cleanly.
 
+## Default connectivity model
+
+Normal app mode uses public fallback by default:
+
+```text
+fresh node -> owned/cached peers if present -> built-in public bootstrap fallback -> DHT/rendezvous/relay discovery paths
+```
+
+That means regular users should not have to edit bootstrap settings before first launch. Manual `bootstrap_peers`, `discovery.bootstrap_seed_peers`, `discovery.rendezvous_peers`, and `relay_peers` are power-user/operator controls and should be exposed under Advanced settings in app UIs.
+
+The shared crate ships public bootstrap defaults, but it does not ship a project-operated public relay fleet. Apps that need reliable NAT-to-NAT first-launch connectivity should add real public relay/mediator DNSADDR entries under `discovery.public_bootstrap.relay_peers` or operate private relays.
+
+Private-infrastructure-first operation is still supported by setting `discovery.public_bootstrap.mode` to `disabled` and configuring owned bootstrap/rendezvous/relay infrastructure explicitly.
+
 ## Configure a node
 
 Edit `p2p-node.json`. The default config is also available at:
@@ -117,8 +131,8 @@ examples/node-config.example.json
 Operator-oriented configs are also available:
 
 ```text
-examples/private-infrastructure-first.config.json
 examples/public-fallback.config.json
+examples/private-infrastructure-first.config.json
 ```
 
 Operator guidance is in `docs/operator/`.
@@ -132,7 +146,7 @@ Important fields:
 - `dnsaddr`: `/dnsaddr` DoH policy. Defaults to bounded Cloudflare DoH for simple operation; set `doh_endpoint` to an internal/self-hosted DoH resolver for production, or set `enabled` to `false` to reject `/dnsaddr` in configured peers. See `docs/impl/DNSADDR_DOH.md`.
 - `relay_peers`: operator-pinned relay or mediator peers to dial and reserve through.
 - `discovery.namespace`: derive hashed app/contact/group discovery namespaces from `network_id`, `app_id`, and tags. See `docs/spec/DISCOVERY_NAMESPACES.md`.
-- `discovery.public_bootstrap`: opt-in public bootstrap and relay fallback with `disabled`, `fallback_only`, or `always` mode. See `docs/spec/PUBLIC_FALLBACK.md`.
+- `discovery.public_bootstrap`: public bootstrap and relay fallback. Defaults to `fallback_only` for normal app mode; set `disabled` for private-infrastructure-first mode or `always` for aggressive public fallback. See `docs/spec/PUBLIC_FALLBACK.md`.
 - `discovery.dht`: announce and query hashed app namespaces through Kademlia provider records. See `docs/spec/DHT_PROVIDER_DISCOVERY.md`.
 - `discovery.relay_discovery`: select relay candidates from configured relays, cached healthy peers, and rendezvous infrastructure. See `docs/impl/RELAY_DISCOVERY.md`.
 - `dcutr`: direct-connection upgrade policy with relay fallback, retry budget, and observability. See `docs/impl/DCUTR_POLICY.md`.
@@ -183,9 +197,9 @@ Normally, do not run the individual commands manually. Use `.\qa\ci\run-full-val
 - `docs/impl/PLATFORM_RUNTIME.md` documents the platform runtime/storage abstraction.
 - `docs/impl/BINDINGS.md` documents the cross-platform binding facade.
 - `docs/spec/API_PRIMITIVES.md` documents the six primitive application API.
-- `docs/spec/DISCOVERY_RESURRECTION.md` documents private-infrastructure-first discovery fallback and peer roles.
+- `docs/spec/DISCOVERY_RESURRECTION.md` documents consumer-default public fallback, advanced private-infrastructure mode, and peer roles.
 - `docs/spec/DISCOVERY_NAMESPACES.md` documents hashed app discovery namespace derivation.
-- `docs/spec/PUBLIC_FALLBACK.md` documents explicit public bootstrap and relay fallback.
+- `docs/spec/PUBLIC_FALLBACK.md` documents default public bootstrap and relay fallback policy.
 - `docs/operator/README.md` links deployment examples and production operator guidance.
 - `docs/spec/DHT_PROVIDER_DISCOVERY.md` documents DHT provider-record namespace discovery.
 - `docs/spec/PEER_BOOK.md` documents normalized peer metadata returned by `get_peers()`.

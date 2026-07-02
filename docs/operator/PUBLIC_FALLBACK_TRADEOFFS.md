@@ -1,20 +1,20 @@
 # Public fallback tradeoffs
 
-Public bootstrap and relay fallback is intentionally opt-in. It can help a mesh recover when owned infrastructure and cached peers are unavailable, but it changes the trust and dependency model of the deployment.
+Public fallback is the normal app default. It is meant to give regular users a no-config startup path: run the app, use the built-in public bootstrap list, discover peers, and then let peer cache, DHT provider discovery, rendezvous, and relay policy maintain connectivity.
 
-Use `examples/public-fallback.config.json` only after choosing a clear fallback policy.
+Power users and operators can still disable public fallback or replace it with private infrastructure.
 
 ## Policy modes
 
-- `disabled`: never use public bootstrap or public relay candidates.
-- `fallback_only`: use public candidates only when owned startup candidates or owned relay candidates are empty.
+- `fallback_only`: default normal app mode. Use public candidates only when owned startup candidates or owned relay candidates are empty.
+- `disabled`: advanced private-infrastructure-only mode. Never use public bootstrap or public relay candidates.
 - `always`: include public candidates after owned candidates on every startup.
 
-For most production applications that allow public fallback at all, `fallback_only` is safer than `always`.
+For consumer app defaults, use `fallback_only`. For private deployments, use `disabled` with owned bootstrap/rendezvous/relay peers.
 
 ## Privacy tradeoffs
 
-Public bootstrap or relay operators can observe connection attempts, source IPs, timing, and relay usage. They should not receive raw application contact tags because discovery namespaces are hashed by default, but metadata can still reveal activity patterns. Use owned infrastructure when contact-graph privacy matters.
+Public bootstrap or relay operators can observe connection attempts, source IPs, timing, and relay usage. They should not receive raw application contact tags because discovery namespaces are hashed by default, but metadata can still reveal activity patterns. Use private infrastructure when contact-graph privacy matters.
 
 ## Abuse tradeoffs
 
@@ -26,13 +26,14 @@ Public fallback usually adds more latency, more variable availability, and less 
 
 ## Dependency tradeoffs
 
-A public fallback list is a dependency on external operators. Those peers can disappear, change policy, or become overloaded without notice. Keep lists explicit in config, monitor `public_fallback_used`, and treat repeated public fallback use as an alert that owned infrastructure or peer-cache recovery is not working.
+A public fallback list is a dependency on external operators. Those peers can disappear, change policy, or become overloaded without notice. Keep the fallback mode visible in settings, monitor `public_fallback_used`, and let advanced users disable public fallback or replace it with explicit bootstrap peers.
 
 ## Safer public-fallback checklist
 
-- Use `fallback_only`, not `always`, unless the application deliberately wants public candidates on every startup.
-- Keep owned bootstrap, rendezvous, mediator, and relay peers configured first.
+- Keep `fallback_only` as the normal user default.
+- Put manual bootstrap/rendezvous/relay peers under Advanced settings.
+- Offer a clear private-infrastructure-only toggle that sets public fallback to `disabled`.
 - Keep hashed discovery namespaces enabled.
 - Avoid readable discovery tags outside local debugging.
 - Watch snapshot and metrics fields for public fallback participation.
-- Document which public peer operators are trusted and why.
+- If your app needs NAT-to-NAT reliability for all users, operate or contract public relay/mediator peers and add them to `discovery.public_bootstrap.relay_peers`.

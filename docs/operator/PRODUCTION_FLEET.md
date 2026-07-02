@@ -40,7 +40,7 @@ For relay and mediator nodes:
 
 ## Availability layout
 
-Run at least two bootstrap/rendezvous targets in different failure domains. Run relays close to expected users when latency matters. Keep a short explicit public fallback list only for recovery if the application policy allows it.
+Run at least two bootstrap/rendezvous targets in different failure domains. Run relays close to expected users when latency matters. For private-infrastructure-first fleets, disable public fallback; for consumer fleets, keep fallback-only mode but monitor when public infrastructure is used.
 
 ## Operational checklist
 
@@ -48,5 +48,5 @@ Run at least two bootstrap/rendezvous targets in different failure domains. Run 
 - Validate configs before deployment with the repository full-validation script.
 - Publish stable DNS or `/dnsaddr` records for infrastructure hosts.
 - Keep peer-cache storage durable on clients.
-- Monitor public fallback participation; it should be rare in private-infra-first mode.
+- Monitor public fallback participation; it should be expected for consumer first-launch flows and rare after private/cached infrastructure has taken over.
 - Run hostile-network tests against staging relays before exposing them to real clients.

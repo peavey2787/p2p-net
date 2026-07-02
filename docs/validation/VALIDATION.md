@@ -110,7 +110,7 @@ The test is registered in `Cargo.toml`, so `qa/ci/run-full-validation.ps1` and `
 
 ## Operator docs and examples checks
 
-`qa/tests/operator/operator_docs.rs` verifies that operator deployment guides exist, private-infrastructure-first and public-fallback example configs parse as `NodeConfig`, and the examples preserve the expected public-fallback policy modes.
+`qa/tests/operator/operator_docs.rs` verifies that operator deployment guides exist, private-infrastructure-first and public-fallback example configs parse as `NodeConfig`, and the examples preserve the expected public-fallback defaults and private-mode override.
 
 ## Manual audit and deny commands
 
@@ -126,7 +126,7 @@ Use `qa/ci/run-full-validation.ps1` or `qa/ci/run-full-validation.sh` for the ex
 
 ## Public fallback checks
 
-`qa/tests/discovery/discovery.rs` and `qa/tests/relay/relay_discovery.rs` cover explicit public bootstrap/relay fallback policy, validation, and source accounting. `qa/tests/observability/observability.rs` verifies public fallback snapshot and metrics fields. `qa/tests/discovery/network_resurrection.rs` verifies that public bootstrap/relay fallback participates only when the configured policy allows it.
+`qa/tests/discovery/discovery.rs` and `qa/tests/relay/relay_discovery.rs` cover public bootstrap/relay fallback policy, validation, and source accounting. `qa/tests/observability/observability.rs` verifies public fallback snapshot and metrics fields. `qa/tests/discovery/network_resurrection.rs` verifies that public bootstrap/relay fallback participates only when policy allows it and fallback-only conditions are met.
 
 ## DHT provider-discovery checks
 

@@ -23,10 +23,10 @@ Nodes should prefer owned infrastructure first:
 2. operator rendezvous peers
 3. operator mediator/relay peers
 4. healthy peer cache
-5. explicitly configured public bootstrap or relay fallback
+5. public bootstrap or relay fallback when policy allows it
 6. DHT provider lookups for hashed discovery namespaces
 
-Public infrastructure must be opt-in through `discovery.public_bootstrap`. DHT provider discovery may be enabled by default, but it only becomes useful after the node has joined a Kademlia routing layer through configured, cached, or fallback bootstrap peers.
+Public fallback is enabled by default in fallback-only mode for normal app startup. DHT provider discovery may be enabled by default, but it only becomes useful after the node has joined a Kademlia routing layer through configured, cached, or fallback bootstrap peers. Private deployments can disable public fallback and use owned bootstrap/rendezvous infrastructure instead.
 
 ## Namespace keys
 
