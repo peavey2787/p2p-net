@@ -14,7 +14,7 @@ use crate::connectivity::peer_book::PeerBook;
 use crate::stack::{extract_p2p_peer_id, MeshBehaviour};
 
 use super::handle::NodeCommand;
-use super::types::NodeSnapshot;
+use super::snapshot::NodeSnapshot;
 
 pub(crate) struct NodeCommandContext<'a> {
     pub(crate) swarm: &'a mut Swarm<MeshBehaviour>,

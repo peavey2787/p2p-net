@@ -156,10 +156,11 @@ fn profile_decisions_are_not_duplicated_in_startup_or_stack_layers() {
 fn snapshot_json_uses_derived_serialization_instead_of_duplicate_field_mapping() {
     let root = manifest_dir();
     let node_mod = fs::read_to_string(root.join("crates/node/mod.rs")).expect("node mod");
-    let node_types = fs::read_to_string(root.join("crates/node/types.rs")).expect("node types");
+    let node_snapshot =
+        fs::read_to_string(root.join("crates/node/snapshot.rs")).expect("node snapshot");
 
     assert!(
-        node_types.contains("serde::Serialize"),
+        node_snapshot.contains("serde::Serialize"),
         "NodeSnapshot should derive serialization so JSON output cannot drift from snapshot fields"
     );
     assert!(
@@ -169,6 +170,43 @@ fn snapshot_json_uses_derived_serialization_instead_of_duplicate_field_mapping()
     assert!(
         !node_mod.contains("fn insert<T: serde::Serialize>"),
         "snapshot_to_json must not duplicate the NodeSnapshot field list by hand"
+    );
+}
+
+#[test]
+fn node_config_snapshot_and_validation_live_in_focused_modules() {
+    let root = manifest_dir();
+    let node_mod = fs::read_to_string(root.join("crates/node/mod.rs")).expect("node mod");
+    let node_config = fs::read_to_string(root.join("crates/node/config.rs")).expect("node config");
+    let node_validation =
+        fs::read_to_string(root.join("crates/node/config_validation.rs")).expect("node validation");
+    let node_snapshot =
+        fs::read_to_string(root.join("crates/node/snapshot.rs")).expect("node snapshot");
+
+    assert!(
+        node_mod.contains("mod config;")
+            && node_mod.contains("mod config_validation;")
+            && node_mod.contains("mod snapshot;"),
+        "node mod should declare focused config, validation, and snapshot modules"
+    );
+    assert!(
+        !root.join("crates/node/types.rs").exists(),
+        "mixed node types file should be removed after the split"
+    );
+    assert!(
+        node_config.contains("pub struct NodeConfig")
+            && !node_config.contains("pub struct NodeSnapshot"),
+        "config.rs should own NodeConfig only"
+    );
+    assert!(
+        node_snapshot.contains("pub struct NodeSnapshot")
+            && !node_snapshot.contains("pub struct NodeConfig"),
+        "snapshot.rs should own NodeSnapshot only"
+    );
+    assert!(
+        node_validation.contains("pub(crate) fn validate_node_config")
+            && node_validation.contains("pub(crate) fn parse_multiaddrs"),
+        "config validation and parsing helpers belong in config_validation.rs"
     );
 }
 

@@ -7,7 +7,7 @@ use tokio::task::JoinHandle;
 use crate::api::{AppMessage, AppSubscription, PeerInfo};
 use crate::common::error::NetError;
 
-use super::types::NodeSnapshot;
+use super::snapshot::NodeSnapshot;
 
 #[derive(Clone)]
 pub struct NodeHandle {

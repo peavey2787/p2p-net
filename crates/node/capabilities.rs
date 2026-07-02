@@ -9,7 +9,7 @@ use crate::common::error::NetError;
 
 use super::environment::{EnvironmentReport, NetworkReachability};
 use super::profile::{NodeProfile, NodeRole, ResolvedNodeConfig};
-use super::types::NodeConfig;
+use super::config::NodeConfig;
 
 /// Resolve raw user config plus an advisory environment report into one
 /// validated capability view.

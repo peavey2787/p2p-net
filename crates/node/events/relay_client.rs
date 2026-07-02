@@ -4,7 +4,7 @@ use libp2p::relay;
 use tokio::sync::Mutex;
 
 use crate::connectivity::relay::RelayState;
-use super::super::types::NodeSnapshot;
+use super::super::snapshot::NodeSnapshot;
 
 use super::super::push_pulse;
 

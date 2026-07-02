@@ -19,7 +19,7 @@ use crate::protocol::pulse::{HeartbeatReplayCache, MessageSecurityConfig};
 use crate::protocol::reputation::ReputationStore;
 use crate::stack::{on_mesh_event, MeshBehaviour, MeshEvent};
 
-use super::types::NodeSnapshot;
+use super::snapshot::NodeSnapshot;
 
 mod app;
 mod connection;

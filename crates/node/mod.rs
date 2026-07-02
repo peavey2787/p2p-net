@@ -2,6 +2,8 @@
 
 mod capabilities;
 mod commands;
+mod config;
+mod config_validation;
 mod environment;
 mod events;
 mod handle;
@@ -9,7 +11,7 @@ mod metrics;
 mod profile;
 mod runtime;
 mod startup;
-mod types;
+mod snapshot;
 
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -31,12 +33,13 @@ pub use capabilities::{apply_resolved_capabilities, resolve_node_config};
 pub use environment::{
     EnvironmentConfig, EnvironmentReport, NatKind, NetworkReachability, PlatformKind,
 };
-pub use profile::{BehaviourSet, NodeProfile, NodeRole, ResolvedNodeConfig};
+pub use config::NodeConfig;
 pub use handle::NodeHandle;
 pub use metrics::snapshot_to_prometheus_metrics;
-pub use types::{NodeConfig, NodeSnapshot};
+pub use profile::{BehaviourSet, NodeProfile, NodeRole, ResolvedNodeConfig};
+pub use snapshot::NodeSnapshot;
 
-use types::network_label;
+use snapshot::network_label;
 
 pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
     let desktop = Arc::new(DesktopPlatformRuntime::default());

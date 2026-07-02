@@ -1,6 +1,6 @@
 //! Snapshot-to-metrics rendering for operator observability.
 
-use super::types::NodeSnapshot;
+use super::snapshot::NodeSnapshot;
 
 /// Export operator counters in Prometheus text exposition format without opening an HTTP port.
 /// Embedders that want an HTTP endpoint can serve this string from their own trusted admin server.

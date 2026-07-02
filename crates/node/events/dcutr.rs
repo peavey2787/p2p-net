@@ -6,7 +6,7 @@ use crate::connectivity::dcutr::DcutrPolicy;
 use crate::connectivity::relay::RelayState;
 
 use super::super::push_pulse;
-use super::super::types::NodeSnapshot;
+use super::super::snapshot::NodeSnapshot;
 
 pub(crate) async fn handle_event(
     ev: libp2p::dcutr::Event,
