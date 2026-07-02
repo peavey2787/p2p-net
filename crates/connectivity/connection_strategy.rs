@@ -8,6 +8,7 @@
 
 use std::collections::{BTreeSet, HashMap, VecDeque};
 
+use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 
 use crate::connectivity::dcutr::DcutrPolicy;
@@ -204,7 +205,7 @@ fn classify_addr(addr: &Multiaddr) -> ConnectionAttemptKind {
     }
     if addr
         .iter()
-        .any(|protocol| matches!(protocol.to_string().as_str(), "quic" | "quic-v1"))
+        .any(|protocol| matches!(protocol, Protocol::Quic | Protocol::QuicV1))
     {
         return ConnectionAttemptKind::DirectQuic;
     }
