@@ -17,7 +17,7 @@ mod listen_addr;
 
 use self::listen_addr::{
     autonat_status_label, classify_listen_addr, record_listen_addr_snapshot,
-    remove_listen_addr_snapshot,
+    remove_listen_addr_snapshot, ListenAddrClass,
 };
 
 const MAX_PUBLIC_DHT_RELAY_ATTEMPTS: usize = 32;
