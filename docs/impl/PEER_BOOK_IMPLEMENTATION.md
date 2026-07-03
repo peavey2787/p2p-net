@@ -26,7 +26,7 @@ Prometheus metrics:
 
 ## Peer-cache implementation notes
 
-`crates/connectivity/peer_cache.rs` uses a v2 cache shape with separate `identities` and `dialable_addrs` sections. The legacy `entries` field is still written/read for backward-compatible diagnostics, but v2 code deduplicates it with `dialable_addrs` before applying freshness policy.
+`crates/connectivity/peer_cache.rs` uses a v2 cache shape with separate `identities` and `dialable_addrs` sections. The older-format `entries` field is still written/read for backward-compatible diagnostics, but v2 code deduplicates it with `dialable_addrs` before applying freshness policy.
 
 Dialable address retention is kind-specific:
 
