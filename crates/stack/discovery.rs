@@ -394,20 +394,12 @@ fn on_identify_event(
     storage: &dyn NodeStorage,
     peer_book: &mut PeerBook,
 ) {
-    match event {
-        identify::Event::Received { peer_id, info, .. } => {
-            for addr in &info.listen_addrs {
-                add_peer_address_to_discovery(swarm, peer_id.to_owned(), addr.clone());
-                peer_cache::record_seen_peer_addr_with_storage(
-                    discovery_cfg,
-                    peer_id,
-                    addr,
-                    storage,
-                );
-                peer_book.record_addr(peer_id.to_owned(), addr.clone(), PeerSource::Connected);
-            }
+    if let identify::Event::Received { peer_id, info, .. } = event {
+        for addr in &info.listen_addrs {
+            add_peer_address_to_discovery(swarm, peer_id.to_owned(), addr.clone());
+            peer_cache::record_seen_peer_addr_with_storage(discovery_cfg, peer_id, addr, storage);
+            peer_book.record_addr(peer_id.to_owned(), addr.clone(), PeerSource::Connected);
         }
-        _ => {}
     }
 }
 
