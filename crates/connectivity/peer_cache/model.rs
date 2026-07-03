@@ -28,10 +28,11 @@ pub struct CachedPeerIdentity {
     pub last_seen_unix_secs: u64,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum CachedDialAddrKind {
     /// Public/NAT direct address. These expire quickly because public IPs and NAT mappings churn.
+    #[default]
     PublicDirect,
     /// Circuit-relay address. These are valid only while the relay reservation is still fresh.
     RelayReservation,
@@ -39,11 +40,6 @@ pub enum CachedDialAddrKind {
     LocalSession,
 }
 
-impl Default for CachedDialAddrKind {
-    fn default() -> Self {
-        Self::PublicDirect
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CachedPeerAddr {
