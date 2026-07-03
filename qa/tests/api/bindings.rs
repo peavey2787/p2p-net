@@ -46,7 +46,10 @@ fn binding_runtime_spec_resolves_android_auto_to_mobile_lite() {
         plan.storage_requirement,
         BindingStorageRequirement::ExternalPlatformStorage
     );
-    assert_eq!(plan.environment.reachability, NetworkReachability::PrivateNat);
+    assert_eq!(
+        plan.environment.reachability,
+        NetworkReachability::PrivateNat
+    );
     assert!(plan
         .warnings
         .iter()

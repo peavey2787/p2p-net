@@ -1,4 +1,4 @@
-use libp2p::Multiaddr;
+use libp2p::{Multiaddr, PeerId};
 
 use crate::api::PeerSource;
 use crate::common::error::NetError;
@@ -24,6 +24,7 @@ pub(super) struct StartupAddrs {
     relay_peers: Vec<Multiaddr>,
     cached_peers: Vec<Multiaddr>,
     cached_relay_peers: Vec<Multiaddr>,
+    cached_identities: Vec<PeerId>,
 }
 
 impl StartupAddrs {
@@ -83,8 +84,15 @@ impl StartupAddrs {
             &self.bootstrap_seed_peers,
             PeerSource::BootstrapSeed,
         );
-        record_peer_book_addrs(&mut peer_book, &self.rendezvous_peers, PeerSource::Rendezvous);
+        record_peer_book_addrs(
+            &mut peer_book,
+            &self.rendezvous_peers,
+            PeerSource::Rendezvous,
+        );
         record_peer_book_addrs(&mut peer_book, &self.cached_peers, PeerSource::PeerCache);
+        for peer in &self.cached_identities {
+            peer_book.record_peer(*peer, PeerSource::PeerCache);
+        }
         if use_public_bootstrap {
             record_peer_book_addrs(
                 &mut peer_book,
@@ -175,33 +183,26 @@ pub(super) async fn resolve_startup_addrs(
         &cfg.dnsaddr,
     )
     .await?;
-    let public_bootstrap_seed_peers = dns::resolve_cached_multiaddrs(
-        cfg.parsed_public_bootstrap_seed_peers()?,
-        &cfg.dnsaddr,
-    )
-    .await;
-    let public_rendezvous_peers = dns::resolve_cached_multiaddrs(
-        cfg.parsed_public_rendezvous_peers()?,
-        &cfg.dnsaddr,
-    )
-    .await;
-    let public_relay_peers = dns::resolve_cached_multiaddrs(
-        cfg.parsed_public_relay_peers()?,
-        &cfg.dnsaddr,
-    )
-    .await;
+    let public_bootstrap_seed_peers =
+        dns::resolve_cached_multiaddrs(cfg.parsed_public_bootstrap_seed_peers()?, &cfg.dnsaddr)
+            .await;
+    let public_rendezvous_peers =
+        dns::resolve_cached_multiaddrs(cfg.parsed_public_rendezvous_peers()?, &cfg.dnsaddr).await;
+    let public_relay_peers =
+        dns::resolve_cached_multiaddrs(cfg.parsed_public_relay_peers()?, &cfg.dnsaddr).await;
     let rendezvous_peers = dns::resolve_configured_multiaddrs(
         "discovery.rendezvous_peers",
         cfg.parsed_rendezvous_peers()?,
         &cfg.dnsaddr,
     )
     .await?;
-    let relay_peers = dns::resolve_configured_multiaddrs(
-        "relay_peers",
-        cfg.parsed_relay_peers()?,
-        &cfg.dnsaddr,
-    )
-    .await?;
+    let relay_peers =
+        dns::resolve_configured_multiaddrs("relay_peers", cfg.parsed_relay_peers()?, &cfg.dnsaddr)
+            .await?;
+    let cached_identities = peer_cache::load_identities_with_storage(&cfg.discovery, storage)
+        .into_iter()
+        .filter_map(|identity| identity.peer_id.parse::<PeerId>().ok())
+        .collect::<Vec<_>>();
     let cached_startup_addrs = peer_cache::load_last_addrs_with_storage(
         &cfg.discovery,
         cfg.startup_peer_cache_probe
@@ -210,7 +211,8 @@ pub(super) async fn resolve_startup_addrs(
     );
     let cached_peers =
         dns::resolve_cached_multiaddrs(cached_startup_addrs.clone(), &cfg.dnsaddr).await;
-    let cached_relay_peers = dns::resolve_cached_multiaddrs(cached_startup_addrs, &cfg.dnsaddr).await;
+    let cached_relay_peers =
+        dns::resolve_cached_multiaddrs(cached_startup_addrs, &cfg.dnsaddr).await;
 
     Ok(StartupAddrs {
         bootstrap_peers,
@@ -222,6 +224,7 @@ pub(super) async fn resolve_startup_addrs(
         relay_peers,
         cached_peers,
         cached_relay_peers,
+        cached_identities,
     })
 }
 

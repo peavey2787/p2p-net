@@ -7,9 +7,7 @@ use libp2p::{PeerId, Swarm};
 use tokio::sync::Mutex;
 
 use crate::common::error::NetError;
-use crate::connectivity::dht::{
-    start_dht_namespace_discovery, DhtNamespacePlan, DhtProviderState,
-};
+use crate::connectivity::dht::{start_dht_namespace_discovery, DhtNamespacePlan, DhtProviderState};
 use crate::protocol::pulse::collect_local_heartbeat;
 use crate::stack::MeshBehaviour;
 

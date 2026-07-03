@@ -96,7 +96,10 @@ fn maybe_auto_dial_rendezvous_peers(
     ctx: &mut SwarmEventContext<'_>,
 ) -> Vec<String> {
     let mut pulses = Vec::new();
-    let enabled = ctx.discovery_cfg.public_bootstrap.auto_connect_discovered_peers;
+    let enabled = ctx
+        .discovery_cfg
+        .public_bootstrap
+        .auto_connect_discovered_peers;
 
     for peer in peers {
         let outcome = auto_dial_peer_from_book(

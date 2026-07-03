@@ -23,3 +23,15 @@ Prometheus metrics:
 
 - `p2p_peer_book_known_peers`
 - `p2p_peer_book_discovered_peers`
+
+## Peer-cache implementation notes
+
+`crates/connectivity/peer_cache.rs` uses a v2 cache shape with separate `identities` and `dialable_addrs` sections. The legacy `entries` field is still written/read for backward-compatible diagnostics, but v2 code deduplicates it with `dialable_addrs` before applying freshness policy.
+
+Dialable address retention is kind-specific:
+
+- `public_direct`: capped by `discovery.peer_cache_public_addr_max_age_secs`;
+- `relay_reservation`: capped by `discovery.peer_cache_relay_addr_max_age_secs` or an explicit expiry supplied by the caller;
+- `local_session`: rejected on load unless `discovery.peer_cache_persist_local_addrs` is true.
+
+This prevents stale NAT/public-IP announcements, expired relay reservations, and same-machine loopback/LAN addrs from being reused as if they were long-lived app-peer routes.

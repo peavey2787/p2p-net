@@ -106,7 +106,12 @@ impl PeerBook {
         record.mark_seen();
     }
 
-    pub fn record_namespace(&mut self, peer_id: PeerId, namespace: impl Into<String>, source: PeerSource) {
+    pub fn record_namespace(
+        &mut self,
+        peer_id: PeerId,
+        namespace: impl Into<String>,
+        source: PeerSource,
+    ) {
         let record = self
             .peers
             .entry(peer_id)

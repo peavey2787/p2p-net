@@ -81,10 +81,7 @@ pub(crate) fn validate_node_config(cfg: &NodeConfig) -> Result<(), NetError> {
     cfg.mediator.validate(&cfg.relay)?;
     Ok(())
 }
-pub(crate) fn parse_multiaddrs(
-    field: &str,
-    values: &[String],
-) -> Result<Vec<Multiaddr>, NetError> {
+pub(crate) fn parse_multiaddrs(field: &str, values: &[String]) -> Result<Vec<Multiaddr>, NetError> {
     values
         .iter()
         .map(|raw| {
@@ -109,11 +106,7 @@ fn validate_listen_addrs(field: &str, values: &[String]) -> Result<(), NetError>
     Ok(())
 }
 
-fn validate_peer_addrs(
-    field: &str,
-    values: &[String],
-    require_p2p: bool,
-) -> Result<(), NetError> {
+fn validate_peer_addrs(field: &str, values: &[String], require_p2p: bool) -> Result<(), NetError> {
     for raw in values {
         let _addr = raw.parse::<Multiaddr>().map_err(|err| {
             config_error(format!("{field} contains invalid multiaddr `{raw}`: {err}"))

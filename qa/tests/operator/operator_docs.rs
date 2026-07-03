@@ -10,7 +10,8 @@ fn root() -> PathBuf {
 #[test]
 fn operator_guides_are_present_and_link_examples() {
     let root = root();
-    let overview = fs::read_to_string(root.join("docs/operator/README.md")).expect("operator guide");
+    let overview =
+        fs::read_to_string(root.join("docs/operator/README.md")).expect("operator guide");
     let consumer = fs::read_to_string(root.join("docs/operator/CONSUMER_DEFAULT.md"))
         .expect("consumer default guide");
     let private = fs::read_to_string(root.join("docs/operator/PRIVATE_INFRASTRUCTURE_FIRST.md"))
@@ -34,19 +35,39 @@ fn operator_guides_are_present_and_link_examples() {
     assert!(public.contains("fallback_only"));
     assert!(public.contains("Public fallback is the normal app default"));
     for required_role in ["Bootstrap", "Rendezvous", "Mediator", "Relay"] {
-        assert!(fleet.contains(required_role), "missing role {required_role}");
+        assert!(
+            fleet.contains(required_role),
+            "missing role {required_role}"
+        );
     }
 }
 
 #[test]
 fn operator_example_configs_validate() {
     let consumer = load_config("examples/consumer-default.config.json");
-    consumer.validate().expect("consumer default config validates");
-    assert_eq!(consumer.discovery.public_bootstrap.mode.as_str(), "fallback_only");
+    consumer
+        .validate()
+        .expect("consumer default config validates");
+    assert_eq!(
+        consumer.discovery.public_bootstrap.mode.as_str(),
+        "fallback_only"
+    );
     assert!(consumer.bootstrap_peers.is_empty());
     assert!(consumer.relay_peers.is_empty());
-    assert!(consumer.discovery.public_bootstrap.bootstrap_seed_peers.len() >= 4);
-    assert!(consumer.discovery.public_bootstrap.auto_connect_discovered_peers);
+    assert!(
+        consumer
+            .discovery
+            .public_bootstrap
+            .bootstrap_seed_peers
+            .len()
+            >= 4
+    );
+    assert!(
+        consumer
+            .discovery
+            .public_bootstrap
+            .auto_connect_discovered_peers
+    );
     assert!(consumer.discovery.rendezvous.client_enabled);
     assert!(!consumer.discovery.rendezvous.server_enabled);
     assert!(consumer.discovery.dht.enabled);
@@ -57,9 +78,22 @@ fn operator_example_configs_validate() {
     let private = load_config("examples/private-infrastructure-first.config.json");
     private.validate().expect("private infra config validates");
     assert_eq!(private.discovery.public_bootstrap.mode.as_str(), "disabled");
-    assert!(private.discovery.public_bootstrap.bootstrap_seed_peers.is_empty());
-    assert!(private.discovery.public_bootstrap.rendezvous_peers.is_empty());
-    assert!(!private.discovery.public_bootstrap.auto_connect_discovered_peers);
+    assert!(private
+        .discovery
+        .public_bootstrap
+        .bootstrap_seed_peers
+        .is_empty());
+    assert!(private
+        .discovery
+        .public_bootstrap
+        .rendezvous_peers
+        .is_empty());
+    assert!(
+        !private
+            .discovery
+            .public_bootstrap
+            .auto_connect_discovered_peers
+    );
     assert_eq!(private.discovery.namespace.privacy.as_str(), "hashed");
     assert!(!private.discovery.namespace.allow_readable_tags);
     assert!(private.discovery.rendezvous.client_enabled);
@@ -67,11 +101,23 @@ fn operator_example_configs_validate() {
 
     let public = load_config("examples/public-fallback.config.json");
     public.validate().expect("public fallback config validates");
-    assert_eq!(public.discovery.public_bootstrap.mode.as_str(), "fallback_only");
+    assert_eq!(
+        public.discovery.public_bootstrap.mode.as_str(),
+        "fallback_only"
+    );
     assert!(public.discovery.public_bootstrap.bootstrap_seed_peers.len() >= 4);
-    assert!(public.discovery.public_bootstrap.rendezvous_peers.is_empty());
+    assert!(public
+        .discovery
+        .public_bootstrap
+        .rendezvous_peers
+        .is_empty());
     assert!(public.discovery.public_bootstrap.relay_peers.is_empty());
-    assert!(public.discovery.public_bootstrap.auto_connect_discovered_peers);
+    assert!(
+        public
+            .discovery
+            .public_bootstrap
+            .auto_connect_discovered_peers
+    );
     assert_eq!(public.discovery.namespace.privacy.as_str(), "hashed");
     assert!(!public.discovery.namespace.allow_readable_tags);
 }

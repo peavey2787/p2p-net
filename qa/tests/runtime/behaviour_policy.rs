@@ -12,7 +12,10 @@ fn lite_profiles_resolve_to_kademlia_client_only() {
         };
         let resolved = cfg.try_resolved().expect("profile resolves");
 
-        assert!(matches!(resolved.role, NodeRole::Lite | NodeRole::MobileLite));
+        assert!(matches!(
+            resolved.role,
+            NodeRole::Lite | NodeRole::MobileLite
+        ));
         assert!(resolved.enabled_behaviours.kademlia_client);
         assert!(!resolved.enabled_behaviours.kademlia_server);
         assert!(resolved.enabled_behaviours.relay_client);

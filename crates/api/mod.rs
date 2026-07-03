@@ -232,7 +232,9 @@ impl AppMessage {
 
 pub fn app_topic_name(network_id: u32, topic: impl AsRef<str>) -> Result<String, NetError> {
     let topic = normalize_app_topic(topic.as_ref())?;
-    Ok(format!("{APP_TOPIC_PREFIX}/v{APP_MESSAGE_SCHEMA_VERSION}/net-{network_id}/{topic}"))
+    Ok(format!(
+        "{APP_TOPIC_PREFIX}/v{APP_MESSAGE_SCHEMA_VERSION}/net-{network_id}/{topic}"
+    ))
 }
 
 pub fn app_ident_topic(network_id: u32, topic: impl AsRef<str>) -> Result<IdentTopic, NetError> {
@@ -277,10 +279,12 @@ pub fn validate_app_message(message: &AppMessage) -> Result<(), NetError> {
             reason: format!("invalid source peer id: {err}"),
         })?;
     if let Some(target) = &message.target_peer_id {
-        target.parse::<PeerId>().map_err(|err| NetError::AppMessage {
-            topic: message.topic.clone(),
-            reason: format!("invalid target peer id: {err}"),
-        })?;
+        target
+            .parse::<PeerId>()
+            .map_err(|err| NetError::AppMessage {
+                topic: message.topic.clone(),
+                reason: format!("invalid target peer id: {err}"),
+            })?;
     }
     validate_app_payload_len(message.payload.len())
 }

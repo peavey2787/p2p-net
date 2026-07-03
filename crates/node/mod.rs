@@ -13,8 +13,8 @@ mod profile;
 mod public_ip;
 mod runtime;
 mod runtime_tasks;
-mod startup;
 mod snapshot;
+mod startup;
 
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -26,21 +26,21 @@ use tokio::sync::{broadcast, mpsc, Mutex};
 
 use crate::common::error::NetError;
 use crate::connectivity::dht::{start_dht_namespace_discovery, DhtProviderState};
-use crate::connectivity::rendezvous::RendezvousState;
 use crate::connectivity::identity;
+use crate::connectivity::rendezvous::RendezvousState;
 use crate::platform::{DesktopPlatformRuntime, NodeStorage, PlatformRuntime};
 use crate::protocol::pulse::heartbeat_topic;
 use crate::stack::{build_swarm, refresh_rendezvous, reserve_selected_relays, seed_bootstrap};
 
 pub use capabilities::{apply_resolved_capabilities, resolve_node_config};
+pub use config::NodeConfig;
 pub use environment::{
     EnvironmentConfig, EnvironmentReport, NatKind, NetworkReachability, PlatformKind,
 };
-pub use config::NodeConfig;
 pub use handle::NodeHandle;
 pub use metrics::snapshot_to_prometheus_metrics;
-pub use public_ip::PublicIpProbeConfig;
 pub use profile::{BehaviourSet, NodeProfile, NodeRole, ResolvedNodeConfig};
+pub use public_ip::PublicIpProbeConfig;
 pub use snapshot::NodeSnapshot;
 
 use snapshot::network_label;
@@ -90,16 +90,15 @@ pub async fn start_node_with_platform(
 
     seed_bootstrap(&mut swarm, &startup_plan.dial_addrs);
     let selected_relay_peers = relay_selection_plan.selected_addrs.clone();
-    let relay_reservation_plan = if resolved_config.should_reserve_selected_relays
-        && !selected_relay_peers.is_empty()
-    {
-        reserve_selected_relays(&mut swarm, &selected_relay_peers)
-    } else {
-        if resolved_config.should_seed_selected_relays && !selected_relay_peers.is_empty() {
-            seed_bootstrap(&mut swarm, &selected_relay_peers);
-        }
-        Default::default()
-    };
+    let relay_reservation_plan =
+        if resolved_config.should_reserve_selected_relays && !selected_relay_peers.is_empty() {
+            reserve_selected_relays(&mut swarm, &selected_relay_peers)
+        } else {
+            if resolved_config.should_seed_selected_relays && !selected_relay_peers.is_empty() {
+                seed_bootstrap(&mut swarm, &selected_relay_peers);
+            }
+            Default::default()
+        };
 
     let discovery_namespaces = cfg
         .discovery
@@ -363,16 +362,17 @@ pub async fn start_node_with_platform(
     if dht_plan.enabled || !dht_plan.errors.is_empty() {
         let mut guard = snapshot.lock().await;
         for err in &dht_plan.errors {
-            push_pulse(&mut guard.pulses, format!("dht provider startup error: {err}"));
+            push_pulse(
+                &mut guard.pulses,
+                format!("dht provider startup error: {err}"),
+            );
         }
         if dht_plan.announce_attempts > 0 || dht_plan.provider_queries > 0 {
             push_pulse(
                 &mut guard.pulses,
                 format!(
                     "dht provider startup namespaces={} announce_attempts={} provider_queries={}",
-                    dht_plan.namespace_count,
-                    dht_plan.announce_attempts,
-                    dht_plan.provider_queries
+                    dht_plan.namespace_count, dht_plan.announce_attempts, dht_plan.provider_queries
                 ),
             );
         }

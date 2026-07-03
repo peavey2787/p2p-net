@@ -6,9 +6,10 @@
 use std::collections::HashSet;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use libp2p::multiaddr::Protocol;
 use p2p_net::{start_node, NodeConfig, NodeHandle, NodeProfile};
 
-const PROBE_TIMEOUT: Duration = Duration::from_secs(180);
+const PROBE_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -25,6 +26,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut alice_pulses = HashSet::new();
     let mut bob_pulses = HashSet::new();
+    let mut tried_relay_routes = HashSet::new();
+    let mut last_relay_dial = None;
     let started = Instant::now();
     let connected = loop {
         tokio::time::sleep(Duration::from_secs(5)).await;
@@ -35,8 +38,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let bob_to_alice = peer_is_connected(&bob, alice.peer_id).await?;
         let alice_snapshot = alice.snapshot.lock().await.clone();
         let bob_snapshot = bob.snapshot.lock().await.clone();
+        let retry_relay = last_relay_dial
+            .map(|last: Instant| last.elapsed() >= Duration::from_secs(12))
+            .unwrap_or(true);
+        if retry_relay {
+            if let Some(addr) = alice_snapshot
+                .relayed_listen_addresses
+                .iter()
+                .filter_map(|addr| addr.parse().ok())
+                .filter_map(|addr| supported_relay_addr_score(&addr).map(|score| (score, addr)))
+                .filter(|(_, addr)| {
+                    relay_route_key(addr)
+                        .map(|route| !tried_relay_routes.contains(&route))
+                        .unwrap_or(false)
+                })
+                .min_by_key(|(score, _)| *score)
+                .map(|(_, addr)| addr)
+            {
+                if let Some(route) = relay_route_key(&addr) {
+                    tried_relay_routes.insert(route);
+                }
+                last_relay_dial = Some(Instant::now());
+                println!("probe relayed dial bob->alice addr={addr}");
+                if let Err(err) = bob.connect_peer(addr).await {
+                    println!("probe relayed dial failed immediately: {err}");
+                }
+            }
+        }
+        let dcutr_successes = alice_snapshot.dcutr_successes + bob_snapshot.dcutr_successes;
+        let dcutr_eligible = alice_snapshot.dcutr_upgrade_eligible_connections
+            + bob_snapshot.dcutr_upgrade_eligible_connections;
         println!(
-            "elapsed={}s alice_connected={} bob_connected={} alice_dht_peers={} bob_dht_peers={} alice_auto_dials={} bob_auto_dials={} alice_relays={}/{}/{} bob_relays={}/{}/{}",
+            "elapsed={}s alice_connected={} bob_connected={} alice_dht_peers={} bob_dht_peers={} alice_auto_dials={} bob_auto_dials={} alice_relays={}/{}/{} bob_relays={}/{}/{} dcutr_eligible={} dcutr_successes={}",
             started.elapsed().as_secs(),
             alice_to_bob,
             bob_to_alice,
@@ -50,9 +83,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             bob_snapshot.relay_client_reservations,
             bob_snapshot.relay_client_reservation_attempts,
             bob_snapshot.relay_client_reservation_failures,
+            dcutr_eligible,
+            dcutr_successes,
         );
 
-        if alice_to_bob && bob_to_alice {
+        if alice_to_bob && bob_to_alice && dcutr_eligible > 0 && dcutr_successes > 0 {
             break true;
         }
         if started.elapsed() >= PROBE_TIMEOUT {
@@ -60,10 +95,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let alice_peers = alice.get_peers().await?;
-    let bob_peers = bob.get_peers().await?;
-    println!("alice peer book: {alice_peers:#?}");
-    println!("bob peer book: {bob_peers:#?}");
+    let alice_target = alice
+        .get_peers()
+        .await?
+        .into_iter()
+        .find(|peer| peer.peer_id == bob.peer_id.to_string());
+    let bob_target = bob
+        .get_peers()
+        .await?
+        .into_iter()
+        .find(|peer| peer.peer_id == alice.peer_id.to_string());
+    println!("alice target: {alice_target:#?}");
+    println!("bob target: {bob_target:#?}");
     alice.shutdown().await;
     bob.shutdown().await;
     cleanup(&alice_cfg);
@@ -79,7 +122,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn probe_config(label: &str, nonce: u128, transport_port: u16, websocket_port: u16) -> NodeConfig {
     let temp = std::env::temp_dir();
     let mut cfg = NodeConfig::default();
-    cfg.profile = NodeProfile::Full;
+    cfg.profile = NodeProfile::Lite;
     cfg.heartbeat_interval_secs = 5;
     cfg.identity_key_path = temp
         .join(format!("p2p-net-live-{label}-{nonce}.identity"))
@@ -89,7 +132,7 @@ fn probe_config(label: &str, nonce: u128, transport_port: u16, websocket_port: u
         .join(format!("p2p-net-live-{label}-{nonce}.peers.json"))
         .to_string_lossy()
         .to_string();
-    cfg.discovery.namespace.tags = vec![format!("live-two-node-{nonce}")];
+    cfg.discovery.namespace.tags = vec![format!("live-dcutr-{nonce}")];
     cfg.listen_addresses = vec![
         format!("/ip4/0.0.0.0/udp/{transport_port}/quic-v1"),
         format!("/ip4/0.0.0.0/tcp/{transport_port}"),
@@ -121,4 +164,47 @@ async fn print_new_pulses(label: &str, node: &NodeHandle, seen: &mut HashSet<Str
 fn cleanup(cfg: &NodeConfig) {
     let _ = std::fs::remove_file(&cfg.identity_key_path);
     let _ = std::fs::remove_file(&cfg.discovery.peer_cache_path);
+}
+
+fn supported_relay_addr_score(addr: &libp2p::Multiaddr) -> Option<u8> {
+    let unsupported = addr.iter().any(|protocol| {
+        matches!(
+            protocol,
+            Protocol::Tls
+                | Protocol::WebTransport
+                | Protocol::WebRTCDirect
+                | Protocol::P2pWebRtcDirect
+        )
+    });
+    if unsupported {
+        return None;
+    }
+    if addr
+        .iter()
+        .any(|protocol| matches!(protocol, Protocol::Quic | Protocol::QuicV1))
+    {
+        Some(0)
+    } else if addr
+        .iter()
+        .any(|protocol| matches!(protocol, Protocol::Tcp(_)))
+    {
+        Some(1)
+    } else {
+        None
+    }
+}
+
+fn relay_route_key(addr: &libp2p::Multiaddr) -> Option<String> {
+    let mut relay = None;
+    let mut transport = None;
+    for protocol in addr.iter() {
+        match protocol {
+            Protocol::P2p(peer) if relay.is_none() => relay = Some(peer),
+            Protocol::P2pCircuit => break,
+            Protocol::Quic | Protocol::QuicV1 => transport = Some("quic"),
+            Protocol::Tcp(_) => transport = Some("tcp"),
+            _ => {}
+        }
+    }
+    Some(format!("{}:{}", relay?, transport?))
 }

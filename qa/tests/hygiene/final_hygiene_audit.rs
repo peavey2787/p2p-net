@@ -151,11 +151,7 @@ fn assert_single_definition(root: &Path, needle: &str, expected_rel_path: &str, 
         }
     }
 
-    assert_eq!(
-        matches,
-        vec![expected_rel_path.to_string()],
-        "{message}"
-    );
+    assert_eq!(matches, vec![expected_rel_path.to_string()], "{message}");
 }
 
 fn text_files_under(root: &Path) -> Vec<PathBuf> {

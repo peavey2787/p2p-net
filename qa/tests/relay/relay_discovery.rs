@@ -49,6 +49,7 @@ fn relay_discovery_validation_rejects_impossible_limits() {
         use_configured_relays: false,
         use_cached_relays: false,
         use_rendezvous_relays: false,
+        use_dht_relays: false,
         ..RelayDiscoveryPolicy::default()
     };
     assert!(no_sources.validate().is_err());
@@ -80,7 +81,13 @@ fn disabled_policy_falls_back_to_configured_relays_only() {
         ..RelayDiscoveryPolicy::default()
     };
 
-    let plan = select_startup_relays(&policy, vec![configured.clone()], vec![cached], Vec::new(), Vec::new());
+    let plan = select_startup_relays(
+        &policy,
+        vec![configured.clone()],
+        vec![cached],
+        Vec::new(),
+        Vec::new(),
+    );
 
     assert!(!plan.enabled);
     assert_eq!(plan.selected_addrs, vec![configured]);
@@ -108,7 +115,10 @@ fn public_relay_fallback_candidates_are_last_and_tracked() {
     assert_eq!(plan.selected_addrs, vec![configured, public]);
     assert_eq!(plan.configured_candidates, 1);
     assert_eq!(plan.public_candidates, 1);
-    assert_eq!(RelayCandidateSource::PublicFallback.as_str(), "public_fallback");
+    assert_eq!(
+        RelayCandidateSource::PublicFallback.as_str(),
+        "public_fallback"
+    );
 }
 
 fn p2p_addr(port: u16) -> Multiaddr {
@@ -119,7 +129,7 @@ fn p2p_addr(port: u16) -> Multiaddr {
 }
 
 #[test]
-fn full_profile_does_not_auto_use_cached_or_rendezvous_relays_without_operator_pin() {
+fn full_profile_uses_public_dht_relay_discovery_in_consumer_mode() {
     let cfg = NodeConfig {
         profile: NodeProfile::Full,
         ..NodeConfig::default()
@@ -127,7 +137,7 @@ fn full_profile_does_not_auto_use_cached_or_rendezvous_relays_without_operator_p
 
     let resolved = cfg.try_resolved().expect("full profile resolves");
 
-    assert!(!resolved.relay_discovery_enabled);
+    assert!(resolved.relay_discovery_enabled);
 }
 
 #[test]

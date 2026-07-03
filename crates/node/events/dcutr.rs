@@ -18,20 +18,19 @@ pub(crate) async fn handle_event(
     if !policy.enabled {
         let mut guard = snapshot.lock().await;
         guard.apply_relay_state(relay_state);
-        push_pulse(&mut guard.pulses, format!("dcutr event ignored while disabled {ev:?}"));
+        push_pulse(
+            &mut guard.pulses,
+            format!("dcutr event ignored while disabled {ev:?}"),
+        );
         return;
     }
 
     relay_state.dcutr_attempts = relay_state.dcutr_attempts.saturating_add(1);
+    let succeeded = ev.result.is_ok();
     let debug = format!("{ev:?}");
-    let lower = debug.to_ascii_lowercase();
-    if lower.contains("success") || lower.contains("established") {
+    if succeeded {
         relay_state.dcutr_successes = relay_state.dcutr_successes.saturating_add(1);
-    } else if lower.contains("fail")
-        || lower.contains("error")
-        || lower.contains("denied")
-        || lower.contains("unsupported")
-    {
+    } else {
         relay_state.dcutr_failures = relay_state.dcutr_failures.saturating_add(1);
         if policy.keep_relay_fallback {
             relay_state.dcutr_relay_fallbacks = relay_state.dcutr_relay_fallbacks.saturating_add(1);

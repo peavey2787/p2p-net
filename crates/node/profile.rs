@@ -197,8 +197,7 @@ impl ResolvedNodeConfig {
         cfg: &NodeConfig,
         environment: &super::environment::EnvironmentReport,
     ) -> Self {
-        Self::try_from_config_and_environment(cfg, environment)
-            .expect("node config should resolve")
+        Self::try_from_config_and_environment(cfg, environment).expect("node config should resolve")
     }
 
     pub fn try_from_config_and_environment(
@@ -216,14 +215,16 @@ impl ResolvedNodeConfig {
         let mut enabled_behaviours = BehaviourSet::for_role(role, &effective);
         enabled_behaviours.dcutr = effective.dcutr.enabled && enabled_behaviours.relay_client;
         let has_relay_peers = !effective.relay_peers.is_empty();
-        let has_public_relay_candidates = effective
-            .discovery
-            .public_bootstrap
-            .has_relay_candidates();
+        let has_public_relay_candidates =
+            effective.discovery.public_bootstrap.has_relay_candidates();
+        let has_public_dht_relay_discovery = effective.discovery.public_bootstrap.mode.is_enabled()
+            && effective.discovery.relay_discovery.use_dht_relays;
         let lite_role = matches!(role, NodeRole::Lite | NodeRole::MobileLite);
         let mobile_lite = matches!(role, NodeRole::MobileLite);
-        let has_relay_selection_source =
-            lite_role || has_relay_peers || has_public_relay_candidates;
+        let has_relay_selection_source = lite_role
+            || has_relay_peers
+            || has_public_relay_candidates
+            || has_public_dht_relay_discovery;
         let relay_discovery_enabled = effective.discovery.relay_discovery.enabled
             && enabled_behaviours.relay_client
             && has_relay_selection_source;

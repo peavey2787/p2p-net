@@ -1,7 +1,5 @@
 use libp2p::{Multiaddr, PeerId};
-use p2p_net::{
-    build_connection_plan, ConnectionAttemptKind, DcutrPolicy, PeerBook, PeerSource,
-};
+use p2p_net::{build_connection_plan, ConnectionAttemptKind, DcutrPolicy, PeerBook, PeerSource};
 
 #[test]
 fn connection_plan_prefers_quic_direct_then_tcp_then_relay() {

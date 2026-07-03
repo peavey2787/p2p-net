@@ -212,7 +212,10 @@ pub fn build_behaviour(ctx: BehaviourBuildContext<'_>) -> MeshBehaviour {
         gossipsub,
         kademlia,
         autonat: autonat::Behaviour::new(local_peer, Default::default()),
-        dcutr: behaviour_policy.dcutr.then(|| dcutr::Behaviour::new(local_peer)).into(),
+        dcutr: behaviour_policy
+            .dcutr
+            .then(|| dcutr::Behaviour::new(local_peer))
+            .into(),
         relay_client: relay_behaviour,
         relay_server,
         rendezvous_client,

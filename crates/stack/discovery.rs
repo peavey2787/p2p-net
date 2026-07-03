@@ -2,8 +2,8 @@ use libp2p::swarm::Swarm;
 use libp2p::{identify, Multiaddr, PeerId};
 use libp2p_rendezvous as rendezvous;
 
-use crate::connectivity::discovery::DiscoveryConfig;
 use crate::api::PeerSource;
+use crate::connectivity::discovery::DiscoveryConfig;
 use crate::connectivity::peer_book::PeerBook;
 use crate::connectivity::peer_cache;
 use crate::connectivity::relay::{relay_reservation_addr, RelayReservationPlan};
@@ -75,8 +75,12 @@ pub fn startup_discovery_plan_with_public(
 }
 
 pub fn seed_bootstrap(swarm: &mut Swarm<MeshBehaviour>, addrs: &[Multiaddr]) {
+    let local_peer = *swarm.local_peer_id();
     for addr in addrs {
         if let Some(peer) = extract_p2p_peer_id(addr) {
+            if peer == local_peer {
+                continue;
+            }
             add_peer_address_to_discovery(swarm, peer, addr.clone());
             let _ = swarm.dial(addr.clone());
         }
@@ -93,8 +97,14 @@ pub fn reserve_selected_relays(
 ) -> RelayReservationPlan {
     let mut plan = RelayReservationPlan::default();
 
+    let local_peer = *swarm.local_peer_id();
     for relay_addr in relay_addrs {
         if let Some(peer) = extract_p2p_peer_id(relay_addr) {
+            if peer == local_peer {
+                plan.errors
+                    .push(format!("relay reservation skipped local peer address: {relay_addr}"));
+                continue;
+            }
             add_peer_address_to_discovery(swarm, peer, relay_addr.clone());
         }
 

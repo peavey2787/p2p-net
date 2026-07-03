@@ -23,7 +23,8 @@ impl NodeHandle {
     /// Dial a concrete peer multiaddr. The address should include `/p2p/<PeerId>`
     /// when the remote peer identity is known.
     pub async fn connect_peer(&self, addr: Multiaddr) -> Result<(), NetError> {
-        self.request(|reply| NodeCommand::ConnectPeer { addr, reply }).await
+        self.request(|reply| NodeCommand::ConnectPeer { addr, reply })
+            .await
     }
 
     /// Close active connections to a peer id.

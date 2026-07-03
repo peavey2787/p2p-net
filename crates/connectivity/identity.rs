@@ -70,8 +70,10 @@ mod tests {
     fn persistent_identity_reuses_same_peer_id() {
         let path = format!("p2p-net-test-key-{}.hex", libp2p::PeerId::random());
         let storage = MemoryNodeStorage::new();
-        let first = load_or_create_identity_key_with_storage(&path, &storage).expect("create identity");
-        let second = load_or_create_identity_key_with_storage(&path, &storage).expect("reload identity");
+        let first =
+            load_or_create_identity_key_with_storage(&path, &storage).expect("create identity");
+        let second =
+            load_or_create_identity_key_with_storage(&path, &storage).expect("reload identity");
         assert_eq!(
             libp2p::PeerId::from(first.public()),
             libp2p::PeerId::from(second.public())

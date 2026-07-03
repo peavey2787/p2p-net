@@ -1,11 +1,11 @@
 //! NAT / relay bookkeeping and on-disk peer address cache.
 
 pub(crate) mod addr;
+pub mod connection_strategy;
+pub mod dcutr;
+pub mod dht;
 pub mod discovery;
 pub mod dns;
-pub mod dcutr;
-pub mod connection_strategy;
-pub mod dht;
 pub mod identity;
 pub mod limits;
 pub mod mediator;

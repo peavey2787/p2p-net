@@ -2,20 +2,21 @@ use std::fs;
 
 use libp2p::{Multiaddr, PeerId};
 use p2p_net::connectivity::peer_cache::{
-    is_cacheable_peer_addr, load_last_addrs, record_peer_addr_failure, record_seen_peer_addr,
+    is_cacheable_peer_addr, load_identities, load_last_addrs, record_peer_addr_failure,
+    record_seen_peer_addr,
 };
 use p2p_net::stack::{startup_discovery_plan, startup_discovery_plan_with_public};
 use p2p_net::{start_node, DiscoveryConfig, NodeConfig, PublicBootstrapConfig, PublicFallbackMode};
 
 #[test]
-fn peer_cache_persists_p2p_addresses() {
+fn peer_cache_persists_public_p2p_addresses() {
     let peer = PeerId::random();
     let path = temp_path("peer-cache-persists");
     let cfg = DiscoveryConfig {
         peer_cache_path: path.to_string_lossy().to_string(),
         ..DiscoveryConfig::default()
     };
-    let bare: Multiaddr = "/ip4/127.0.0.1/tcp/4001".parse().unwrap();
+    let bare: Multiaddr = "/ip4/203.0.113.10/tcp/4001".parse().unwrap();
 
     record_seen_peer_addr(&cfg, &peer, &bare);
     let cached = load_last_addrs(&cfg, 8);
@@ -24,7 +25,7 @@ fn peer_cache_persists_p2p_addresses() {
     assert_eq!(cached.len(), 1);
     assert_eq!(
         cached[0].to_string(),
-        format!("/ip4/127.0.0.1/tcp/4001/p2p/{peer}")
+        format!("/ip4/203.0.113.10/tcp/4001/p2p/{peer}")
     );
 }
 
@@ -65,14 +66,37 @@ fn peer_cache_evicts_by_failure_count() {
         peer_cache_max_failures: 1,
         ..DiscoveryConfig::default()
     };
-    let bare: Multiaddr = "/ip4/127.0.0.1/tcp/4001".parse().unwrap();
+    let bare: Multiaddr = "/ip4/203.0.113.10/tcp/4001".parse().unwrap();
 
     record_seen_peer_addr(&cfg, &peer, &bare);
     assert_eq!(load_last_addrs(&cfg, 8).len(), 1);
     record_peer_addr_failure(&cfg, &peer);
     let cached = load_last_addrs(&cfg, 8);
+    let identities = load_identities(&cfg);
     let _ = fs::remove_file(path);
     assert!(cached.is_empty());
+    assert_eq!(identities.len(), 1);
+    assert_eq!(identities[0].peer_id, peer.to_string());
+}
+
+#[test]
+fn local_peer_cache_addrs_are_session_only_by_default() {
+    let peer = PeerId::random();
+    let path = temp_path("local-session-only");
+    let cfg = DiscoveryConfig {
+        peer_cache_path: path.to_string_lossy().to_string(),
+        ..DiscoveryConfig::default()
+    };
+    let bare: Multiaddr = "/ip4/127.0.0.1/tcp/4001".parse().unwrap();
+
+    record_seen_peer_addr(&cfg, &peer, &bare);
+    let cached = load_last_addrs(&cfg, 8);
+    let identities = load_identities(&cfg);
+    let _ = fs::remove_file(path);
+
+    assert!(cached.is_empty());
+    assert_eq!(identities.len(), 1);
+    assert_eq!(identities[0].peer_id, peer.to_string());
 }
 
 #[test]

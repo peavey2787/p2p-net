@@ -17,7 +17,10 @@ fn public_desktop_auto_resolves_to_full() {
     assert_eq!(environment.platform, PlatformKind::Linux);
     assert_eq!(environment.reachability, NetworkReachability::Public);
     assert!(environment.can_accept_inbound);
-    assert_eq!(cfg.resolved_for_environment(&environment).role, NodeRole::Full);
+    assert_eq!(
+        cfg.resolved_for_environment(&environment).role,
+        NodeRole::Full
+    );
 }
 
 #[test]
@@ -34,7 +37,10 @@ fn private_nat_desktop_auto_resolves_to_lite() {
     assert_eq!(environment.platform, PlatformKind::Windows);
     assert_eq!(environment.reachability, NetworkReachability::PrivateNat);
     assert!(!environment.can_accept_inbound);
-    assert_eq!(cfg.resolved_for_environment(&environment).role, NodeRole::Lite);
+    assert_eq!(
+        cfg.resolved_for_environment(&environment).role,
+        NodeRole::Lite
+    );
 }
 
 #[test]
@@ -48,7 +54,10 @@ fn cgnat_like_desktop_auto_resolves_to_lite() {
     let environment = cfg.environment_report();
     assert_eq!(environment.reachability, NetworkReachability::CgnatLikely);
     assert!(environment.likely_cgnat);
-    assert_eq!(cfg.resolved_for_environment(&environment).role, NodeRole::Lite);
+    assert_eq!(
+        cfg.resolved_for_environment(&environment).role,
+        NodeRole::Lite
+    );
 }
 
 #[test]
@@ -93,7 +102,10 @@ fn unknown_platform_preserves_full_compatible_default_when_reachability_unknown(
     let environment = cfg.environment_report();
     assert_eq!(environment.platform, PlatformKind::Unknown);
     assert_eq!(environment.reachability, NetworkReachability::Unknown);
-    assert_eq!(cfg.resolved_for_environment(&environment).role, NodeRole::Full);
+    assert_eq!(
+        cfg.resolved_for_environment(&environment).role,
+        NodeRole::Full
+    );
 }
 
 #[test]
@@ -108,7 +120,10 @@ fn explicit_profile_overrides_environment_detection_when_capabilities_are_valid(
     cfg.profile = NodeProfile::Relay;
 
     let environment = cfg.environment_report();
-    assert_eq!(cfg.resolved_for_environment(&environment).role, NodeRole::Relay);
+    assert_eq!(
+        cfg.resolved_for_environment(&environment).role,
+        NodeRole::Relay
+    );
 }
 
 #[test]

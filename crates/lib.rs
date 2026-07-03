@@ -22,8 +22,8 @@ pub mod stack;
 mod node;
 
 pub use api::{
-    app_ident_topic, app_topic_name, decode_app_message, encode_app_message,
-    normalize_app_topic, validate_app_message, AppMessage, AppSubscription, PeerInfo, PeerSource,
+    app_ident_topic, app_topic_name, decode_app_message, encode_app_message, normalize_app_topic,
+    validate_app_message, AppMessage, AppSubscription, PeerInfo, PeerSource,
     APP_MESSAGE_SCHEMA_VERSION, APP_TOPIC_PREFIX, MAX_APP_MESSAGE_BYTES, MAX_APP_TOPIC_LEN,
 };
 pub use bindings::{
@@ -37,12 +37,12 @@ pub use connectivity::connection_strategy::{
     build_connection_plan, ConnectionAttempt, ConnectionAttemptKind, ConnectionPlan,
     PendingConnectionPlans,
 };
-pub use connectivity::discovery::DiscoveryConfig;
 pub use connectivity::dcutr::DcutrPolicy;
 pub use connectivity::dht::{
     dht_record_key, start_dht_namespace_discovery, DhtDiscoveryConfig, DhtNamespacePlan,
     DhtProviderState,
 };
+pub use connectivity::discovery::DiscoveryConfig;
 pub use connectivity::dns::{
     DnsaddrConfig, DEFAULT_DNSADDR_DOH_ENDPOINT, DEFAULT_DNSADDR_TIMEOUT_SECS,
 };
@@ -55,7 +55,8 @@ pub use connectivity::namespace::{
 pub use connectivity::peer_book::{PeerBook, PeerRecord};
 pub use connectivity::public_fallback::{
     PublicBootstrapConfig, PublicFallbackDecision, PublicFallbackMode,
-    DEFAULT_PUBLIC_BOOTSTRAP_SEED_PEERS, DEFAULT_PUBLIC_RELAY_PEERS, DEFAULT_PUBLIC_RENDEZVOUS_PEERS,
+    DEFAULT_PUBLIC_BOOTSTRAP_SEED_PEERS, DEFAULT_PUBLIC_RELAY_PEERS,
+    DEFAULT_PUBLIC_RENDEZVOUS_PEERS,
 };
 pub use connectivity::relay::{
     is_p2p_circuit_addr, relay_peer_id, relay_reservation_addr, RelayAccess, RelaySchedule,
@@ -67,14 +68,14 @@ pub use connectivity::relay_discovery::{
 };
 pub use connectivity::rendezvous::{RendezvousConfig, RendezvousState};
 pub use libp2p::{Multiaddr, PeerId};
-pub use platform::{
-    DesktopPlatformRuntime, MemoryNodeStorage, MobilePlatformRuntime, NodeStorage, PlatformRuntime,
-};
 pub use node::{
     apply_resolved_capabilities, resolve_node_config, snapshot_to_json,
     snapshot_to_prometheus_metrics, start_node, start_node_with_platform, BehaviourSet,
     EnvironmentConfig, EnvironmentReport, NatKind, NetworkReachability, NodeConfig, NodeHandle,
     NodeProfile, NodeRole, NodeSnapshot, PlatformKind, PublicIpProbeConfig, ResolvedNodeConfig,
+};
+pub use platform::{
+    DesktopPlatformRuntime, MemoryNodeStorage, MobilePlatformRuntime, NodeStorage, PlatformRuntime,
 };
 pub use protocol::pulse::{
     heartbeat_topic, validate_heartbeat_wire, verify_heartbeat, verify_heartbeat_with_config,

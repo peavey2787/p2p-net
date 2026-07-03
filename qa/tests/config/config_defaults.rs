@@ -5,7 +5,6 @@ use p2p_net::{
     RelayServiceConfig, DEFAULT_PUBLIC_BOOTSTRAP_SEED_PEERS, DEFAULT_PUBLIC_RENDEZVOUS_PEERS,
 };
 
-
 #[test]
 fn public_fallback_is_enabled_by_default_for_normal_app_mode() {
     let cfg = NodeConfig::default();

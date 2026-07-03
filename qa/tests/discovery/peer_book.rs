@@ -23,7 +23,10 @@ fn peer_book_merges_discovery_sources_for_get_peers() {
     assert!(peers[0].has_source(PeerSource::PeerCache));
     assert!(peers[0].has_source(PeerSource::DhtProvider));
     assert!(peers[0].has_source(PeerSource::Connected));
-    assert_eq!(peers[0].namespace.as_deref(), Some("p2p-net/1/hydra/abc123"));
+    assert_eq!(
+        peers[0].namespace.as_deref(),
+        Some("p2p-net/1/hydra/abc123")
+    );
 }
 
 #[test]

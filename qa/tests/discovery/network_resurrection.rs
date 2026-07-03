@@ -13,7 +13,9 @@ fn joe_and_alice_recover_contact_visibility_from_shared_hashed_namespace() {
     let joe_cfg = hydra_discovery(raw_contact_tag);
     let alice_cfg = hydra_discovery(raw_contact_tag);
     let joe_namespaces = joe_cfg.rendezvous_namespaces(42).expect("joe namespace");
-    let alice_namespaces = alice_cfg.rendezvous_namespaces(42).expect("alice namespace");
+    let alice_namespaces = alice_cfg
+        .rendezvous_namespaces(42)
+        .expect("alice namespace");
 
     assert_eq!(joe_namespaces, alice_namespaces);
     assert_eq!(joe_namespaces.len(), 1);
