@@ -140,8 +140,8 @@ fn temp_path(prefix: &str) -> std::path::PathBuf {
 
 #[test]
 fn rendezvous_discovery_uses_connection_planner_auto_dial() {
-    let stack_discovery = fs::read_to_string("crates/stack/discovery.rs")
-        .expect("read stack discovery module");
+    let stack_discovery =
+        fs::read_to_string("crates/stack/discovery.rs").expect("read stack discovery module");
     let rendezvous_events = fs::read_to_string("crates/node/events/rendezvous.rs")
         .expect("read node rendezvous events module");
 

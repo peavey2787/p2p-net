@@ -5,16 +5,16 @@ use libp2p::swarm::SwarmEvent;
 use libp2p::{Multiaddr, PeerId, Swarm};
 use tokio::sync::{broadcast, Mutex};
 
+use crate::api::AppMessage;
 use crate::connectivity::connection_strategy::PendingConnectionPlans;
+use crate::connectivity::dcutr::DcutrPolicy;
 use crate::connectivity::dht::DhtProviderState;
 use crate::connectivity::discovery::DiscoveryConfig;
-use crate::connectivity::dcutr::DcutrPolicy;
 use crate::connectivity::limits::ConnectionCapState;
 use crate::connectivity::peer_book::PeerBook;
 use crate::connectivity::relay::{RelayServiceConfig, RelayState};
 use crate::connectivity::rendezvous::RendezvousState;
 use crate::platform::NodeStorage;
-use crate::api::AppMessage;
 use crate::protocol::pulse::{HeartbeatReplayCache, MessageSecurityConfig};
 use crate::protocol::reputation::ReputationStore;
 use crate::stack::{on_mesh_event, MeshBehaviour, MeshEvent};
@@ -165,7 +165,11 @@ pub(crate) async fn handle_swarm_event(
             propagation_source: _,
             message,
             ..
-        })) if ctx.app_topic_hashes.iter().any(|topic| topic == &message.topic) => {
+        })) if ctx
+            .app_topic_hashes
+            .iter()
+            .any(|topic| topic == &message.topic) =>
+        {
             app::handle_app_message(message.data, ctx).await;
         }
         SwarmEvent::Behaviour(MeshEvent::Gossipsub(libp2p::gossipsub::Event::Message {

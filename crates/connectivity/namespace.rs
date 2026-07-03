@@ -100,7 +100,10 @@ impl DiscoveryNamespaceConfig {
                 self.privacy,
                 self.allow_readable_tags,
             )?;
-            if !namespaces.iter().any(|known| known.namespace == namespace.namespace.as_str()) {
+            if !namespaces
+                .iter()
+                .any(|known| known.namespace == namespace.namespace.as_str())
+            {
                 namespaces.push(namespace);
             }
         }
@@ -164,9 +167,7 @@ pub fn discovery_tag_hash_hex(network_id: u32, app_id: &str, tag: &str) -> Strin
     hasher.finalize().to_hex().to_string()
 }
 
-pub fn normalize_namespace_segment(
-    value: &str,
-) -> Result<String, crate::common::error::NetError> {
+pub fn normalize_namespace_segment(value: &str) -> Result<String, crate::common::error::NetError> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         return Err(config_error("namespace segment must not be empty"));

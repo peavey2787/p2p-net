@@ -46,7 +46,8 @@ fn readable_discovery_namespace_requires_debug_guardrail() {
         },
         ..DiscoveryConfig::default()
     };
-    cfg.validate().expect("explicit debug-readable config validates");
+    cfg.validate()
+        .expect("explicit debug-readable config validates");
     let namespaces = cfg.rendezvous_namespaces(1).expect("namespaces");
     assert_eq!(namespaces, vec!["p2p-net/1/hydra-msg/joe".to_string()]);
 }
@@ -68,7 +69,9 @@ fn multiple_tags_derive_multiple_unique_namespaces() {
 
     let namespaces = cfg.rendezvous_namespaces(42).expect("namespaces");
     assert_eq!(namespaces.len(), 2);
-    assert!(namespaces.iter().all(|ns| ns.starts_with("p2p-net/42/hydra-msg/")));
+    assert!(namespaces
+        .iter()
+        .all(|ns| ns.starts_with("p2p-net/42/hydra-msg/")));
 }
 
 #[test]

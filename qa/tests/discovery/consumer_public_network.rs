@@ -1,8 +1,7 @@
 use libp2p::{Multiaddr, PeerId};
 use p2p_net::connectivity::connection_strategy::build_peer_book_connection_plan;
 use p2p_net::{
-    DcutrPolicy, DhtProviderState, PeerBook, PeerSource, PublicBootstrapConfig,
-    PublicFallbackMode,
+    DcutrPolicy, DhtProviderState, PeerBook, PeerSource, PublicBootstrapConfig, PublicFallbackMode,
 };
 
 #[test]

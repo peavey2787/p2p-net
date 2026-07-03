@@ -66,7 +66,6 @@ async fn run_ui(
     Ok(())
 }
 
-
 fn public_addr_display(snap: &NodeSnapshot) -> String {
     if let Some(addr) = &snap.public_addr {
         return addr.clone();

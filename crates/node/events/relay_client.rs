@@ -3,8 +3,8 @@ use std::sync::Arc;
 use libp2p::relay;
 use tokio::sync::Mutex;
 
-use crate::connectivity::relay::RelayState;
 use super::super::snapshot::NodeSnapshot;
+use crate::connectivity::relay::RelayState;
 
 use super::super::push_pulse;
 

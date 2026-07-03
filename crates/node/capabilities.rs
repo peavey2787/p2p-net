@@ -7,9 +7,9 @@
 use crate::common::error::config_error_at;
 use crate::common::error::NetError;
 
+use super::config::NodeConfig;
 use super::environment::{EnvironmentReport, NetworkReachability};
 use super::profile::{NodeProfile, NodeRole, ResolvedNodeConfig};
-use super::config::NodeConfig;
 
 /// Resolve raw user config plus an advisory environment report into one
 /// validated capability view.

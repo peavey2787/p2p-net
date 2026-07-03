@@ -96,7 +96,8 @@ pub struct DhtProviderState {
 
 impl DhtProviderState {
     pub fn track_start_providing(&mut self, id: QueryId, namespace: &str) {
-        self.start_providing_queries.insert(id, namespace.to_string());
+        self.start_providing_queries
+            .insert(id, namespace.to_string());
     }
 
     pub fn track_get_providers(&mut self, id: QueryId, namespace: &str) {
@@ -142,6 +143,12 @@ impl DhtProviderState {
 
     pub fn provider_namespace(&self, id: &QueryId) -> Option<String> {
         self.get_provider_queries.get(id).cloned()
+    }
+
+    fn provider_query_inflight(&self, namespace: &str) -> bool {
+        self.get_provider_queries
+            .values()
+            .any(|active| active == namespace)
     }
 
     fn complete_get_providers(&mut self, id: &QueryId) -> Option<String> {
@@ -201,6 +208,9 @@ pub fn start_dht_namespace_discovery(
         }
 
         if dht_cfg.should_discover(rendezvous_peer_count) {
+            if state.provider_query_inflight(&namespace) {
+                continue;
+            }
             let query_id = swarm.behaviour_mut().kademlia.get_providers(key);
             state.track_get_providers(query_id, &namespace);
             state.provider_queries = state.provider_queries.saturating_add(1);
@@ -303,12 +313,15 @@ pub fn on_kademlia_event(
 }
 
 fn add_peer_addr_to_kademlia(swarm: &mut Swarm<MeshBehaviour>, peer: &PeerId, addr: Multiaddr) {
-    if addr.iter().any(|protocol| matches!(protocol, libp2p::multiaddr::Protocol::P2p(_))) {
+    if addr
+        .iter()
+        .any(|protocol| matches!(protocol, libp2p::multiaddr::Protocol::P2p(_)))
+    {
         swarm.behaviour_mut().kademlia.add_address(peer, addr);
     } else {
-        swarm
-            .behaviour_mut()
-            .kademlia
-            .add_address(peer, addr.with(libp2p::multiaddr::Protocol::P2p(peer.to_owned())));
+        swarm.behaviour_mut().kademlia.add_address(
+            peer,
+            addr.with(libp2p::multiaddr::Protocol::P2p(peer.to_owned())),
+        );
     }
 }

@@ -13,21 +13,19 @@ fn application_message_codec_round_trips_addressed_and_broadcast_messages() {
     let target = PeerId::random();
 
     let target_text = target.to_string();
-    let addressed = AppMessage::addressed(
-        7,
-        "chat/general",
-        source,
-        target,
-        b"hello peer".to_vec(),
-    )
-    .expect("addressed message");
-    assert_eq!(addressed.target_peer_id.as_deref(), Some(target_text.as_str()));
+    let addressed =
+        AppMessage::addressed(7, "chat/general", source, target, b"hello peer".to_vec())
+            .expect("addressed message");
+    assert_eq!(
+        addressed.target_peer_id.as_deref(),
+        Some(target_text.as_str())
+    );
     let target_peer: PeerId = target_text.parse().expect("target peer id parses");
     assert!(addressed.is_for_peer(&target_peer));
     assert!(!addressed.is_for_peer(&PeerId::random()));
 
-    let decoded = decode_app_message(&encode_app_message(&addressed).expect("encode"))
-        .expect("decode");
+    let decoded =
+        decode_app_message(&encode_app_message(&addressed).expect("encode")).expect("decode");
     assert_eq!(decoded, addressed);
 
     let broadcast_source = PeerId::random();
@@ -39,7 +37,10 @@ fn application_message_codec_round_trips_addressed_and_broadcast_messages() {
 
 #[test]
 fn app_topics_are_namespaced_and_validated() {
-    assert_eq!(normalize_app_topic(" chat/general ").unwrap(), "chat/general");
+    assert_eq!(
+        normalize_app_topic(" chat/general ").unwrap(),
+        "chat/general"
+    );
     assert_eq!(
         app_topic_name(42, "chat/general").unwrap(),
         "p2p-net/app/v1/net-42/chat/general"
@@ -85,8 +86,8 @@ fn peer_info_exposes_discovery_sources_and_capability_hints() {
 #[test]
 fn node_handle_exposes_exact_six_general_purpose_primitives() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let handle_rs = fs::read_to_string(manifest_dir.join("crates/node/handle.rs"))
-        .expect("read handle source");
+    let handle_rs =
+        fs::read_to_string(manifest_dir.join("crates/node/handle.rs")).expect("read handle source");
 
     for primitive in [
         "connect_peer",

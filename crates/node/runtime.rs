@@ -27,6 +27,7 @@ use crate::protocol::reputation::ReputationStore;
 use crate::stack::MeshBehaviour;
 
 use super::commands::{self, NodeCommandContext};
+use super::config::NodeConfig;
 use super::dial::AutoDialStats;
 use super::events::{self, SwarmEventContext};
 use super::handle::NodeCommand;
@@ -35,7 +36,6 @@ use super::public_ip;
 use super::runtime_tasks::{
     apply_dht_refresh_snapshot, apply_public_ip_probe_result, publish_heartbeat,
 };
-use super::config::NodeConfig;
 use super::snapshot::NodeSnapshot;
 
 const DHT_REFRESH_TICKS: usize = 1;

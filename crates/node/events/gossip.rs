@@ -5,9 +5,7 @@ use libp2p::{PeerId, Swarm};
 use tokio::sync::Mutex;
 
 use super::super::snapshot::NodeSnapshot;
-use crate::protocol::pulse::{
-    validate_heartbeat_wire, HeartbeatValidationDecision,
-};
+use crate::protocol::pulse::{validate_heartbeat_wire, HeartbeatValidationDecision};
 use crate::stack::MeshBehaviour;
 
 use super::super::push_pulse;

@@ -57,7 +57,10 @@ impl Default for MediatorConfig {
 }
 
 impl MediatorConfig {
-    pub fn validate(&self, relay: &RelayServiceConfig) -> Result<(), crate::common::error::NetError> {
+    pub fn validate(
+        &self,
+        relay: &RelayServiceConfig,
+    ) -> Result<(), crate::common::error::NetError> {
         if !self.enabled {
             return Ok(());
         }
@@ -154,7 +157,9 @@ mod tests {
         let relay = RelayServiceConfig::default();
         assert!(!mediator.enabled);
         assert!(!mediator.is_active_now(&relay));
-        mediator.validate(&relay).expect("disabled mediator validates");
+        mediator
+            .validate(&relay)
+            .expect("disabled mediator validates");
     }
 
     #[test]

@@ -9,7 +9,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let handle = start_node(cfg).await?;
 
     let mut messages = handle.subscribe("example/general").await?;
-    handle.broadcast("example/general", b"hello mesh".to_vec()).await?;
+    handle
+        .broadcast("example/general", b"hello mesh".to_vec())
+        .await?;
     let peers = handle.get_peers().await?;
     println!("connected peers: {}", peers.len());
 

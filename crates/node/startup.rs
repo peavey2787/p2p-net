@@ -15,9 +15,9 @@ use crate::connectivity::relay_discovery::RelaySelectionPlan;
 use crate::platform::NodeStorage;
 use crate::stack::StartupDiscoveryPlan;
 
+use self::addrs::resolve_startup_addrs;
 use super::config::NodeConfig;
 use super::profile::ResolvedNodeConfig;
-use self::addrs::resolve_startup_addrs;
 
 pub(crate) struct StartupDiscoverySetup {
     pub(crate) startup_plan: StartupDiscoveryPlan,

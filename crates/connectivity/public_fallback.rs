@@ -165,9 +165,11 @@ impl PublicBootstrapConfig {
         )
     }
 
-
     #[must_use]
-    pub fn rendezvous_decision(&self, owned_rendezvous_candidates: usize) -> PublicFallbackDecision {
+    pub fn rendezvous_decision(
+        &self,
+        owned_rendezvous_candidates: usize,
+    ) -> PublicFallbackDecision {
         let use_public = match self.mode {
             PublicFallbackMode::Disabled => false,
             PublicFallbackMode::FallbackOnly => owned_rendezvous_candidates == 0,

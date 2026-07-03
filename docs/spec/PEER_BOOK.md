@@ -44,3 +44,14 @@ The returned `PeerInfo` values include source metadata so application code can c
 ## Privacy
 
 The peer book stores already-derived namespace identifiers. Raw contact tags or invite phrases are not stored by the peer book when the discovery namespace layer is configured in hashed mode.
+
+## Durable cache freshness split
+
+The durable peer cache separates identity memory from dialable address memory:
+
+- identity memory remembers that a `PeerId` was seen for days/weeks, but does not by itself make a peer dialable;
+- public/NAT direct addresses are dialable only for a short freshness window because public IPs and NAT mappings churn quickly;
+- relayed addresses are dialable only while the associated relay reservation is expected to remain fresh;
+- loopback, link-local, and private LAN addresses are session-only by default and are not persisted for future startup dials unless `discovery.peer_cache_persist_local_addrs` is explicitly enabled.
+
+Startup may report a cached identity in `get_peers()`, but only fresh dialable address entries are fed into startup dialing or relay selection.

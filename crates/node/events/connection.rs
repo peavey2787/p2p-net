@@ -1,24 +1,57 @@
+use libp2p::multiaddr::Protocol;
 use libp2p::swarm::ConnectionId;
 use libp2p::{autonat, identify, Multiaddr, PeerId, Swarm};
 
 use crate::connectivity::addr::{is_local_direct_addr, is_public_direct_addr};
 use crate::connectivity::peer_cache;
-use crate::connectivity::relay::{is_p2p_circuit_addr, update_nat_state, RelayServiceHealth};
-use crate::stack::{refresh_rendezvous, MeshBehaviour};
+use crate::connectivity::relay::{
+    is_p2p_circuit_addr, relay_reservation_addr, update_nat_state, RelayServiceHealth,
+};
+use crate::connectivity::relay_discovery::{relay_candidate_addr, RelayCandidateSource};
+use crate::stack::{add_peer_address_to_discovery, refresh_rendezvous, MeshBehaviour};
 
 use super::super::push_pulse;
 use super::{sync_peer_connectivity_snapshot, SwarmEventContext};
+
+const MAX_PUBLIC_DHT_RELAY_ATTEMPTS: usize = 32;
 
 pub(crate) async fn handle_identify_observed_addr(
     swarm: &mut Swarm<MeshBehaviour>,
     ev: &identify::Event,
     ctx: &mut SwarmEventContext<'_>,
 ) {
-    let observed_addr = match ev {
-        identify::Event::Received { info, .. } => &info.observed_addr,
+    let (peer_id, info) = match ev {
+        identify::Event::Received { peer_id, info, .. } => (peer_id, info),
         _ => return,
     };
+    let protocols = info
+        .protocols
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    let supports_relay_hop = protocols
+        .iter()
+        .any(|protocol| protocol == "/libp2p/circuit/relay/0.2.0/hop");
+    let supports_rendezvous = protocols
+        .iter()
+        .any(|protocol| protocol.starts_with("/rendezvous/"));
+    let supports_dcutr = protocols
+        .iter()
+        .any(|protocol| protocol.starts_with("/libp2p/dcutr"));
+    ctx.peer_book.record_capabilities(
+        *peer_id,
+        Some(supports_relay_hop),
+        Some(supports_rendezvous),
+        Some(supports_dcutr),
+    );
 
+    let relay_pulse = if supports_relay_hop {
+        maybe_reserve_dht_relay(*peer_id, info, swarm, ctx)
+    } else {
+        None
+    };
+
+    let observed_addr = &info.observed_addr;
     let classification = classify_listen_addr(observed_addr);
     if classification.advertise_as_external() {
         swarm.add_external_address(observed_addr.clone());
@@ -26,6 +59,10 @@ pub(crate) async fn handle_identify_observed_addr(
 
     let mut guard = ctx.snapshot.lock().await;
     record_listen_addr_snapshot(&mut guard, observed_addr, classification);
+    guard.apply_relay_state(ctx.relay_state);
+    if let Some(pulse) = relay_pulse {
+        push_pulse(&mut guard.pulses, pulse);
+    }
     match classification {
         ListenAddrClass::PublicDirect => push_pulse(
             &mut guard.pulses,
@@ -36,6 +73,116 @@ pub(crate) async fn handle_identify_observed_addr(
             format!("identify observed relayed addr {observed_addr}"),
         ),
         ListenAddrClass::LocalOnly => {}
+    }
+}
+
+fn maybe_reserve_dht_relay(
+    peer_id: PeerId,
+    info: &identify::Info,
+    swarm: &mut Swarm<MeshBehaviour>,
+    ctx: &mut SwarmEventContext<'_>,
+) -> Option<String> {
+    if peer_id == *swarm.local_peer_id() {
+        return None;
+    }
+    let policy = &ctx.discovery_cfg.relay_discovery;
+    if !policy.enabled
+        || !policy.use_dht_relays
+        || !ctx.discovery_cfg.public_bootstrap.mode.is_enabled()
+        || ctx.relay_state.relay_client_reservations.len() >= policy.min_reservations
+        || ctx.relay_state.relay_client_attempted_peers.len() >= MAX_PUBLIC_DHT_RELAY_ATTEMPTS
+        || ctx
+            .relay_state
+            .relay_client_attempted_peers
+            .contains(&peer_id)
+    {
+        return None;
+    }
+
+    let candidate = info
+        .listen_addrs
+        .iter()
+        .filter(|addr| !is_local_direct_addr(addr))
+        .filter_map(|addr| {
+            let mut addr = addr.clone();
+            if !addr
+                .iter()
+                .any(|protocol| matches!(protocol, Protocol::P2p(_)))
+            {
+                addr.push(Protocol::P2p(peer_id));
+            }
+            relay_candidate_addr(addr, RelayCandidateSource::PublicFallback)
+        })
+        .filter_map(|candidate| {
+            supported_relay_addr_score(&candidate.addr).map(|score| (score, candidate))
+        })
+        .min_by_key(|(score, _)| *score)?
+        .1;
+    let reservation_addr = relay_reservation_addr(&candidate.addr)?;
+
+    add_peer_address_to_discovery(swarm, peer_id, candidate.addr.clone());
+    ctx.relay_state.relay_client_attempted_peers.insert(peer_id);
+    ctx.relay_state.relay_discovery_candidate_count = ctx
+        .relay_state
+        .relay_discovery_candidate_count
+        .saturating_add(1);
+    ctx.relay_state.relay_discovery_public_candidates = ctx
+        .relay_state
+        .relay_discovery_public_candidates
+        .saturating_add(1);
+    ctx.relay_state
+        .relay_discovery_selected_relays
+        .insert(candidate.addr.to_string());
+
+    match swarm.listen_on(reservation_addr.clone()) {
+        Ok(_) => {
+            ctx.relay_state.relay_client_reservation_attempts = ctx
+                .relay_state
+                .relay_client_reservation_attempts
+                .saturating_add(1);
+            Some(format!(
+                "relay_discovery dht reservation requested relay={peer_id} addr={reservation_addr}"
+            ))
+        }
+        Err(err) => {
+            ctx.relay_state.relay_client_reservation_failures = ctx
+                .relay_state
+                .relay_client_reservation_failures
+                .saturating_add(1);
+            ctx.relay_state.relay_discovery_failures =
+                ctx.relay_state.relay_discovery_failures.saturating_add(1);
+            Some(format!(
+                "relay_discovery dht reservation failed relay={peer_id} addr={reservation_addr} error={err}"
+            ))
+        }
+    }
+}
+
+fn supported_relay_addr_score(addr: &Multiaddr) -> Option<u8> {
+    let unsupported = addr.iter().any(|protocol| {
+        matches!(
+            protocol,
+            Protocol::Tls
+                | Protocol::WebTransport
+                | Protocol::WebRTCDirect
+                | Protocol::P2pWebRtcDirect
+        )
+    });
+    if unsupported {
+        return None;
+    }
+    if addr
+        .iter()
+        .any(|protocol| matches!(protocol, Protocol::Quic | Protocol::QuicV1))
+    {
+        Some(0)
+    } else if addr
+        .iter()
+        .any(|protocol| matches!(protocol, Protocol::Tcp(_)))
+    {
+        Some(1)
+    } else {
+        None
     }
 }
 
@@ -53,7 +200,8 @@ pub(crate) async fn handle_connection_established(
         ctx.storage,
     );
 
-    ctx.peer_book.record_connected(peer_id, Some(remote_addr.clone()));
+    ctx.peer_book
+        .record_connected(peer_id, Some(remote_addr.clone()));
     ctx.pending_connections.complete(&peer_id);
     ctx.auto_dial_stats.clear_awaiting(&peer_id);
 
@@ -84,7 +232,9 @@ pub(crate) async fn handle_connection_established(
         guard.connection_cap_disconnects = ctx.connection_caps.cap_disconnects;
         push_pulse(
             &mut guard.pulses,
-            format!("connection cap exceeded; closing connection {connection_id:?} from {remote_addr}"),
+            format!(
+                "connection cap exceeded; closing connection {connection_id:?} from {remote_addr}"
+            ),
         );
         return;
     }
@@ -95,10 +245,8 @@ pub(crate) async fn handle_connection_established(
     guard.connection_cap_disconnects = ctx.connection_caps.cap_disconnects;
     if is_p2p_circuit_addr(&remote_addr) {
         if ctx.dcutr_policy.keep_relay_fallback {
-            ctx.relay_state.dcutr_relay_fallbacks = ctx
-                .relay_state
-                .dcutr_relay_fallbacks
-                .saturating_add(1);
+            ctx.relay_state.dcutr_relay_fallbacks =
+                ctx.relay_state.dcutr_relay_fallbacks.saturating_add(1);
         }
 
         if ctx.dcutr_policy.enabled && ctx.dcutr_policy.attempt_after_relay_connection {
@@ -129,10 +277,8 @@ pub(crate) async fn handle_connection_established(
                     ),
                 );
             } else {
-                ctx.relay_state.dcutr_retry_suppressed = ctx
-                    .relay_state
-                    .dcutr_retry_suppressed
-                    .saturating_add(1);
+                ctx.relay_state.dcutr_retry_suppressed =
+                    ctx.relay_state.dcutr_retry_suppressed.saturating_add(1);
                 push_pulse(
                     &mut guard.pulses,
                     format!(
@@ -312,10 +458,7 @@ pub(crate) async fn handle_expired_listen_addr(
     }
 }
 
-pub(crate) async fn handle_listener_error(
-    error_debug: String,
-    ctx: &mut SwarmEventContext<'_>,
-) {
+pub(crate) async fn handle_listener_error(error_debug: String, ctx: &mut SwarmEventContext<'_>) {
     ctx.relay_state.server_errors = ctx.relay_state.server_errors.saturating_add(1);
     ctx.relay_state.health = RelayServiceHealth::Error;
     let mut guard = ctx.snapshot.lock().await;
@@ -323,10 +466,7 @@ pub(crate) async fn handle_listener_error(
     push_pulse(&mut guard.pulses, format!("listener error: {error_debug}"));
 }
 
-pub(crate) async fn handle_autonat_event(
-    ev: autonat::Event,
-    ctx: &mut SwarmEventContext<'_>,
-) {
+pub(crate) async fn handle_autonat_event(ev: autonat::Event, ctx: &mut SwarmEventContext<'_>) {
     update_nat_state(ctx.relay_state, &ev);
     let debug = format!("{ev:?}");
     let status = autonat_status_label(&debug);

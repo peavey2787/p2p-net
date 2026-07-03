@@ -40,11 +40,21 @@ pub(crate) async fn handle_node_command(command: NodeCommand, ctx: NodeCommandCo
 
     let (success, sent_app_message) = match command {
         NodeCommand::ConnectPeer { addr, reply } => {
-            if let Some(peer) = extract_p2p_peer_id(&addr) {
-                peer_book.record_addr(peer, addr.clone(), PeerSource::Manual);
-            }
-            let plan = build_connection_plan(addr, peer_book, dcutr_policy);
-            let result = dial_connection_plan(swarm, pending_connections, &plan);
+            let result = if let Some(peer) = extract_p2p_peer_id(&addr) {
+                if peer == local_peer {
+                    Err(NetError::Dial {
+                        target: peer.to_string(),
+                        reason: "refusing to dial local peer id".to_string(),
+                    })
+                } else {
+                    peer_book.record_addr(peer, addr.clone(), PeerSource::Manual);
+                    let plan = build_connection_plan(addr, peer_book, dcutr_policy);
+                    dial_connection_plan(swarm, pending_connections, &plan)
+                }
+            } else {
+                let plan = build_connection_plan(addr, peer_book, dcutr_policy);
+                dial_connection_plan(swarm, pending_connections, &plan)
+            };
             let success = result.is_ok();
             let _ = reply.send(result);
             (success, false)
@@ -63,14 +73,8 @@ pub(crate) async fn handle_node_command(command: NodeCommand, ctx: NodeCommandCo
             payload,
             reply,
         } => {
-            let result = publish_app_message(
-                swarm,
-                network_id,
-                local_peer,
-                Some(peer_id),
-                topic,
-                payload,
-            );
+            let result =
+                publish_app_message(swarm, network_id, local_peer, Some(peer_id), topic, payload);
             let success = result.is_ok();
             let _ = reply.send(result);
             (success, success)
@@ -86,8 +90,8 @@ pub(crate) async fn handle_node_command(command: NodeCommand, ctx: NodeCommandCo
             (success, success)
         }
         NodeCommand::Subscribe { topic, reply } => {
-            let result = subscribe_app_topic(swarm, network_id, topic, app_topic_hashes, snapshot)
-                .await;
+            let result =
+                subscribe_app_topic(swarm, network_id, topic, app_topic_hashes, snapshot).await;
             let success = result.is_ok();
             let _ = reply.send(result);
             (success, false)

@@ -1,5 +1,6 @@
 use crate::api::PeerSource;
 use crate::connectivity::dht::on_kademlia_event;
+use crate::connectivity::relay::is_p2p_circuit_addr;
 
 use super::super::dial::{auto_dial_dht_provider, AutoDialOutcome};
 use super::super::push_pulse;
@@ -20,9 +21,11 @@ fn record_dht_provider_peers(
     let libp2p::kad::Event::OutboundQueryProgressed { id, result, .. } = ev else {
         return Vec::new();
     };
-    let libp2p::kad::QueryResult::GetProviders(Ok(
-        libp2p::kad::GetProvidersOk::FoundProviders { providers, .. },
-    )) = result else {
+    let libp2p::kad::QueryResult::GetProviders(Ok(libp2p::kad::GetProvidersOk::FoundProviders {
+        providers,
+        ..
+    })) = result
+    else {
         return Vec::new();
     };
     let Some(namespace) = ctx.dht_state.provider_namespace(id) else {
@@ -74,9 +77,14 @@ where
         return Vec::new();
     }
 
+    let mut relay_preferred = false;
     for addr in addrs {
+        relay_preferred |= is_p2p_circuit_addr(&addr);
         ctx.peer_book
             .record_addr(*peer, addr, PeerSource::DhtProvider);
+    }
+    if relay_preferred {
+        ctx.peer_book.record_relay_preferred(*peer, true);
     }
     vec![AutoDialCandidate {
         peer: *peer,
@@ -90,7 +98,10 @@ fn maybe_auto_dial_dht_providers(
     ctx: &mut SwarmEventContext<'_>,
 ) -> Vec<String> {
     let mut pulses = Vec::new();
-    let enabled = ctx.discovery_cfg.public_bootstrap.auto_connect_discovered_peers;
+    let enabled = ctx
+        .discovery_cfg
+        .public_bootstrap
+        .auto_connect_discovered_peers;
 
     for candidate in peers {
         let peer = candidate.peer;
@@ -138,13 +149,8 @@ pub(crate) async fn handle_event(
     auto_dial_candidates.extend(record_kademlia_provider_addrs(ev, ctx));
     let auto_dial_pulses = maybe_auto_dial_dht_providers(auto_dial_candidates, swarm, ctx);
 
-    let Some(line) = on_kademlia_event(
-        swarm,
-        ev,
-        ctx.discovery_cfg,
-        ctx.storage,
-        ctx.dht_state,
-    ) else {
+    let Some(line) = on_kademlia_event(swarm, ev, ctx.discovery_cfg, ctx.storage, ctx.dht_state)
+    else {
         if !auto_dial_pulses.is_empty() {
             let mut guard = ctx.snapshot.lock().await;
             sync_dht_snapshot(&mut guard, ctx);

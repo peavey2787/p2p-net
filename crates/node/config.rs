@@ -101,17 +101,14 @@ impl NodeConfig {
     /// so a file with only `{ "relay": { "enabled": true } }` is valid.
     pub fn load_json_file(path: impl AsRef<Path>) -> Result<Self, NetError> {
         let path = path.as_ref();
-        let raw = std::fs::read_to_string(path).map_err(|err| {
-            NetError::Config {
-                path: path.display().to_string(),
-                reason: err.to_string(),
-            }
+        let raw = std::fs::read_to_string(path).map_err(|err| NetError::Config {
+            path: path.display().to_string(),
+            reason: err.to_string(),
         })?;
-        let cfg: Self =
-            serde_json::from_str(&raw).map_err(|err| NetError::Config {
-                path: path.display().to_string(),
-                reason: err.to_string(),
-            })?;
+        let cfg: Self = serde_json::from_str(&raw).map_err(|err| NetError::Config {
+            path: path.display().to_string(),
+            reason: err.to_string(),
+        })?;
         cfg.validate()?;
         Ok(cfg)
     }

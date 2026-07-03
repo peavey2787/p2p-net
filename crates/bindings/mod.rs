@@ -193,14 +193,20 @@ impl BindingRuntimeSpec {
 
     pub fn storage_requirement(&self) -> BindingStorageRequirement {
         match self.storage {
-            BindingStorageStrategy::MemoryTestingOnly => BindingStorageRequirement::MemoryTestingOnly,
+            BindingStorageStrategy::MemoryTestingOnly => {
+                BindingStorageRequirement::MemoryTestingOnly
+            }
             BindingStorageStrategy::ExternalPlatformStorage => {
                 BindingStorageRequirement::ExternalPlatformStorage
             }
-            BindingStorageStrategy::PlatformDefault if matches!(self.target, BindingTarget::Desktop) => {
+            BindingStorageStrategy::PlatformDefault
+                if matches!(self.target, BindingTarget::Desktop) =>
+            {
                 BindingStorageRequirement::DesktopFilesystem
             }
-            BindingStorageStrategy::PlatformDefault => BindingStorageRequirement::ExternalPlatformStorage,
+            BindingStorageStrategy::PlatformDefault => {
+                BindingStorageRequirement::ExternalPlatformStorage
+            }
         }
     }
 }
@@ -301,10 +307,16 @@ pub struct BindingTargetInfo {
 
 pub fn binding_support_matrix() -> BindingSupportMatrix {
     let targets = [
-        (BindingTarget::Desktop, "Tauri, egui, native desktop, or CLI"),
+        (
+            BindingTarget::Desktop,
+            "Tauri, egui, native desktop, or CLI",
+        ),
         (BindingTarget::Android, "Kotlin/Android shell"),
         (BindingTarget::Ios, "Swift/iOS shell"),
-        (BindingTarget::Wasm, "browser or WebView host with restricted networking"),
+        (
+            BindingTarget::Wasm,
+            "browser or WebView host with restricted networking",
+        ),
     ]
     .into_iter()
     .map(|(target, app_shell)| {
@@ -388,7 +400,10 @@ fn binding_warnings(
 ) -> Vec<String> {
     let mut warnings = Vec::new();
 
-    if matches!(runtime_spec.storage_requirement(), BindingStorageRequirement::MemoryTestingOnly) {
+    if matches!(
+        runtime_spec.storage_requirement(),
+        BindingStorageRequirement::MemoryTestingOnly
+    ) {
         warnings.push(
             "memory storage is ephemeral and should not be used for production identities"
                 .to_string(),
@@ -407,7 +422,8 @@ fn binding_warnings(
 
     if runtime_spec.target.default_background_restricted() && resolved.should_listen {
         warnings.push(
-            "background-restricted targets should not run listener/infrastructure roles".to_string(),
+            "background-restricted targets should not run listener/infrastructure roles"
+                .to_string(),
         );
     }
 

@@ -47,7 +47,6 @@ fn runtime_docs_do_not_contain_transitional_phase_language() {
     assert!(violations.is_empty(), "{}", violations.join("\n"));
 }
 
-
 #[test]
 fn repository_layout_matches_modular_baseline() {
     let root = manifest_dir();
@@ -316,17 +315,17 @@ fn node_runtime_loop_lives_in_runtime_module() {
     );
 }
 
-
 #[test]
 fn relay_responsibilities_live_in_focused_modules() {
     let root = manifest_dir();
-    let relay_mod = fs::read_to_string(root.join("crates/connectivity/relay.rs")).expect("relay mod");
-    let relay_config = fs::read_to_string(root.join("crates/connectivity/relay/config.rs"))
-        .expect("relay config");
+    let relay_mod =
+        fs::read_to_string(root.join("crates/connectivity/relay.rs")).expect("relay mod");
+    let relay_config =
+        fs::read_to_string(root.join("crates/connectivity/relay/config.rs")).expect("relay config");
     let relay_schedule = fs::read_to_string(root.join("crates/connectivity/relay/schedule.rs"))
         .expect("relay schedule");
-    let relay_state = fs::read_to_string(root.join("crates/connectivity/relay/state.rs"))
-        .expect("relay state");
+    let relay_state =
+        fs::read_to_string(root.join("crates/connectivity/relay/state.rs")).expect("relay state");
     let relay_address = fs::read_to_string(root.join("crates/connectivity/relay/address.rs"))
         .expect("relay address");
 
@@ -378,8 +377,7 @@ fn cargo_test_registrations_are_unique_and_complete() {
         "integration tests must be registered from qa/tests"
     );
     assert!(
-        cargo.contains("external/libp2p-dns")
-            && cargo.contains("external/libp2p-mdns-placeholder"),
+        cargo.contains("external/libp2p-dns") && cargo.contains("external/libp2p-mdns-placeholder"),
         "local third-party patches must live under external"
     );
 
@@ -399,8 +397,14 @@ fn cargo_test_registrations_are_unique_and_complete() {
         }
     }
 
-    assert!(duplicate_names.is_empty(), "duplicate test names: {duplicate_names:?}");
-    assert!(duplicate_paths.is_empty(), "duplicate test paths: {duplicate_paths:?}");
+    assert!(
+        duplicate_names.is_empty(),
+        "duplicate test names: {duplicate_names:?}"
+    );
+    assert!(
+        duplicate_paths.is_empty(),
+        "duplicate test paths: {duplicate_paths:?}"
+    );
 
     let mut root_level_tests = Vec::new();
     for entry in fs::read_dir(root.join("qa/tests")).expect("qa/tests dir") {
@@ -418,8 +422,15 @@ fn cargo_test_registrations_are_unique_and_complete() {
     let mut test_files = Vec::new();
     collect_rust_files(&root.join("qa/tests"), &mut test_files);
     for path in test_files {
-        let rel = path.strip_prefix(&root).unwrap().to_string_lossy().replace('\\', "/");
-        assert!(paths.contains(rel.as_str()), "unregistered integration test: {rel}");
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        assert!(
+            paths.contains(rel.as_str()),
+            "unregistered integration test: {rel}"
+        );
     }
 }
 

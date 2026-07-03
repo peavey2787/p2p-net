@@ -42,6 +42,7 @@ pub struct RelayState {
     pub at_capacity_events: usize,
     pub server_errors: usize,
     pub relay_client_reservations: HashSet<PeerId>,
+    pub relay_client_attempted_peers: HashSet<PeerId>,
     pub relay_client_reservation_attempts: usize,
     pub relay_client_reservation_failures: usize,
     pub relay_discovery_selected_relays: BTreeSet<String>,

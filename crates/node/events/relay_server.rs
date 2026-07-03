@@ -4,8 +4,10 @@ use libp2p::relay;
 use libp2p::{PeerId, Swarm};
 use tokio::sync::Mutex;
 
-use crate::connectivity::relay::{classify_relay_denial, RelayServiceConfig, RelayServiceHealth, RelayState};
 use super::super::snapshot::NodeSnapshot;
+use crate::connectivity::relay::{
+    classify_relay_denial, RelayServiceConfig, RelayServiceHealth, RelayState,
+};
 use crate::stack::MeshBehaviour;
 
 use super::super::push_pulse;

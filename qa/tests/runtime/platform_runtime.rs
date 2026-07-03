@@ -58,7 +58,7 @@ fn identity_and_peer_cache_can_use_abstract_storage() {
     assert_eq!(PeerId::from(first.public()), PeerId::from(second.public()));
 
     let peer = PeerId::random();
-    let addr = format!("/ip4/127.0.0.1/tcp/4001/p2p/{peer}")
+    let addr = format!("/ip4/203.0.113.10/tcp/4001/p2p/{peer}")
         .parse()
         .expect("test multiaddr");
     let cfg = DiscoveryConfig {

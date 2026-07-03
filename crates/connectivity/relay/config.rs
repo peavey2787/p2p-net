@@ -1,6 +1,6 @@
-use crate::common::error::{config_error, NetError};
 use super::schedule::RelaySchedule;
 use super::state::RelayServiceHealth;
+use crate::common::error::{config_error, NetError};
 use std::num::NonZeroU32;
 use std::time::Duration;
 

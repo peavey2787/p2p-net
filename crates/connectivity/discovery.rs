@@ -17,8 +17,18 @@ pub struct DiscoveryConfig {
     pub peer_cache_path: String,
     /// Maximum number of cached peer addresses to keep.
     pub peer_cache_max_entries: usize,
-    /// Drop cached peers older than this many seconds. Set to 0 to disable age eviction.
+    /// Legacy maximum age for any cached dialable address. Set to 0 to disable this global ceiling.
     pub peer_cache_max_age_secs: u64,
+    /// Maximum age for peer identity memory. Addresses can expire while identities remain known.
+    pub peer_identity_max_age_secs: u64,
+    /// Maximum age for public/NAT direct dial addresses. These are short-lived because NAT mappings and mobile IPs churn quickly.
+    pub peer_cache_public_addr_max_age_secs: u64,
+    /// Maximum age for relayed dial addresses when no exact relay reservation expiry is known.
+    pub peer_cache_relay_addr_max_age_secs: u64,
+    /// Persist local/LAN/loopback addresses across process restarts. Disabled by default; local addrs are session-only.
+    pub peer_cache_persist_local_addrs: bool,
+    /// Maximum age for persisted local/LAN/loopback addresses when explicitly enabled. Set to 0 to disable age eviction.
+    pub peer_cache_local_addr_max_age_secs: u64,
     /// Drop cached peers after this many recorded failures. Set to 0 to disable failure eviction.
     pub peer_cache_max_failures: u32,
     /// Public bootstrap seed peers. Full `/p2p/<PeerId>` multiaddrs are required.
@@ -49,6 +59,11 @@ impl Default for DiscoveryConfig {
             peer_cache_path: ".p2p-net-peer-cache.json".to_string(),
             peer_cache_max_entries: 64,
             peer_cache_max_age_secs: 30 * 24 * 60 * 60,
+            peer_identity_max_age_secs: 30 * 24 * 60 * 60,
+            peer_cache_public_addr_max_age_secs: 10 * 60,
+            peer_cache_relay_addr_max_age_secs: 2 * 60 * 60,
+            peer_cache_persist_local_addrs: false,
+            peer_cache_local_addr_max_age_secs: 0,
             peer_cache_max_failures: 3,
             bootstrap_seed_peers: Vec::new(),
             rendezvous_peers: Vec::new(),
@@ -69,6 +84,21 @@ impl DiscoveryConfig {
         if self.peer_cache_max_entries == 0 {
             return Err(config_error(
                 "discovery.peer_cache_max_entries must be at least 1",
+            ));
+        }
+        if self.peer_identity_max_age_secs == 0 {
+            return Err(config_error(
+                "discovery.peer_identity_max_age_secs must be at least 1",
+            ));
+        }
+        if self.peer_cache_public_addr_max_age_secs == 0 {
+            return Err(config_error(
+                "discovery.peer_cache_public_addr_max_age_secs must be at least 1",
+            ));
+        }
+        if self.peer_cache_relay_addr_max_age_secs == 0 {
+            return Err(config_error(
+                "discovery.peer_cache_relay_addr_max_age_secs must be at least 1",
             ));
         }
         self.namespace.validate()?;

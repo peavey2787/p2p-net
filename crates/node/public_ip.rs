@@ -84,7 +84,6 @@ pub(crate) struct PublicIpProbeResult {
     pub(crate) errors: Vec<String>,
 }
 
-
 impl PublicIpProbeResult {
     pub(crate) fn pulse_line(&self) -> Option<String> {
         if self.status == "disabled" {

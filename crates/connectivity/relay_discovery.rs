@@ -30,6 +30,9 @@ pub struct RelayDiscoveryPolicy {
     /// intentionally a policy switch because rendezvous records do not prove a
     /// peer is willing to relay; failed candidates are counted and replaced.
     pub use_rendezvous_relays: bool,
+    /// Inspect Identify protocols on public-DHT peers and request reservations
+    /// from peers that advertise Circuit Relay v2 hop service.
+    pub use_dht_relays: bool,
     /// Minimum desired relay reservations for NATed/lite nodes.
     pub min_reservations: usize,
     /// Maximum simultaneous relay candidates/reservation attempts.
@@ -47,6 +50,7 @@ impl Default for RelayDiscoveryPolicy {
             use_configured_relays: true,
             use_cached_relays: true,
             use_rendezvous_relays: true,
+            use_dht_relays: true,
             min_reservations: 1,
             max_reservations: 3,
             prefer_configured_relays: true,
@@ -70,7 +74,11 @@ impl RelayDiscoveryPolicy {
                 "discovery.relay_discovery.min_reservations must be <= max_reservations",
             ));
         }
-        if !self.use_configured_relays && !self.use_cached_relays && !self.use_rendezvous_relays {
+        if !self.use_configured_relays
+            && !self.use_cached_relays
+            && !self.use_rendezvous_relays
+            && !self.use_dht_relays
+        {
             return Err(config_error(
                 "discovery.relay_discovery must enable at least one relay source",
             ));
@@ -122,7 +130,10 @@ pub struct RelaySelectionPlan {
 
 impl RelaySelectionPlan {
     pub fn selected_strings(&self) -> Vec<String> {
-        self.selected_addrs.iter().map(ToString::to_string).collect()
+        self.selected_addrs
+            .iter()
+            .map(ToString::to_string)
+            .collect()
     }
 
     pub fn total_candidates(&self) -> usize {
@@ -165,53 +176,46 @@ pub fn select_startup_relays(
     let mut seen = BTreeSet::<String>::new();
     let mut ordered = Vec::<RelayCandidateAddr>::new();
 
-    let sources: Vec<(RelayCandidateSource, Vec<Multiaddr>, bool)> = if policy.prefer_configured_relays {
-        vec![
-            (
-                RelayCandidateSource::Configured,
-                configured_relays,
-                policy.use_configured_relays,
-            ),
-            (
-                RelayCandidateSource::Cached,
-                cached_relays,
-                policy.use_cached_relays,
-            ),
-            (
-                RelayCandidateSource::Rendezvous,
-                rendezvous_relays,
-                policy.use_rendezvous_relays,
-            ),
-            (
-                RelayCandidateSource::PublicFallback,
-                public_relays,
-                true,
-            ),
-        ]
-    } else {
-        vec![
-            (
-                RelayCandidateSource::Cached,
-                cached_relays,
-                policy.use_cached_relays,
-            ),
-            (
-                RelayCandidateSource::Rendezvous,
-                rendezvous_relays,
-                policy.use_rendezvous_relays,
-            ),
-            (
-                RelayCandidateSource::Configured,
-                configured_relays,
-                policy.use_configured_relays,
-            ),
-            (
-                RelayCandidateSource::PublicFallback,
-                public_relays,
-                true,
-            ),
-        ]
-    };
+    let sources: Vec<(RelayCandidateSource, Vec<Multiaddr>, bool)> =
+        if policy.prefer_configured_relays {
+            vec![
+                (
+                    RelayCandidateSource::Configured,
+                    configured_relays,
+                    policy.use_configured_relays,
+                ),
+                (
+                    RelayCandidateSource::Cached,
+                    cached_relays,
+                    policy.use_cached_relays,
+                ),
+                (
+                    RelayCandidateSource::Rendezvous,
+                    rendezvous_relays,
+                    policy.use_rendezvous_relays,
+                ),
+                (RelayCandidateSource::PublicFallback, public_relays, true),
+            ]
+        } else {
+            vec![
+                (
+                    RelayCandidateSource::Cached,
+                    cached_relays,
+                    policy.use_cached_relays,
+                ),
+                (
+                    RelayCandidateSource::Rendezvous,
+                    rendezvous_relays,
+                    policy.use_rendezvous_relays,
+                ),
+                (
+                    RelayCandidateSource::Configured,
+                    configured_relays,
+                    policy.use_configured_relays,
+                ),
+                (RelayCandidateSource::PublicFallback, public_relays, true),
+            ]
+        };
 
     for (source, addrs, enabled) in sources {
         if !enabled {
