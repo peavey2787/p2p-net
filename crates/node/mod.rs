@@ -235,11 +235,9 @@ pub async fn start_node_with_platform(
             .errors
             .len()
             .saturating_add(relay_reservation_plan.errors.len()),
-        relayed_listen_addresses: relay_reservation_plan
-            .listen_addrs
-            .iter()
-            .map(ToString::to_string)
-            .collect(),
+        // Reservation listen addresses are requests, not confirmed relay
+        // reachability. `NewListenAddr` populates this after acceptance.
+        relayed_listen_addresses: Vec::new(),
         dcutr_enabled: resolved_config.dcutr_enabled,
         dcutr_attempt_after_relay_connection: resolved_config.dcutr_attempt_after_relay_connection,
         dcutr_keep_relay_fallback: resolved_config.dcutr_keep_relay_fallback,

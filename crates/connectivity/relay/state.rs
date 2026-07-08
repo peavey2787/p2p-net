@@ -45,6 +45,7 @@ pub struct RelayState {
     pub relay_client_attempted_peers: HashSet<PeerId>,
     pub relay_client_reservation_attempts: usize,
     pub relay_client_reservation_failures: usize,
+    pub pending_relay_listen_addrs: HashMap<PeerId, BTreeSet<String>>,
     pub relay_discovery_selected_relays: BTreeSet<String>,
     pub relay_discovery_candidate_count: usize,
     pub relay_discovery_configured_candidates: usize,

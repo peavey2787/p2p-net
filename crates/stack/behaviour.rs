@@ -19,6 +19,8 @@ use crate::connectivity::limits::ConnectionLimitsConfig;
 use crate::connectivity::relay::{RelayAccess, RelayServiceConfig};
 use crate::ResolvedNodeConfig;
 
+use super::{DcutrBehaviour, ExternalAddressCandidates};
+
 #[derive(NetworkBehaviour)]
 #[behaviour(to_swarm = "MeshEvent")]
 pub struct MeshBehaviour {
@@ -28,7 +30,8 @@ pub struct MeshBehaviour {
     pub gossipsub: gossipsub::Behaviour,
     pub kademlia: kad::Behaviour<kad::store::MemoryStore>,
     pub autonat: autonat::Behaviour,
-    pub dcutr: Toggle<dcutr::Behaviour>,
+    pub dcutr: Toggle<DcutrBehaviour>,
+    pub external_address_candidates: ExternalAddressCandidates,
     pub relay_client: relay::client::Behaviour,
     pub relay_server: Toggle<relay::Behaviour>,
     pub rendezvous_client: Toggle<rendezvous::client::Behaviour>,
@@ -214,8 +217,9 @@ pub fn build_behaviour(ctx: BehaviourBuildContext<'_>) -> MeshBehaviour {
         autonat: autonat::Behaviour::new(local_peer, Default::default()),
         dcutr: behaviour_policy
             .dcutr
-            .then(|| dcutr::Behaviour::new(local_peer))
+            .then(|| DcutrBehaviour::new(local_peer))
             .into(),
+        external_address_candidates: ExternalAddressCandidates::new(),
         relay_client: relay_behaviour,
         relay_server,
         rendezvous_client,

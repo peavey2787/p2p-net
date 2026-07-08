@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 use crate::common::error::NetError;
 use crate::connectivity::dht::{start_dht_namespace_discovery, DhtNamespacePlan, DhtProviderState};
 use crate::protocol::pulse::collect_local_heartbeat;
-use crate::stack::MeshBehaviour;
+use crate::stack::{add_external_address_candidate, MeshBehaviour};
 
 use super::config::NodeConfig;
 use super::public_ip::PublicIpProbeResult;
@@ -45,7 +45,7 @@ pub(crate) async fn apply_public_ip_probe_result(
     rendezvous_peer_count: usize,
 ) {
     for addr in &result.external_addresses {
-        swarm.add_external_address(addr.clone());
+        add_external_address_candidate(swarm, addr.clone());
     }
 
     let dht_plan = if result.external_addresses.is_empty() {

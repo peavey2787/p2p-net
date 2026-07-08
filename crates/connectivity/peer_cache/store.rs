@@ -158,7 +158,8 @@ fn record_seen_peer_addr_inner(
             last_seen_unix_secs: now,
             failures: 0,
             addr_kind,
-            expires_unix_secs: expires_unix_secs.or_else(|| inferred_expiry_secs(cfg, addr_kind, now)),
+            expires_unix_secs: expires_unix_secs
+                .or_else(|| inferred_expiry_secs(cfg, addr_kind, now)),
         },
     );
     entries.truncate(cfg.peer_cache_max_entries);
@@ -265,11 +266,7 @@ fn valid_identities_from_file(
         .collect()
 }
 
-fn is_valid_identity_entry(
-    cfg: &DiscoveryConfig,
-    identity: &CachedPeerIdentity,
-    now: u64,
-) -> bool {
+fn is_valid_identity_entry(cfg: &DiscoveryConfig, identity: &CachedPeerIdentity, now: u64) -> bool {
     if identity.peer_id.parse::<PeerId>().is_err() {
         return false;
     }

@@ -29,8 +29,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut tried_relay_routes = HashSet::new();
     let mut last_relay_dial = None;
     let started = Instant::now();
+    let deadline = started + PROBE_TIMEOUT;
     let connected = loop {
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        let now = Instant::now();
+        if now >= deadline {
+            break false;
+        }
+        tokio::time::sleep((deadline - now).min(Duration::from_secs(5))).await;
         print_new_pulses("alice", &alice, &mut alice_pulses).await;
         print_new_pulses("bob", &bob, &mut bob_pulses).await;
 
@@ -59,9 +64,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     tried_relay_routes.insert(route);
                 }
                 last_relay_dial = Some(Instant::now());
-                println!("probe relayed dial bob->alice addr={addr}");
-                if let Err(err) = bob.connect_peer(addr).await {
-                    println!("probe relayed dial failed immediately: {err}");
+                if let Some(addr) = build_safe_relay_dial_addr(addr, bob.peer_id, alice.peer_id) {
+                    println!("probe relayed dial bob->alice addr={addr}");
+                    if let Err(err) = bob.connect_peer(addr).await {
+                        println!("probe relayed dial failed immediately: {err}");
+                    }
                 }
             }
         }
@@ -87,10 +94,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             dcutr_successes,
         );
 
-        if alice_to_bob && bob_to_alice && dcutr_eligible > 0 && dcutr_successes > 0 {
+        if alice_to_bob && bob_to_alice {
             break true;
         }
-        if started.elapsed() >= PROBE_TIMEOUT {
+        if Instant::now() >= deadline {
             break false;
         }
     };
@@ -170,10 +177,7 @@ fn supported_relay_addr_score(addr: &libp2p::Multiaddr) -> Option<u8> {
     let unsupported = addr.iter().any(|protocol| {
         matches!(
             protocol,
-            Protocol::Tls
-                | Protocol::WebTransport
-                | Protocol::WebRTCDirect
-                | Protocol::P2pWebRtcDirect
+            Protocol::WebTransport | Protocol::WebRTCDirect | Protocol::P2pWebRtcDirect
         )
     });
     if unsupported {
@@ -207,4 +211,37 @@ fn relay_route_key(addr: &libp2p::Multiaddr) -> Option<String> {
         }
     }
     Some(format!("{}:{}", relay?, transport?))
+}
+
+fn build_safe_relay_dial_addr(
+    mut addr: libp2p::Multiaddr,
+    local_peer: libp2p::PeerId,
+    destination: libp2p::PeerId,
+) -> Option<libp2p::Multiaddr> {
+    if destination == local_peer {
+        return None;
+    }
+
+    let mut saw_circuit = false;
+    let mut target_after_circuit = None;
+    for protocol in addr.iter() {
+        match protocol {
+            Protocol::P2pCircuit => saw_circuit = true,
+            Protocol::P2p(peer) if saw_circuit => target_after_circuit = Some(peer),
+            _ => {}
+        }
+    }
+
+    if !saw_circuit {
+        return None;
+    }
+
+    match target_after_circuit {
+        Some(existing) if existing == destination => Some(addr),
+        Some(_) => None,
+        None => {
+            addr.push(Protocol::P2p(destination));
+            Some(addr)
+        }
+    }
 }

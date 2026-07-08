@@ -11,8 +11,8 @@ The policy lives at:
     "use_configured_relays": true,
     "use_cached_relays": true,
     "use_rendezvous_relays": true,
-    "min_reservations": 1,
-    "max_reservations": 3,
+    "min_reservations": 3,
+    "max_reservations": 8,
     "prefer_configured_relays": true,
     "replace_failed_relays": true
   }

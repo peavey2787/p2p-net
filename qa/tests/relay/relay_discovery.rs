@@ -66,8 +66,8 @@ fn lite_profile_resolves_with_relay_discovery_policy() {
     let resolved = cfg.try_resolved().expect("lite profile resolves");
 
     assert!(resolved.relay_discovery_enabled);
-    assert_eq!(resolved.relay_discovery_min_reservations, 1);
-    assert_eq!(resolved.relay_discovery_max_reservations, 3);
+    assert_eq!(resolved.relay_discovery_min_reservations, 3);
+    assert_eq!(resolved.relay_discovery_max_reservations, 8);
     assert!(resolved.enabled_behaviours.relay_client);
     assert!(resolved.enabled_behaviours.dcutr);
 }

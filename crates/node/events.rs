@@ -89,10 +89,14 @@ pub(crate) async fn handle_swarm_event(
             ..
         } => {
             let remote_addr = endpoint.get_remote_address().clone();
+            let relayed_endpoint = endpoint.is_relayed();
+            let endpoint_debug = format!("{endpoint:?}");
             connection::handle_connection_established(
                 peer_id,
                 connection_id,
                 remote_addr,
+                relayed_endpoint,
+                endpoint_debug,
                 swarm,
                 ctx,
             )
