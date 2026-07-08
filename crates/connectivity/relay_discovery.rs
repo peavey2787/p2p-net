@@ -7,6 +7,7 @@
 use crate::common::error::config_error;
 use std::collections::BTreeSet;
 
+use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
 
@@ -51,8 +52,8 @@ impl Default for RelayDiscoveryPolicy {
             use_cached_relays: true,
             use_rendezvous_relays: true,
             use_dht_relays: true,
-            min_reservations: 1,
-            max_reservations: 3,
+            min_reservations: 3,
+            max_reservations: 8,
             prefer_configured_relays: true,
             replace_failed_relays: true,
         }
@@ -293,6 +294,35 @@ pub fn relay_candidate_addr(
         addr,
         source,
     })
+}
+
+/// Score native relay transports in preferred dial order.
+///
+/// TLS WebSocket remains supported because the native WebSocket transport
+/// handles it. WebTransport and WebRTC-direct are rejected until native
+/// transports for those multiaddr protocols are installed.
+pub(crate) fn supported_relay_addr_score(addr: &Multiaddr) -> Option<u8> {
+    if addr.iter().any(|protocol| {
+        matches!(
+            protocol,
+            Protocol::WebTransport | Protocol::WebRTCDirect | Protocol::P2pWebRtcDirect
+        )
+    }) {
+        return None;
+    }
+    if addr
+        .iter()
+        .any(|protocol| matches!(protocol, Protocol::Quic | Protocol::QuicV1))
+    {
+        Some(0)
+    } else if addr
+        .iter()
+        .any(|protocol| matches!(protocol, Protocol::Tcp(_)))
+    {
+        Some(1)
+    } else {
+        None
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -253,11 +253,9 @@ fn initial_relay_state(
             .len()
             .saturating_add(relay_reservation_plan.errors.len()),
         relay_discovery_replacements: 0,
-        relayed_listen_addrs: relay_reservation_plan
-            .listen_addrs
-            .iter()
-            .map(ToString::to_string)
-            .collect(),
+        // Keep requested relay listeners out of advertised reachability until
+        // the relay transport confirms them with `NewListenAddr`.
+        relayed_listen_addrs: BTreeSet::new(),
         ..RelayState::default()
     }
 }

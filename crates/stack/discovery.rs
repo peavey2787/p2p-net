@@ -101,8 +101,9 @@ pub fn reserve_selected_relays(
     for relay_addr in relay_addrs {
         if let Some(peer) = extract_p2p_peer_id(relay_addr) {
             if peer == local_peer {
-                plan.errors
-                    .push(format!("relay reservation skipped local peer address: {relay_addr}"));
+                plan.errors.push(format!(
+                    "relay reservation skipped local peer address: {relay_addr}"
+                ));
                 continue;
             }
             add_peer_address_to_discovery(swarm, peer, relay_addr.clone());

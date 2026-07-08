@@ -229,7 +229,9 @@ pub fn on_kademlia_event(
     state: &mut DhtProviderState,
 ) -> Option<String> {
     match event {
-        kad::Event::OutboundQueryProgressed { id, result, .. } => match result {
+        kad::Event::OutboundQueryProgressed {
+            id, result, step, ..
+        } => match result {
             kad::QueryResult::StartProviding(Ok(_)) => {
                 let namespace = state
                     .complete_start_providing(id)
@@ -267,6 +269,11 @@ pub fn on_kademlia_event(
                     }
                 }
                 state.provider_records_found = state.provider_records_found.saturating_add(learned);
+                if step.last {
+                    state.complete_get_providers(id);
+                    state.provider_queries_finished =
+                        state.provider_queries_finished.saturating_add(1);
+                }
                 Some(format!(
                     "dht provider lookup found namespace={namespace} providers={learned}"
                 ))

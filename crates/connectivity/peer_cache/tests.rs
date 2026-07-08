@@ -2,9 +2,9 @@ use std::fs;
 
 use libp2p::{Multiaddr, PeerId};
 
+use super::model::PeerCacheFile;
 use super::*;
 use crate::connectivity::discovery::DiscoveryConfig;
-use super::model::PeerCacheFile;
 
 fn load_raw_entries_for_tests(path: impl AsRef<std::path::Path>) -> Vec<CachedPeerAddr> {
     let raw = fs::read_to_string(path).unwrap_or_default();

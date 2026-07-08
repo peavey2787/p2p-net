@@ -40,7 +40,6 @@ pub enum CachedDialAddrKind {
     LocalSession,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CachedPeerAddr {
     pub peer_id: String,

@@ -5,10 +5,15 @@ use libp2p::{autonat, identify, Multiaddr, PeerId, Swarm};
 use crate::connectivity::addr::is_local_direct_addr;
 use crate::connectivity::peer_cache;
 use crate::connectivity::relay::{
-    is_p2p_circuit_addr, relay_reservation_addr, update_nat_state, RelayServiceHealth,
+    relay_peer_id, relay_reservation_addr, update_nat_state, RelayServiceHealth,
 };
-use crate::connectivity::relay_discovery::{relay_candidate_addr, RelayCandidateSource};
-use crate::stack::{add_peer_address_to_discovery, refresh_rendezvous, MeshBehaviour};
+use crate::connectivity::relay_discovery::{
+    relay_candidate_addr, supported_relay_addr_score, RelayCandidateSource,
+};
+use crate::stack::{
+    add_external_address_candidate, add_hole_punch_candidate, add_peer_address_to_discovery,
+    refresh_rendezvous, MeshBehaviour,
+};
 
 use super::super::push_pulse;
 use super::{sync_peer_connectivity_snapshot, SwarmEventContext};
@@ -20,7 +25,7 @@ use self::listen_addr::{
     remove_listen_addr_snapshot, ListenAddrClass,
 };
 
-const MAX_PUBLIC_DHT_RELAY_ATTEMPTS: usize = 32;
+const MAX_PUBLIC_DHT_RELAY_ATTEMPTS: usize = 8;
 
 pub(crate) async fn handle_identify_observed_addr(
     swarm: &mut Swarm<MeshBehaviour>,
@@ -61,7 +66,7 @@ pub(crate) async fn handle_identify_observed_addr(
     let observed_addr = &info.observed_addr;
     let classification = classify_listen_addr(observed_addr);
     if classification.advertise_as_external() {
-        swarm.add_external_address(observed_addr.clone());
+        add_external_address_candidate(swarm, observed_addr.clone());
     }
 
     let mut guard = ctx.snapshot.lock().await;
@@ -165,38 +170,12 @@ fn maybe_reserve_dht_relay(
     }
 }
 
-fn supported_relay_addr_score(addr: &Multiaddr) -> Option<u8> {
-    let unsupported = addr.iter().any(|protocol| {
-        matches!(
-            protocol,
-            Protocol::Tls
-                | Protocol::WebTransport
-                | Protocol::WebRTCDirect
-                | Protocol::P2pWebRtcDirect
-        )
-    });
-    if unsupported {
-        return None;
-    }
-    if addr
-        .iter()
-        .any(|protocol| matches!(protocol, Protocol::Quic | Protocol::QuicV1))
-    {
-        Some(0)
-    } else if addr
-        .iter()
-        .any(|protocol| matches!(protocol, Protocol::Tcp(_)))
-    {
-        Some(1)
-    } else {
-        None
-    }
-}
-
 pub(crate) async fn handle_connection_established(
     peer_id: PeerId,
     connection_id: ConnectionId,
     remote_addr: Multiaddr,
+    relayed_endpoint: bool,
+    endpoint_debug: String,
     swarm: &mut Swarm<MeshBehaviour>,
     ctx: &mut SwarmEventContext<'_>,
 ) {
@@ -250,7 +229,11 @@ pub(crate) async fn handle_connection_established(
     guard.connected_peers = swarm.connected_peers().count();
     sync_peer_connectivity_snapshot(&mut guard, ctx);
     guard.connection_cap_disconnects = ctx.connection_caps.cap_disconnects;
-    if is_p2p_circuit_addr(&remote_addr) {
+    push_pulse(
+        &mut guard.pulses,
+        format!("connection endpoint peer={peer_id} relayed={relayed_endpoint} {endpoint_debug}"),
+    );
+    if relayed_endpoint {
         if ctx.dcutr_policy.keep_relay_fallback {
             ctx.relay_state.dcutr_relay_fallbacks =
                 ctx.relay_state.dcutr_relay_fallbacks.saturating_add(1);
@@ -388,12 +371,24 @@ pub(crate) async fn handle_new_listen_addr(
 ) {
     let classification = classify_listen_addr(&address);
     if classification.advertise_as_external() {
-        swarm.add_external_address(address.clone());
+        add_external_address_candidate(swarm, address.clone());
+    } else if matches!(classification, ListenAddrClass::LocalOnly) {
+        add_hole_punch_candidate(swarm, address.clone());
     }
     if classification.is_relayed() {
-        ctx.relay_state
-            .relayed_listen_addrs
-            .insert(address.to_string());
+        if let Some(relay) = relay_peer_id(&address) {
+            if ctx.relay_state.relay_client_reservations.contains(&relay) {
+                ctx.relay_state
+                    .relayed_listen_addrs
+                    .insert(address.to_string());
+            } else {
+                ctx.relay_state
+                    .pending_relay_listen_addrs
+                    .entry(relay)
+                    .or_default()
+                    .insert(address.to_string());
+            }
+        }
     }
 
     let rendezvous_plan = refresh_rendezvous(
@@ -454,6 +449,9 @@ pub(crate) async fn handle_expired_listen_addr(
         ctx.relay_state
             .relayed_listen_addrs
             .remove(&address.to_string());
+        for pending in ctx.relay_state.pending_relay_listen_addrs.values_mut() {
+            pending.remove(&address.to_string());
+        }
     }
     let mut guard = ctx.snapshot.lock().await;
     remove_listen_addr_snapshot(&mut guard, &address, classification);

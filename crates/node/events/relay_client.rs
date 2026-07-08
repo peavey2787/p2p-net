@@ -21,6 +21,12 @@ pub(crate) async fn handle_event(
         } => {
             relay_state.reservation_attempted = true;
             relay_state.relay_client_reservations.insert(relay_peer_id);
+            if let Some(addresses) = relay_state
+                .pending_relay_listen_addrs
+                .remove(&relay_peer_id)
+            {
+                relay_state.relayed_listen_addrs.extend(addresses);
+            }
             format!("relay_client reservation accepted relay={relay_peer_id} renewal={renewal}")
         }
         relay::client::Event::OutboundCircuitEstablished {
