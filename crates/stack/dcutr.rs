@@ -58,6 +58,8 @@ fn is_quic_candidate(addr: &Multiaddr) -> bool {
             Protocol::Tcp(_) | Protocol::Ws(_) | Protocol::Wss(_) | Protocol::P2pCircuit => {
                 return false
             }
+            Protocol::Ip4(ip) if ip.is_loopback() || ip.is_link_local() => return false,
+            Protocol::Ip6(ip) if ip.is_loopback() => return false,
             Protocol::Ip4(ip) if ip.is_unspecified() => return false,
             Protocol::Ip6(ip) if ip.is_unspecified() => return false,
             _ => {}
@@ -137,9 +139,11 @@ mod tests {
     fn dcutr_candidates_are_quic_only() {
         let quic: Multiaddr = "/ip4/192.168.1.2/udp/4001/quic-v1".parse().unwrap();
         let tcp: Multiaddr = "/ip4/192.168.1.2/tcp/4001".parse().unwrap();
+        let loopback: Multiaddr = "/ip4/127.0.0.1/udp/4001/quic-v1".parse().unwrap();
 
         assert!(is_quic_candidate(&quic));
         assert!(!is_quic_candidate(&tcp));
+        assert!(!is_quic_candidate(&loopback));
     }
 
     #[test]

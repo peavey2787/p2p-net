@@ -84,6 +84,10 @@ pub struct Handler {
 
 impl Handler {
     pub fn new(endpoint: ConnectedPoint, holepunch_candidates: Vec<Multiaddr>) -> Self {
+        Self::debug_probe(format!(
+            "new endpoint={endpoint:?} candidates={}",
+            holepunch_candidates.len()
+        ));
         Self {
             endpoint,
             queued_events: Default::default(),
@@ -91,6 +95,12 @@ impl Handler {
             outbound_stream: futures_bounded::FuturesSet::new(Duration::from_secs(10), 1),
             holepunch_candidates,
             attempts: 0,
+        }
+    }
+
+    fn debug_probe(line: impl AsRef<str>) {
+        if std::env::var_os("P2P_NET_DCUTR_DEBUG").is_some() {
+            eprintln!("P2P_NET_DCUTR_DEBUG handler {}", line.as_ref());
         }
     }
 
@@ -102,6 +112,11 @@ impl Handler {
     ) {
         match output {
             future::Either::Left(stream) => {
+                Self::debug_probe(format!(
+                    "fully_negotiated_inbound endpoint={:?} candidates={}",
+                    self.endpoint,
+                    self.holepunch_candidates.len()
+                ));
                 if self
                     .inbound_stream
                     .try_push(inbound::handshake(
@@ -132,6 +147,11 @@ impl Handler {
             self.endpoint.is_listener(),
             "A connection dialer never initiates a connection upgrade."
         );
+        Self::debug_probe(format!(
+            "fully_negotiated_outbound endpoint={:?} candidates={}",
+            self.endpoint,
+            self.holepunch_candidates.len()
+        ));
         if self
             .outbound_stream
             .try_push(outbound::handshake(
@@ -159,6 +179,10 @@ impl Handler {
             <Self as ConnectionHandler>::OutboundProtocol,
         >,
     ) {
+        Self::debug_probe(format!(
+            "dial_upgrade_error endpoint={:?} raw_error={error:?}",
+            self.endpoint
+        ));
         let error = match error {
             StreamUpgradeError::Apply(v) => libp2p_core::util::unreachable(v),
             StreamUpgradeError::NegotiationFailed => outbound::Error::Unsupported,
@@ -200,6 +224,11 @@ impl ConnectionHandler for Handler {
     fn on_behaviour_event(&mut self, event: Self::FromBehaviour) {
         match event {
             Command::Connect => {
+                Self::debug_probe(format!(
+                    "queue_outbound_connect endpoint={:?} attempt={}",
+                    self.endpoint,
+                    self.attempts.saturating_add(1)
+                ));
                 self.queued_events
                     .push_back(ConnectionHandlerEvent::OutboundSubstreamRequest {
                         protocol: SubstreamProtocol::new(ReadyUpgrade::new(PROTOCOL_NAME), ()),
@@ -224,11 +253,19 @@ impl ConnectionHandler for Handler {
     ) -> Poll<ConnectionHandlerEvent<Self::OutboundProtocol, (), Self::ToBehaviour>> {
         // Return queued events.
         if let Some(event) = self.queued_events.pop_front() {
+            Self::debug_probe(format!(
+                "poll_queued_event endpoint={:?} event={event:?}",
+                self.endpoint
+            ));
             return Poll::Ready(event);
         }
 
         match self.inbound_stream.poll_unpin(cx) {
             Poll::Ready(Ok(Ok(addresses))) => {
+                Self::debug_probe(format!(
+                    "inbound_handshake_ok endpoint={:?} remote_addrs={addresses:?}",
+                    self.endpoint
+                ));
                 return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
                     Event::InboundConnectNegotiated {
                         remote_addrs: addresses,
@@ -236,11 +273,19 @@ impl ConnectionHandler for Handler {
                 ))
             }
             Poll::Ready(Ok(Err(error))) => {
+                Self::debug_probe(format!(
+                    "inbound_handshake_error endpoint={:?} error={error:?}",
+                    self.endpoint
+                ));
                 return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
                     Event::InboundConnectFailed { error },
                 ))
             }
             Poll::Ready(Err(futures_bounded::Timeout { .. })) => {
+                Self::debug_probe(format!(
+                    "inbound_handshake_timeout endpoint={:?}",
+                    self.endpoint
+                ));
                 return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
                     Event::InboundConnectFailed {
                         error: inbound::Error::Io(io::ErrorKind::TimedOut.into()),
@@ -252,6 +297,10 @@ impl ConnectionHandler for Handler {
 
         match self.outbound_stream.poll_unpin(cx) {
             Poll::Ready(Ok(Ok(addresses))) => {
+                Self::debug_probe(format!(
+                    "outbound_handshake_ok endpoint={:?} remote_addrs={addresses:?}",
+                    self.endpoint
+                ));
                 return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
                     Event::OutboundConnectNegotiated {
                         remote_addrs: addresses,
@@ -259,11 +308,19 @@ impl ConnectionHandler for Handler {
                 ))
             }
             Poll::Ready(Ok(Err(error))) => {
+                Self::debug_probe(format!(
+                    "outbound_handshake_error endpoint={:?} error={error:?}",
+                    self.endpoint
+                ));
                 return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
                     Event::OutboundConnectFailed { error },
                 ))
             }
             Poll::Ready(Err(futures_bounded::Timeout { .. })) => {
+                Self::debug_probe(format!(
+                    "outbound_handshake_timeout endpoint={:?}",
+                    self.endpoint
+                ));
                 return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
                     Event::OutboundConnectFailed {
                         error: outbound::Error::Io(io::ErrorKind::TimedOut.into()),

@@ -98,6 +98,12 @@ impl Behaviour {
         self.address_candidates.iter().cloned().collect()
     }
 
+    fn debug_probe(line: impl AsRef<str>) {
+        if std::env::var_os("P2P_NET_DCUTR_DEBUG").is_some() {
+            eprintln!("P2P_NET_DCUTR_DEBUG behaviour {}", line.as_ref());
+        }
+    }
+
     fn on_dial_failure(
         &mut self,
         DialFailure {
@@ -106,6 +112,9 @@ impl Behaviour {
             ..
         }: DialFailure,
     ) {
+        Self::debug_probe(format!(
+            "dial_failure peer={peer_id:?} direct_connection={failed_direct_connection:?}"
+        ));
         let Some(peer_id) = peer_id else {
             return;
         };
@@ -125,12 +134,18 @@ impl Behaviour {
         };
 
         if *attempt < MAX_NUMBER_OF_UPGRADE_ATTEMPTS {
+            Self::debug_probe(format!(
+                "retry_connect peer={peer_id} relayed_connection={relayed_connection_id:?} attempt={attempt}"
+            ));
             self.queued_events.push_back(ToSwarm::NotifyHandler {
                 handler: NotifyHandler::One(*relayed_connection_id),
                 peer_id,
                 event: Either::Left(handler::relayed::Command::Connect),
             })
         } else {
+            Self::debug_probe(format!(
+                "attempts_exceeded peer={peer_id} relayed_connection={relayed_connection_id:?}"
+            ));
             self.queued_events.extend([ToSwarm::GenerateEvent(Event {
                 remote_peer_id: peer_id,
                 result: Err(Error {
@@ -177,17 +192,24 @@ impl NetworkBehaviour for Behaviour {
         remote_addr: &Multiaddr,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         if is_relayed(local_addr) {
+            let observed_addresses = self.observed_addresses();
+            Self::debug_probe(format!(
+                "established_inbound_relayed peer={peer} connection={connection_id:?} local_addr={local_addr} remote_addr={remote_addr} candidates={}",
+                observed_addresses.len()
+            ));
             let connected_point = ConnectedPoint::Listener {
                 local_addr: local_addr.clone(),
                 send_back_addr: remote_addr.clone(),
             };
-            let mut handler =
-                handler::relayed::Handler::new(connected_point, self.observed_addresses());
+            let mut handler = handler::relayed::Handler::new(connected_point, observed_addresses);
             handler.on_behaviour_event(handler::relayed::Command::Connect);
 
             // TODO: We could make two `handler::relayed::Handler` here, one inbound one outbound.
             return Ok(Either::Left(handler));
         }
+        Self::debug_probe(format!(
+            "established_inbound_direct peer={peer} connection={connection_id:?} local_addr={local_addr} remote_addr={remote_addr}"
+        ));
         self.direct_connections
             .entry(peer)
             .or_default()
@@ -212,16 +234,25 @@ impl NetworkBehaviour for Behaviour {
         port_use: PortUse,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         if is_relayed(addr) {
+            let observed_addresses = self.observed_addresses();
+            Self::debug_probe(format!(
+                "established_outbound_relayed peer={peer} connection={connection_id:?} addr={addr} role_override={role_override:?} port_use={port_use:?} candidates={}",
+                observed_addresses.len()
+            ));
             return Ok(Either::Left(handler::relayed::Handler::new(
                 ConnectedPoint::Dialer {
                     address: addr.clone(),
                     role_override,
                     port_use,
                 },
-                self.observed_addresses(),
+                observed_addresses,
             ))); // TODO: We could make two `handler::relayed::Handler` here, one inbound one
                  // outbound.
         }
+
+        Self::debug_probe(format!(
+            "established_outbound_direct peer={peer} connection={connection_id:?} addr={addr} role_override={role_override:?} port_use={port_use:?}"
+        ));
 
         self.direct_connections
             .entry(peer)
@@ -240,6 +271,9 @@ impl NetworkBehaviour for Behaviour {
                 );
             }
 
+            Self::debug_probe(format!(
+                "direct_upgrade_success peer={peer} direct_connection={connection_id:?} relayed_connection={relayed_connection_id:?} role_override={role_override:?}"
+            ));
             self.queued_events.extend([ToSwarm::GenerateEvent(Event {
                 remote_peer_id: peer,
                 result: Ok(connection_id),
@@ -269,6 +303,9 @@ impl NetworkBehaviour for Behaviour {
         match handler_event {
             Either::Left(handler::relayed::Event::InboundConnectNegotiated { remote_addrs }) => {
                 tracing::debug!(target=%event_source, addresses=?remote_addrs, "Attempting to hole-punch as dialer");
+                Self::debug_probe(format!(
+                    "inbound_connect_negotiated peer={event_source} relayed_connection={relayed_connection_id:?} remote_addrs={remote_addrs:?}"
+                ));
 
                 let opts = DialOpts::peer_id(event_source)
                     .addresses(remote_addrs)
@@ -282,6 +319,9 @@ impl NetworkBehaviour for Behaviour {
                 self.queued_events.push_back(ToSwarm::Dial { opts });
             }
             Either::Left(handler::relayed::Event::InboundConnectFailed { error }) => {
+                Self::debug_probe(format!(
+                    "inbound_connect_failed peer={event_source} relayed_connection={relayed_connection_id:?} error={error:?}"
+                ));
                 self.queued_events.push_back(ToSwarm::GenerateEvent(Event {
                     remote_peer_id: event_source,
                     result: Err(Error {
@@ -290,6 +330,9 @@ impl NetworkBehaviour for Behaviour {
                 }));
             }
             Either::Left(handler::relayed::Event::OutboundConnectFailed { error }) => {
+                Self::debug_probe(format!(
+                    "outbound_connect_failed peer={event_source} relayed_connection={relayed_connection_id:?} error={error:?}"
+                ));
                 self.queued_events.push_back(ToSwarm::GenerateEvent(Event {
                     remote_peer_id: event_source,
                     result: Err(Error {
@@ -301,16 +344,14 @@ impl NetworkBehaviour for Behaviour {
             }
             Either::Left(handler::relayed::Event::OutboundConnectNegotiated { remote_addrs }) => {
                 tracing::debug!(target=%event_source, addresses=?remote_addrs, "Attempting to hole-punch as listener");
+                Self::debug_probe(format!(
+                    "outbound_connect_negotiated peer={event_source} relayed_connection={relayed_connection_id:?} remote_addrs={remote_addrs:?}"
+                ));
 
                 let opts = DialOpts::peer_id(event_source)
                     .condition(dial_opts::PeerCondition::Always)
                     .addresses(remote_addrs)
                     .override_role()
-                    // QUIC enters its coordinated raw-UDP hole-punch path for
-                    // listener-role dials with `PortUse::New`. With the
-                    // default reuse policy both sides start ordinary QUIC
-                    // client handshakes and time out behind NAT.
-                    .allocate_new_port()
                     .build();
 
                 let maybe_direct_connection_id = opts.connection_id();
@@ -321,6 +362,9 @@ impl NetworkBehaviour for Behaviour {
                     .outgoing_direct_connection_attempts
                     .entry((relayed_connection_id, event_source))
                     .or_default() += 1;
+                Self::debug_probe(format!(
+                    "dial_direct_as_listener peer={event_source} direct_connection={maybe_direct_connection_id:?} relayed_connection={relayed_connection_id:?}"
+                ));
                 self.queued_events.push_back(ToSwarm::Dial { opts });
             }
             Either::Right(never) => libp2p_core::util::unreachable(never),
@@ -343,6 +387,7 @@ impl NetworkBehaviour for Behaviour {
             }
             FromSwarm::DialFailure(dial_failure) => self.on_dial_failure(dial_failure),
             FromSwarm::NewExternalAddrCandidate(NewExternalAddrCandidate { addr }) => {
+                Self::debug_probe(format!("external_candidate {addr}"));
                 self.address_candidates.add(addr.clone());
             }
             _ => {}

@@ -294,7 +294,12 @@ pub(crate) async fn handle_connection_closed(
     ctx: &mut SwarmEventContext<'_>,
 ) {
     ctx.connection_caps.record_closed(connection_id);
-    ctx.peer_book.record_disconnected(peer_id);
+    if !swarm
+        .connected_peers()
+        .any(|connected| connected == &peer_id)
+    {
+        ctx.peer_book.record_disconnected(peer_id);
+    }
     let mut guard = ctx.snapshot.lock().await;
     guard.connected_peers = swarm.connected_peers().count();
     sync_peer_connectivity_snapshot(&mut guard, ctx);

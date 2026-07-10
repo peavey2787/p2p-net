@@ -214,11 +214,14 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         .to_string_lossy()
         .to_string();
     cfg.discovery.namespace.tags = vec![tag.clone()];
+    cfg.discovery.dht.enabled = false;
     cfg.discovery.public_bootstrap.auto_connect_discovered_peers = false;
     cfg.discovery.public_bootstrap.relay_peers = vec![VERIFIED_PUBLIC_RELAY.to_string()];
-    cfg.discovery.relay_discovery.use_dht_relays = true;
-    cfg.discovery.relay_discovery.min_reservations = 3;
-    cfg.discovery.relay_discovery.max_reservations = 8;
+    cfg.discovery.relay_discovery.use_cached_relays = false;
+    cfg.discovery.relay_discovery.use_rendezvous_relays = false;
+    cfg.discovery.relay_discovery.use_dht_relays = false;
+    cfg.discovery.relay_discovery.min_reservations = 1;
+    cfg.discovery.relay_discovery.max_reservations = 1;
     if direct_smoke_mode {
         cfg.discovery.public_bootstrap = PublicBootstrapConfig::private_infrastructure_only();
         cfg.discovery.dht.enabled = false;
@@ -275,6 +278,15 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                 if pulse.contains("relayed=true") {
                     target_relay_seen = true;
                 } else if pulse.contains("relayed=false") && target_relay_seen {
+                    target_direct_after_relay = true;
+                }
+            }
+            for pulse in &snapshot.pulses {
+                if pulse.contains("dcutr event")
+                    && pulse.contains(target)
+                    && pulse.contains("result: Ok")
+                    && target_relay_seen
+                {
                     target_direct_after_relay = true;
                 }
             }

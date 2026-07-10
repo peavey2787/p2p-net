@@ -203,6 +203,10 @@ blake3 = "1"
 rand = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
+[dev-dependencies]
+base64 = "0.22"
+webrtc = "0.8.0"
+
 [patch.crates-io]
 
 # rust-libp2p's WebSocket builder expects libp2p-dns when WebSocket support
