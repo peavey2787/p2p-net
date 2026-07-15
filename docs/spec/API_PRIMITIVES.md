@@ -1,6 +1,6 @@
 # General-purpose application API
 
-`p2p-net` exposes one stable, application-facing API surface. Applications should build on these six primitives instead of depending on libp2p swarm internals:
+`p2p-net` exposes one stable, application-facing API surface. Applications should build on these six data-plane primitives instead of depending on libp2p swarm internals:
 
 1. `connect_peer`
 2. `disconnect_peer`
@@ -9,7 +9,7 @@
 5. `subscribe`
 6. `get_peers`
 
-These primitives are available on `NodeHandle`, returned by `start_node(...)` or `start_node_with_platform(...)`.
+These primitives are available on `NodeHandle`, returned by `start_node(...)` or `start_node_with_platform(...)`. A seventh query/management primitive, `get_metrics(peer_id)`, exposes runtime-owned infrastructure telemetry without pushing payment or settlement logic into the networking core.
 
 ## Primitive semantics
 
@@ -48,6 +48,18 @@ Subscribes the local swarm to an application topic and returns a topic-filtered 
 
 Returns known peers as `PeerInfo` records. This includes connected, cached, rendezvous-discovered, DHT-provider-discovered, relay-discovered, bootstrap, bootstrap-seed, and configured peers when those sources are available. `PeerInfo.sources` tells applications how each peer was learned.
 
+### `get_metrics(peer_id)`
+
+Returns `NodeMetrics` from the node runtime. Passing `None` returns global totals plus per-peer and per-topic bandwidth maps. Passing `Some(peer_id)` returns the same top-level counters but filters the per-peer map to that peer and omits per-topic details to avoid large result payloads.
+
+Metrics currently include:
+
+- bandwidth totals for accounted ingress/egress bytes, plus per-peer and per-topic maps where available;
+- storage counters for node-managed persisted chunks/write payloads;
+- compute counters for event-loop work estimates, active request pressure, and connection-cap choking.
+
+Applications can use these counters to build quota, billing, or settlement systems above the networking core. Wallets, tokens, and transaction logic are intentionally outside this crate.
+
 ## Peer metadata
 
 `PeerInfo` contains the peer id, connection status, known addresses, optional capability hints, optional namespace metadata, and one or more `PeerSource` values. This keeps `get_peers()` stable while the internal peer book merges multiple discovery sources into one application-facing record per peer id.
@@ -82,4 +94,4 @@ Application payloads are raw bytes and are capped at 1 MiB by default. Higher-le
 
 ## Design boundary
 
-The six primitives are intentionally small. Chat, games, decentralized storage, compute, pub/sub, databases, and mesh applications should implement their domain protocol above this layer.
+The six data-plane primitives are intentionally small. Chat, games, decentralized storage, compute, pub/sub, databases, and mesh applications should implement their domain protocol above this layer. Telemetry remains query-only so application billing/settlement policy can evolve independently from transport code.

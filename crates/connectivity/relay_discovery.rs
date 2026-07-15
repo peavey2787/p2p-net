@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use super::addr::{has_reachable_transport, has_unspecified_ip};
 use super::relay::{is_p2p_circuit_addr, relay_peer_id};
+use super::webrtc::is_webrtc_direct_addr;
 
 /// Operator policy for finding relay/mediator candidates.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -299,15 +300,13 @@ pub fn relay_candidate_addr(
 /// Score native relay transports in preferred dial order.
 ///
 /// TLS WebSocket remains supported because the native WebSocket transport
-/// handles it. WebTransport and WebRTC-direct are rejected until native
-/// transports for those multiaddr protocols are installed.
+/// handles it. WebRTC-direct is supported through the native desktop
+/// `libp2p-webrtc` transport so browser-compatible candidates remain usable.
 pub(crate) fn supported_relay_addr_score(addr: &Multiaddr) -> Option<u8> {
-    if addr.iter().any(|protocol| {
-        matches!(
-            protocol,
-            Protocol::WebTransport | Protocol::WebRTCDirect | Protocol::P2pWebRtcDirect
-        )
-    }) {
+    if addr
+        .iter()
+        .any(|protocol| matches!(protocol, Protocol::WebTransport))
+    {
         return None;
     }
     if addr
@@ -315,11 +314,13 @@ pub(crate) fn supported_relay_addr_score(addr: &Multiaddr) -> Option<u8> {
         .any(|protocol| matches!(protocol, Protocol::Quic | Protocol::QuicV1))
     {
         Some(0)
+    } else if is_webrtc_direct_addr(addr) {
+        Some(1)
     } else if addr
         .iter()
         .any(|protocol| matches!(protocol, Protocol::Tcp(_)))
     {
-        Some(1)
+        Some(2)
     } else {
         None
     }

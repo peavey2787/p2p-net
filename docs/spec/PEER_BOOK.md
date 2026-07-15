@@ -1,6 +1,6 @@
 # Peer book specification
 
-The peer book is the single internal index used by the six-primitives API to describe peers known to the node.
+The peer book is the single internal index used by the application API to describe peers known to the node.
 
 ## Purpose
 

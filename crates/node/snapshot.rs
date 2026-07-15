@@ -56,7 +56,15 @@ pub struct NodeSnapshot {
     pub public_ip_probe_status: String,
     pub public_ip_probe_addr: Option<String>,
     pub public_ip_probe_external_addresses: Vec<String>,
+    /// Back-compat alias; prefer `all_swarm_connections`.
     pub connected_peers: usize,
+    /// Raw `swarm.connected_peers().count()`, including infrastructure peers.
+    pub all_swarm_connections: usize,
+    /// Peers associated with one of this node's exact application namespaces.
+    pub application_peer_connections: usize,
+    pub infrastructure_peer_connections: usize,
+    pub dht_routing_peer_connections: usize,
+    pub relay_peer_connections: usize,
     pub peer_book_known_peers: usize,
     pub peer_book_discovered_peers: usize,
     pub auto_connect_enabled: bool,
@@ -75,19 +83,13 @@ pub struct NodeSnapshot {
     pub mediator_denied_circuits: usize,
     pub mediator_abuse_rate_limit_events: usize,
     pub relay_service_health: RelayServiceHealth,
-    /// ACL scope is intentionally connection-level for now because rust-libp2p's stock relay server
-    /// does not expose a relay-only reservation hook.
+    /// ACL scope is connection-level until relay-only hooks are available.
     pub relay_acl_scope: String,
-    /// Active reservations accepted by this node while acting as a relay server.
     pub relay_reservations_accepted: usize,
     /// Active circuits currently served by this node as a relay server.
-    /// rust-libp2p relay-client events do not expose a matching close event, so client-side
-    /// circuit establishment pulses are logged but not counted as active here.
     pub relay_active_circuits: usize,
-    /// Total relay requests denied by this relay server, across reservations and circuits.
     pub relay_denied_requests: usize,
     /// Bytes forwarded by this relay server when byte accounting is available.
-    /// rust-libp2p relay events currently do not expose per-circuit byte totals, so this remains zero unless a future accounting layer updates it.
     pub relay_bytes_forwarded: u64,
     pub relay_denied_reservations: usize,
     pub relay_denied_circuits: usize,
@@ -96,19 +98,12 @@ pub struct NodeSnapshot {
     pub relay_server_errors: usize,
     pub connection_limit_events: usize,
     pub connection_cap_disconnects: usize,
-    /// Relay reservations this node has established as a relay client.
     pub relay_client_reservations: usize,
-    /// Relay reservation attempts this node has initiated as a relay client.
     pub relay_client_reservation_attempts: usize,
-    /// Relay reservation failures observed locally while setting up configured relays.
     pub relay_client_reservation_failures: usize,
-    /// Whether automatic relay discovery/selection is enabled.
     pub relay_discovery_enabled: bool,
-    /// Minimum desired relay reservations for lite/mobile nodes.
     pub relay_discovery_min_reservations: usize,
-    /// Maximum relay candidates/reservation attempts selected at once.
     pub relay_discovery_max_reservations: usize,
-    /// Relay addresses selected from configured/cache/rendezvous sources.
     pub relay_discovery_selected_relays: Vec<String>,
     pub relay_discovery_candidate_count: usize,
     pub relay_discovery_configured_candidates: usize,
@@ -118,16 +113,13 @@ pub struct NodeSnapshot {
     pub relay_discovery_ignored_candidates: usize,
     pub relay_discovery_failures: usize,
     pub relay_discovery_replacements: usize,
-    /// Confirmed `/p2p-circuit` listen addresses for this node.
     pub relayed_listen_addresses: Vec<String>,
     pub dcutr_enabled: bool,
     pub dcutr_attempt_after_relay_connection: bool,
     pub dcutr_keep_relay_fallback: bool,
     pub dcutr_retry_interval_secs: u64,
     pub dcutr_max_attempts_per_peer: u32,
-    /// DCUtR upgrade attempts/events observed.
     pub dcutr_attempts: usize,
-    /// DCUtR events that look successful by event debug output.
     pub dcutr_successes: usize,
     pub dcutr_failures: usize,
     pub dcutr_relay_fallbacks: usize,

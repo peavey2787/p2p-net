@@ -178,3 +178,10 @@ PowerShell_transcript*.txt
 *.rej
 *.old
 *.new
+
+# Local node identities and caches
+.p2p-net-identity-key
+.p2p-net-peer-cache.json
+p2p-node.json
+/.-identity-key
+/.-peer-cache.json

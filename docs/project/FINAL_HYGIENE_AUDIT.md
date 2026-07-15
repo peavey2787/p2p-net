@@ -35,41 +35,41 @@ No remaining guideline violations were found in the static audit. The original a
 Longest file overall, excluding `.git/`:
 
 ```text
-Cargo.lock — 4,110 lines
+Cargo.lock — 5,882 lines
 ```
 
 Longest runtime source files:
 
 ```text
-crates/connectivity/dns.rs — 471 lines
-crates/node/mod.rs — 410 lines
-crates/stack/discovery.rs — 417 lines
-crates/bindings/mod.rs — 415 lines
+crates/node/events/connection.rs — 496 lines
+crates/connectivity/dns.rs — 446 lines
+crates/bindings/mod.rs — 431 lines
+crates/node/mod.rs — 421 lines
+crates/stack/discovery.rs — 415 lines
+crates/api/mod.rs — 384 lines
+crates/connectivity/connection_strategy.rs — 362 lines
+crates/connectivity/relay_discovery.rs — 344 lines
+crates/connectivity/dht.rs — 334 lines
 crates/protocol/pulse.rs — 330 lines
-crates/api/mod.rs — 327 lines
-crates/node/events/connection.rs — 321 lines
-crates/connectivity/rendezvous.rs — 321 lines
-crates/connectivity/relay_discovery.rs — 309 lines
-crates/node/environment.rs — 307 lines
 ```
 
 Former hotspot status:
 
 ```text
-crates/node/mod.rs — 410 lines
-crates/node/config.rs — 243 lines
-crates/node/config_validation.rs — 171 lines
+crates/node/mod.rs — 421 lines
+crates/node/config.rs — 247 lines
+crates/node/config_validation.rs — 165 lines
 crates/node/metrics.rs — 11 lines
 crates/node/metrics/prometheus.rs — 24 lines
-crates/node/runtime.rs — 273 lines
-crates/node/snapshot.rs — 211 lines
-crates/node/startup.rs — 103 lines
-crates/node/startup/addrs.rs — 232 lines
+crates/node/runtime.rs — 313 lines
+crates/node/snapshot.rs — 230 lines
+crates/node/startup.rs — 104 lines
+crates/node/startup/addrs.rs — 251 lines
 crates/connectivity/relay.rs — 13 lines
 crates/connectivity/relay/address.rs — 67 lines
 crates/connectivity/relay/config.rs — 272 lines
 crates/connectivity/relay/schedule.rs — 173 lines
-crates/connectivity/relay/state.rs — 98 lines
+crates/connectivity/relay/state.rs — 100 lines
 ```
 
 ## Structure result

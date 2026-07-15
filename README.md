@@ -1,29 +1,15 @@
 # p2p-net
 
-`p2p-net` is a shared libp2p node core with six general-purpose application primitives: `connect_peer`, `disconnect_peer`, `send_message`, `broadcast`, `subscribe`, and `get_peers`. It also provides peer discovery, signed heartbeat gossip, NAT traversal, DCUtR hole punching, relay mediation, rendezvous discovery, operator metrics, platform adapters, binding-safe helpers, and hostile-network testing.
+`p2p-net` is a Rust libp2p node core that gives applications a small, stable API for peer connectivity and messaging while the crate handles transport mechanics, discovery, relay fallback, DCUtR hole punching, native WebRTC-direct, telemetry, and platform storage/runtime details.
 
 ## Features
 
-- TCP, QUIC, WebSocket, DNS, Noise, Yamux
-- Gossipsub heartbeat mesh with strict/manual validation
-- Kademlia, peer cache, bootstrap seeds, and default public fallback policy
-- Persistent node identity key and stable `PeerId`
-- AutoNAT, relay client, relay reservation, DCUtR upgrade path
-- Optional relay server with limits, ACLs, schedule, and abuse telemetry
-- First-class DCUtR mediator profile/config mapped onto Circuit Relay v2
-- Optional rendezvous client/server discovery layer
-- Connection caps, peer/IP limits, replay cache, timestamp checks
-- JSON snapshot export and Prometheus-style metrics export
-- Dashboard example, security checks, ignored load/soak tests, and fuzz harnesses
-- Profile-driven libp2p behaviour policy, including Kademlia client mode for lite/mobile nodes
-- Relay discovery and selection from configured, cached, and rendezvous candidate sources
-- Explicit DCUtR policy with relay fallback, retry controls, and counters
-- Platform runtime/storage abstraction for desktop and mobile adapters
-- Binding-safe facade for desktop, Android, iOS/iPadOS, and WASM/WebView shells
-- Six stable application primitives exposed on `NodeHandle`: `connect_peer`, `disconnect_peer`, `send_message`, `broadcast`, `subscribe`, and `get_peers`
-- Consumer-default public fallback with advanced private-infrastructure-first override
-- Hashed application discovery namespaces for contact/group tags without raw tag publication
-- Kademlia provider-record discovery for hashed namespaces when rendezvous is unavailable
+- Native transports: TCP, QUIC, WebSocket, browser-compatible `/webrtc-direct`, DNS, Noise, Yamux
+- Discovery: Kademlia provider records, peer cache, bootstrap seeds, rendezvous, and public fallback policy
+- NAT traversal: relay client/reservations, DCUtR direct upgrades, AutoNAT, and optional mediator/relay server profiles
+- App API: six data-plane primitives on `NodeHandle`, plus `get_metrics()` for infrastructure telemetry
+- Safety/ops: connection caps, replay/timestamp checks, peer scoring, snapshots, Prometheus-style export, and dashboard UI
+- Portability: platform runtime/storage abstraction and binding-safe facade for desktop, mobile, and WebView shells
 
 DNS support is enabled by default for configured and cached peers through p2p-net's own startup resolver. Peer addresses using `/dns`, `/dns4`, `/dns6`, or `/dnsaddr` are resolved before dialing. WebSocket support in rust-libp2p 0.56 requires the `libp2p-dns` adapter crate, so p2p-net patches that crate to a local no-Hickory implementation instead of using the crates.io resolver path. The disallowed upstream mDNS adapter crate is policy-patched to a local no-op placeholder so the rejected Hickory DNS line stays out of `Cargo.lock`. `/dnsaddr` uses bounded DNS-over-HTTPS TXT lookup support with a configurable endpoint in p2p-net's own resolver. The default endpoint is Cloudflare for simple out-of-the-box operation; production deployments can point it at an internal/self-hosted DoH resolver or disable `/dnsaddr` entirely. LAN multicast discovery/mDNS is not included.
 
@@ -75,20 +61,44 @@ Linux/macOS equivalent:
 Fuzz targets are included under `qa/fuzz/`, but they are not run by the stable one-file validation script. Additional validation and hostile-network notes are in `docs/validation/VALIDATION.md`.
 
 
-## General-purpose application API
+## The General-Purpose Application API
 
-Every application builds on the same six primitives exposed by `NodeHandle`:
+Applications should build on our stable, high-level API surface instead of depending on low-level swarm or libp2p internals. Every application builds on the same six primitives exposed by `NodeHandle`:
 
 ```rust
+// Establish connection to a target address
 handle.connect_peer(addr).await?;
+
+// Drop connection to a peer
 handle.disconnect_peer(peer_id).await?;
+
+// Unicast-style message targeting a specific peer
 handle.send_message(peer_id, "chat/general", payload).await?;
+
+// Gossip/PubSub broadcast to all subscribed peers on a topic
 handle.broadcast("game/lobby", payload).await?;
+
+// Subscribe to a topic and receive a local message stream
 let mut messages = handle.subscribe("chat/general").await?;
+
+// Query known peers and discovery metrics
 let peers = handle.get_peers().await?;
 ```
 
+This simple interface effectively decouples your business logic (chat, gaming, database sync) from transport mechanics (TCP, WebRTC, QUIC, NAT-punting).
+
 Application messages use `AppMessage` envelopes and app topics namespaced as `p2p-net/app/v1/net-<network_id>/<topic>`. See `docs/spec/API_PRIMITIVES.md` and `docs/impl/API_IMPLEMENTATION.md`.
+
+### Telemetry without payment logic
+
+The core primitives stay free of wallet, token, and payment-settlement code. Applications that need usage accounting can build those layers above the node by calling the seventh query/management primitive:
+
+```rust
+let all_metrics = handle.get_metrics(None).await?;
+let peer_metrics = handle.get_metrics(Some(peer_id)).await?;
+```
+
+`get_metrics()` reports runtime-owned bandwidth, storage, and compute counters, including per-peer and per-topic bandwidth where available. That gives apps enough low-level data to implement custom settlement, micropayment, quota, or billing systems without coupling financial logic into the networking core.
 
 ## Start a node
 
@@ -148,7 +158,7 @@ Important fields:
 
 - `profile`: high-level node role selection: `auto`, `full`, `lite`, `relay`, `mediator`, `rendezvous`, `bootstrap`, or `mobile_lite`.
 - `identity_key_path`: stable private node identity; keep this file private and back it up according to `docs/spec/IDENTITY_KEY_BACKUP_ROTATION.md`.
-- `listen_addresses`: local TCP/QUIC/WebSocket listen multiaddrs. Use concrete `/ip4` or `/ip6` listen addresses, not DNS names.
+- `listen_addresses`: local TCP/QUIC/WebSocket/WebRTC-direct listen multiaddrs. Use concrete `/ip4` or `/ip6` listen addresses, not DNS names.
 - `bootstrap_peers`: trusted `/p2p/<PeerId>` bootstrap multiaddrs. `/dns`, `/dns4`, `/dns6`, and `/dnsaddr` dial addresses are supported by default.
 - `dnsaddr`: `/dnsaddr` DoH policy. Defaults to bounded Cloudflare DoH for simple operation; set `doh_endpoint` to an internal/self-hosted DoH resolver for production, or set `enabled` to `false` to reject `/dnsaddr` in configured peers. See `docs/impl/DNSADDR_DOH.md`.
 - `relay_peers`: operator-pinned relay or mediator peers to dial and reserve through.
@@ -159,7 +169,7 @@ Important fields:
 - `dcutr`: direct-connection upgrade policy with relay fallback, retry budget, and observability. See `docs/impl/DCUTR_POLICY.md`.
 - `start_node_with_platform(...)`: embed the shared core with platform runtime/storage adapters. See `docs/impl/PLATFORM_RUNTIME.md`.
 - `bindings`: binding-safe JSON/enum facade for Kotlin, Swift, desktop, and WebView shells. See `docs/impl/BINDINGS.md`.
-- `NodeHandle`: six app primitives for connecting peers, sending/broadcasting payloads, subscribing to topics, and listing peers. See `docs/spec/API_PRIMITIVES.md`.
+- `NodeHandle`: six app data-plane primitives plus `get_metrics()` for runtime-owned telemetry. See `docs/spec/API_PRIMITIVES.md`.
 - `reserve_configured_relays`: request `/p2p-circuit` reservations from selected relays.
 - `discovery.rendezvous`: enable rendezvous client/server registration/discovery.
 - `connection_limits`: global, per-peer, and per-IP connection caps.
@@ -203,7 +213,7 @@ Normally, do not run the individual commands manually. Use `.\qa\ci\run-full-val
 - `docs/impl/DCUTR_POLICY.md` documents DCUtR policy and fallback counters.
 - `docs/impl/PLATFORM_RUNTIME.md` documents the platform runtime/storage abstraction.
 - `docs/impl/BINDINGS.md` documents the cross-platform binding facade.
-- `docs/spec/API_PRIMITIVES.md` documents the six primitive application API.
+- `docs/spec/API_PRIMITIVES.md` documents the application API and telemetry query primitive.
 - `docs/spec/DISCOVERY_RESURRECTION.md` documents consumer-default public fallback, advanced private-infrastructure mode, and peer roles.
 - `docs/spec/DISCOVERY_NAMESPACES.md` documents hashed app discovery namespace derivation.
 - `docs/spec/PUBLIC_FALLBACK.md` documents default public bootstrap, rendezvous, relay, and auto-connect fallback policy.

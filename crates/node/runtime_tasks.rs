@@ -6,6 +6,7 @@ use libp2p::gossipsub::IdentTopic;
 use libp2p::{PeerId, Swarm};
 use tokio::sync::Mutex;
 
+use crate::api::accounted_transport_bytes;
 use crate::common::error::NetError;
 use crate::connectivity::dht::{start_dht_namespace_discovery, DhtNamespacePlan, DhtProviderState};
 use crate::protocol::pulse::collect_local_heartbeat;
@@ -21,9 +22,10 @@ pub(crate) async fn publish_heartbeat(
     local_peer: PeerId,
     topic: &IdentTopic,
     snapshot: &Arc<Mutex<NodeSnapshot>>,
-) -> Result<(), NetError> {
+) -> Result<u64, NetError> {
     let env = collect_local_heartbeat(local_peer)?;
     let payload = serde_json::to_vec(&env).map_err(|e| NetError::GossipCodec(e.to_string()))?;
+    let accounted_bytes = accounted_transport_bytes(payload.len());
     let _ = swarm
         .behaviour_mut()
         .gossipsub
@@ -33,7 +35,7 @@ pub(crate) async fn publish_heartbeat(
         &mut guard.pulses,
         format!("local heartbeat {} {}", env.peer_id, env.nonce_hex),
     );
-    Ok(())
+    Ok(accounted_bytes)
 }
 
 pub(crate) async fn apply_public_ip_probe_result(

@@ -17,6 +17,7 @@
   "identity_key_path": ".p2p-net-identity-key",
   "listen_addresses": [
     "/ip4/0.0.0.0/udp/4001/quic-v1",
+    "/ip4/0.0.0.0/udp/4003/webrtc-direct",
     "/ip4/0.0.0.0/tcp/4001",
     "/ip4/0.0.0.0/tcp/4002/ws"
   ],
@@ -59,7 +60,9 @@
     },
     "namespace": {
       "app_id": "p2p-net",
-      "tags": [],
+      "tags": [
+        "my-private-desktop-laptop-network-2026"
+      ],
       "privacy": "hashed",
       "allow_readable_tags": false
     },

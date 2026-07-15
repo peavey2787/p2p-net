@@ -9,6 +9,7 @@ use crate::connectivity::dns::DnsaddrConfig;
 use crate::connectivity::limits::ConnectionLimitsConfig;
 use crate::connectivity::mediator::MediatorConfig;
 use crate::connectivity::relay::RelayServiceConfig;
+use crate::connectivity::webrtc::DEFAULT_WEBRTC_DIRECT_LISTEN_ADDR;
 use crate::platform::PlatformRuntime;
 use crate::protocol::pulse::MessageSecurityConfig;
 
@@ -235,6 +236,7 @@ impl NodeConfig {
 fn default_listen_addresses() -> Vec<String> {
     vec![
         "/ip4/0.0.0.0/udp/4001/quic-v1".to_string(),
+        DEFAULT_WEBRTC_DIRECT_LISTEN_ADDR.to_string(),
         "/ip4/0.0.0.0/tcp/4001".to_string(),
         "/ip4/0.0.0.0/tcp/4002/ws".to_string(),
     ]

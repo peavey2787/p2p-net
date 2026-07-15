@@ -3,7 +3,7 @@
 Core protocol and lifecycle specifications. Documents here define behavior that
 implementation and validation work must preserve.
 
-- `API_PRIMITIVES.md` — the six public application primitives and app message envelope.
+- `API_PRIMITIVES.md` — the public application primitives, telemetry query, and app message envelope.
 - `DISCOVERY_NAMESPACES.md` — hashed app/contact/group discovery namespace model.
 - `DISCOVERY_RESURRECTION.md` — consumer-default public fallback, advanced private-infrastructure mode, peer roles, and CGNAT/DCUtR reality model.
 - `DHT_PROVIDER_DISCOVERY.md` — Kademlia provider-record discovery for hashed app namespaces.

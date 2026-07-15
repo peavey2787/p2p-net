@@ -4,7 +4,10 @@ use libp2p::gossipsub::TopicHash;
 use libp2p::{PeerId, Swarm};
 use tokio::sync::Mutex;
 
-use crate::api::{app_ident_topic, encode_app_message, AppMessage, PeerSource};
+use crate::api::{
+    accounted_transport_bytes, app_ident_topic, encode_app_message, AppMessage, NodeMetrics,
+    PeerSource,
+};
 use crate::common::error::NetError;
 use crate::connectivity::connection_strategy::{build_connection_plan, PendingConnectionPlans};
 use crate::connectivity::dcutr::DcutrPolicy;
@@ -24,6 +27,7 @@ pub(crate) struct NodeCommandContext<'a> {
     pub(crate) peer_book: &'a mut PeerBook,
     pub(crate) pending_connections: &'a mut PendingConnectionPlans,
     pub(crate) dcutr_policy: &'a DcutrPolicy,
+    pub(crate) metrics: &'a mut NodeMetrics,
 }
 
 pub(crate) async fn handle_node_command(command: NodeCommand, ctx: NodeCommandContext<'_>) {
@@ -36,7 +40,12 @@ pub(crate) async fn handle_node_command(command: NodeCommand, ctx: NodeCommandCo
         peer_book,
         pending_connections,
         dcutr_policy,
+        metrics,
     } = ctx;
+
+    metrics.compute.execution_cycles_estimated =
+        metrics.compute.execution_cycles_estimated.saturating_add(1);
+    metrics.compute.active_request_count = saturating_u32(pending_connections.pending_count());
 
     let (success, sent_app_message) = match command {
         NodeCommand::ConnectPeer { addr, reply } => {
@@ -73,10 +82,18 @@ pub(crate) async fn handle_node_command(command: NodeCommand, ctx: NodeCommandCo
             payload,
             reply,
         } => {
-            let result =
-                publish_app_message(swarm, network_id, local_peer, Some(peer_id), topic, payload);
+            let result = AppMessage::addressed(network_id, topic, local_peer, peer_id, payload)
+                .and_then(|message| {
+                    let topic = message.topic.clone();
+                    publish_app_message(swarm, message).map(|bytes| (topic, bytes))
+                });
             let success = result.is_ok();
-            let _ = reply.send(result);
+            if let Ok((topic, bytes)) = &result {
+                metrics
+                    .bandwidth
+                    .record_sent(Some(peer_id), Some(topic.as_str()), *bytes);
+            }
+            let _ = reply.send(result.map(|_| ()));
             (success, success)
         }
         NodeCommand::Broadcast {
@@ -84,9 +101,18 @@ pub(crate) async fn handle_node_command(command: NodeCommand, ctx: NodeCommandCo
             payload,
             reply,
         } => {
-            let result = publish_app_message(swarm, network_id, local_peer, None, topic, payload);
+            let result =
+                AppMessage::broadcast(network_id, topic, local_peer, payload).and_then(|message| {
+                    let topic = message.topic.clone();
+                    publish_app_message(swarm, message).map(|bytes| (topic, bytes))
+                });
             let success = result.is_ok();
-            let _ = reply.send(result);
+            if let Ok((topic, bytes)) = &result {
+                metrics
+                    .bandwidth
+                    .record_sent(None, Some(topic.as_str()), *bytes);
+            }
+            let _ = reply.send(result.map(|_| ()));
             (success, success)
         }
         NodeCommand::Subscribe { topic, reply } => {
@@ -104,6 +130,12 @@ pub(crate) async fn handle_node_command(command: NodeCommand, ctx: NodeCommandCo
             let _ = reply.send(Ok(peers));
             (true, false)
         }
+        NodeCommand::GetMetrics { peer_id, reply } => {
+            metrics.compute.active_request_count =
+                saturating_u32(pending_connections.pending_count());
+            let _ = reply.send(Ok(metrics.for_peer(peer_id)));
+            (true, false)
+        }
     };
 
     let mut guard = snapshot.lock().await;
@@ -117,27 +149,21 @@ pub(crate) async fn handle_node_command(command: NodeCommand, ctx: NodeCommandCo
     if sent_app_message {
         guard.app_messages_sent = guard.app_messages_sent.saturating_add(1);
     }
+    metrics.compute.active_request_count = saturating_u32(pending_connections.pending_count());
 }
 
 fn publish_app_message(
     swarm: &mut Swarm<MeshBehaviour>,
-    network_id: u32,
-    local_peer: PeerId,
-    target_peer: Option<PeerId>,
-    topic: String,
-    payload: Vec<u8>,
-) -> Result<(), NetError> {
-    let topic_handle = app_ident_topic(network_id, &topic)?;
-    let message = match target_peer {
-        Some(peer_id) => AppMessage::addressed(network_id, topic, local_peer, peer_id, payload)?,
-        None => AppMessage::broadcast(network_id, topic, local_peer, payload)?,
-    };
+    message: AppMessage,
+) -> Result<u64, NetError> {
+    let topic_handle = app_ident_topic(message.network_id, &message.topic)?;
     let wire = encode_app_message(&message)?;
+    let accounted_bytes = accounted_transport_bytes(wire.len());
     swarm
         .behaviour_mut()
         .gossipsub
         .publish(topic_handle, wire)
-        .map(|_| ())
+        .map(|_| accounted_bytes)
         .map_err(|err| NetError::AppMessage {
             topic: message.topic,
             reason: err.to_string(),
@@ -169,4 +195,8 @@ async fn subscribe_app_topic(
         guard.app_subscriptions.push(topic);
     }
     Ok(())
+}
+
+fn saturating_u32(value: usize) -> u32 {
+    u32::try_from(value).unwrap_or(u32::MAX)
 }

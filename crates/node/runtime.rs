@@ -13,7 +13,7 @@ use libp2p::{Multiaddr, PeerId, Swarm};
 use tokio::sync::{broadcast, mpsc, Mutex};
 use tokio::task::JoinHandle;
 
-use crate::api::AppMessage;
+use crate::api::{AppMessage, NodeMetrics};
 use crate::connectivity::connection_strategy::PendingConnectionPlans;
 use crate::connectivity::dht::{start_dht_namespace_discovery, DhtProviderState};
 use crate::connectivity::limits::ConnectionCapState;
@@ -144,6 +144,7 @@ async fn run_node_runtime(ctx: NodeRuntimeContext) {
                             peer_book: &mut runtime_state.peer_book,
                             pending_connections: &mut runtime_state.pending_connections,
                             dcutr_policy: &cfg.dcutr,
+                            metrics: &mut runtime_state.metrics,
                         },
                     )
                     .await;
@@ -172,6 +173,7 @@ async fn run_node_runtime(ctx: NodeRuntimeContext) {
                     heartbeat_topic_hash: &heartbeat_topic_hash,
                     app_topic_hashes: &runtime_state.app_topic_hashes,
                     app_messages: &messages_tx,
+                    metrics: &mut runtime_state.metrics,
                     local_peer,
                     network_id: cfg.network_id,
                 };
@@ -192,6 +194,7 @@ struct RuntimeState {
     auto_dial_stats: AutoDialStats,
     connection_caps: ConnectionCapState,
     app_topic_hashes: Vec<TopicHash>,
+    metrics: NodeMetrics,
     dht_refresh_ticks: usize,
 }
 
@@ -221,6 +224,7 @@ impl RuntimeState {
             auto_dial_stats: AutoDialStats::default(),
             connection_caps: ConnectionCapState::new(&cfg.connection_limits),
             app_topic_hashes: Vec::new(),
+            metrics: NodeMetrics::default(),
             dht_refresh_ticks: 0,
         }
     }
@@ -271,7 +275,19 @@ async fn tick_runtime(
 ) {
     events::enforce_relay_schedule(&cfg.relay, swarm, snapshot, &mut runtime_state.relay_state)
         .await;
-    let _ = publish_heartbeat(swarm, local_peer, heartbeat_topic, snapshot).await;
+    if let Ok(bytes) = publish_heartbeat(swarm, local_peer, heartbeat_topic, snapshot).await {
+        runtime_state
+            .metrics
+            .bandwidth
+            .record_sent(None, Some("heartbeat"), bytes);
+    }
+    runtime_state.metrics.compute.execution_cycles_estimated = runtime_state
+        .metrics
+        .compute
+        .execution_cycles_estimated
+        .saturating_add(1);
+    runtime_state.metrics.compute.active_request_count =
+        u32::try_from(runtime_state.pending_connections.pending_count()).unwrap_or(u32::MAX);
     runtime_state.dht_refresh_ticks = runtime_state.dht_refresh_ticks.saturating_add(1);
     let dht_plan = if runtime_state.dht_refresh_ticks >= DHT_REFRESH_TICKS {
         runtime_state.dht_refresh_ticks = 0;
@@ -287,7 +303,10 @@ async fn tick_runtime(
     };
 
     let mut guard = snapshot.lock().await;
-    guard.uptime_secs = started_at.elapsed().as_secs();
+    runtime_state.metrics.uptime_seconds = started_at.elapsed().as_secs();
+    runtime_state.metrics.compute.choked_peers_count =
+        u32::try_from(guard.connection_cap_disconnects).unwrap_or(u32::MAX);
+    guard.uptime_secs = runtime_state.metrics.uptime_seconds;
     if let Some(plan) = dht_plan {
         apply_dht_refresh_snapshot(&mut guard, &runtime_state.dht_state, &plan, "periodic");
     }

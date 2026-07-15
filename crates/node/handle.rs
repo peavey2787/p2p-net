@@ -4,7 +4,7 @@ use libp2p::{Multiaddr, PeerId};
 use tokio::sync::{broadcast, mpsc, oneshot, Mutex};
 use tokio::task::JoinHandle;
 
-use crate::api::{AppMessage, AppSubscription, PeerInfo};
+use crate::api::{AppMessage, AppSubscription, NodeMetrics, P2PNode, PeerInfo};
 use crate::common::error::NetError;
 
 use super::snapshot::NodeSnapshot;
@@ -81,6 +81,13 @@ impl NodeHandle {
         self.request(NodeCommand::GetPeers).await
     }
 
+    /// Return runtime-owned infrastructure metrics. Passing a peer id filters
+    /// per-peer bandwidth details to that peer to avoid large result payloads.
+    pub async fn get_metrics(&self, peer_id: Option<PeerId>) -> Result<NodeMetrics, NetError> {
+        self.request(|reply| NodeCommand::GetMetrics { peer_id, reply })
+            .await
+    }
+
     /// Request shutdown and wait for the swarm task to exit.
     pub async fn shutdown(&self) {
         let _ = self.shutdown_tx.send(()).await;
@@ -101,6 +108,62 @@ impl NodeHandle {
         response
             .await
             .map_err(|_| NetError::ApiCommand("node command response was dropped".to_string()))?
+    }
+}
+
+impl P2PNode for NodeHandle {
+    fn connect_peer(
+        &self,
+        addr: Multiaddr,
+    ) -> impl std::future::Future<Output = Result<(), NetError>> + Send + '_ {
+        async move { NodeHandle::connect_peer(self, addr).await }
+    }
+
+    fn disconnect_peer(
+        &self,
+        peer_id: PeerId,
+    ) -> impl std::future::Future<Output = Result<(), NetError>> + Send + '_ {
+        async move { NodeHandle::disconnect_peer(self, peer_id).await }
+    }
+
+    fn send_message<'a>(
+        &'a self,
+        peer_id: PeerId,
+        topic: &'a str,
+        payload: Vec<u8>,
+    ) -> impl std::future::Future<Output = Result<(), NetError>> + Send + 'a {
+        let topic = topic.to_string();
+        async move { NodeHandle::send_message(self, peer_id, topic, payload).await }
+    }
+
+    fn broadcast<'a>(
+        &'a self,
+        topic: &'a str,
+        payload: Vec<u8>,
+    ) -> impl std::future::Future<Output = Result<(), NetError>> + Send + 'a {
+        let topic = topic.to_string();
+        async move { NodeHandle::broadcast(self, topic, payload).await }
+    }
+
+    fn subscribe<'a>(
+        &'a self,
+        topic: &'a str,
+    ) -> impl std::future::Future<Output = Result<AppSubscription, NetError>> + Send + 'a {
+        let topic = topic.to_string();
+        async move { NodeHandle::subscribe(self, topic).await }
+    }
+
+    fn get_peers(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Vec<PeerInfo>, NetError>> + Send + '_ {
+        async move { NodeHandle::get_peers(self).await }
+    }
+
+    fn get_metrics(
+        &self,
+        peer_id: Option<PeerId>,
+    ) -> impl std::future::Future<Output = Result<NodeMetrics, NetError>> + Send + '_ {
+        async move { NodeHandle::get_metrics(self, peer_id).await }
     }
 }
 
@@ -129,4 +192,8 @@ pub(crate) enum NodeCommand {
         reply: oneshot::Sender<Result<(), NetError>>,
     },
     GetPeers(oneshot::Sender<Result<Vec<PeerInfo>, NetError>>),
+    GetMetrics {
+        peer_id: Option<PeerId>,
+        reply: oneshot::Sender<Result<NodeMetrics, NetError>>,
+    },
 }

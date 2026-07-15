@@ -1,6 +1,6 @@
 //! Shared libp2p node core with profile-driven capabilities.
 //!
-//! - **`api`**: six universal app primitives and application message envelopes.
+//! - **`api`**: stable app primitives, telemetry metrics, and message envelopes.
 //! - **`stack`**: transport, `MeshBehaviour`, and discovery helpers.
 //! - **`connectivity`**: NAT/relay state and on-disk peer address cache.
 //! - **`protocol`**: heartbeat gossip and lightweight reputation.
@@ -23,7 +23,8 @@ mod node;
 
 pub use api::{
     app_ident_topic, app_topic_name, decode_app_message, encode_app_message, normalize_app_topic,
-    validate_app_message, AppMessage, AppSubscription, PeerInfo, PeerSource,
+    validate_app_message, AppMessage, AppSubscription, BandwidthMetrics, ComputeMetrics,
+    NodeMetrics, P2PNode, PeerBandwidth, PeerInfo, PeerSource, StorageMetrics, TopicBandwidth,
     APP_MESSAGE_SCHEMA_VERSION, APP_TOPIC_PREFIX, MAX_APP_MESSAGE_BYTES, MAX_APP_TOPIC_LEN,
 };
 pub use bindings::{
@@ -67,6 +68,10 @@ pub use connectivity::relay_discovery::{
     RelaySelectionPlan,
 };
 pub use connectivity::rendezvous::{RendezvousConfig, RendezvousState};
+pub use connectivity::webrtc::{
+    has_webrtc_direct_certhash, is_webrtc_direct_addr, DEFAULT_WEBRTC_DIRECT_LISTEN_ADDR,
+    WEBRTC_DIRECT_TRANSPORT,
+};
 pub use libp2p::{Multiaddr, PeerId};
 pub use node::{
     apply_resolved_capabilities, resolve_node_config, snapshot_to_json,

@@ -1,12 +1,15 @@
 //! Stable application-facing primitives for the decentralized networking core.
 //!
-//! The public API intentionally stays small: connect peers, disconnect peers,
-//! send addressed messages, broadcast to a topic, subscribe to topics, and read
-//! known peers. Higher-level systems such as chat, games, storage, compute, and
-//! pub/sub apps should build on these primitives instead of depending on
-//! libp2p-specific swarm internals.
+//! The public API intentionally stays small: six data-plane primitives connect
+//! peers, exchange addressed messages, broadcast to topics, subscribe locally,
+//! and read known peers. A seventh query primitive returns runtime-owned
+//! resource telemetry. Higher-level systems such as chat, games, storage,
+//! compute, pub/sub, and settlement layers should build above this surface
+//! instead of depending on libp2p-specific swarm internals.
 
-use libp2p::{gossipsub::IdentTopic, PeerId};
+use std::future::Future;
+
+use libp2p::{gossipsub::IdentTopic, Multiaddr, PeerId};
 use rand::rngs::OsRng;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
@@ -14,6 +17,13 @@ use tokio::sync::broadcast;
 
 use crate::common::error::NetError;
 use crate::common::utils::unix_timestamp_ns;
+
+mod metrics;
+
+pub(crate) use metrics::accounted_transport_bytes;
+pub use metrics::{
+    BandwidthMetrics, ComputeMetrics, NodeMetrics, PeerBandwidth, StorageMetrics, TopicBandwidth,
+};
 
 pub const APP_MESSAGE_SCHEMA_VERSION: u16 = 1;
 pub const APP_TOPIC_PREFIX: &str = "p2p-net/app";
@@ -133,6 +143,49 @@ impl PeerInfo {
 pub struct AppSubscription {
     topic: String,
     receiver: broadcast::Receiver<AppMessage>,
+}
+
+/// Stable application-facing node operations.
+///
+/// The first six methods are the data-plane primitives for connecting peers and
+/// exchanging application messages. `get_metrics` is the seventh query/
+/// management primitive for infrastructure telemetry that applications cannot
+/// measure accurately above the transport layer.
+pub trait P2PNode {
+    fn connect_peer(
+        &self,
+        addr: Multiaddr,
+    ) -> impl Future<Output = Result<(), NetError>> + Send + '_;
+
+    fn disconnect_peer(
+        &self,
+        peer_id: PeerId,
+    ) -> impl Future<Output = Result<(), NetError>> + Send + '_;
+
+    fn send_message<'a>(
+        &'a self,
+        peer_id: PeerId,
+        topic: &'a str,
+        payload: Vec<u8>,
+    ) -> impl Future<Output = Result<(), NetError>> + Send + 'a;
+
+    fn broadcast<'a>(
+        &'a self,
+        topic: &'a str,
+        payload: Vec<u8>,
+    ) -> impl Future<Output = Result<(), NetError>> + Send + 'a;
+
+    fn subscribe<'a>(
+        &'a self,
+        topic: &'a str,
+    ) -> impl Future<Output = Result<AppSubscription, NetError>> + Send + 'a;
+
+    fn get_peers(&self) -> impl Future<Output = Result<Vec<PeerInfo>, NetError>> + Send + '_;
+
+    fn get_metrics(
+        &self,
+        peer_id: Option<PeerId>,
+    ) -> impl Future<Output = Result<NodeMetrics, NetError>> + Send + '_;
 }
 
 impl AppSubscription {

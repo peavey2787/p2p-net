@@ -7,6 +7,20 @@ use super::CONNECTED_PEERS_METRIC;
 pub(super) fn snapshot_metric_values(s: &NodeSnapshot) -> Vec<(&'static str, String)> {
     vec![
         metric(CONNECTED_PEERS_METRIC, s.connected_peers),
+        metric("p2p_all_swarm_connections", s.all_swarm_connections),
+        metric(
+            "p2p_application_peer_connections",
+            s.application_peer_connections,
+        ),
+        metric(
+            "p2p_infrastructure_peer_connections",
+            s.infrastructure_peer_connections,
+        ),
+        metric(
+            "p2p_dht_routing_peer_connections",
+            s.dht_routing_peer_connections,
+        ),
+        metric("p2p_relay_peer_connections", s.relay_peer_connections),
         metric("p2p_peer_book_known_peers", s.peer_book_known_peers),
         metric(
             "p2p_peer_book_discovered_peers",

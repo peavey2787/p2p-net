@@ -121,11 +121,43 @@ fn public_relay_fallback_candidates_are_last_and_tracked() {
     );
 }
 
+#[test]
+fn webrtc_direct_relay_candidates_are_supported_native_transports() {
+    let configured = webrtc_p2p_addr(4601);
+    let policy = RelayDiscoveryPolicy {
+        min_reservations: 1,
+        max_reservations: 1,
+        ..RelayDiscoveryPolicy::default()
+    };
+
+    let plan = select_startup_relays(
+        &policy,
+        vec![configured.clone()],
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    );
+
+    assert_eq!(plan.selected_addrs, vec![configured]);
+    assert_eq!(plan.configured_candidates, 1);
+    assert_eq!(plan.ignored_candidates, 0);
+    assert!(plan.errors.is_empty());
+}
+
 fn p2p_addr(port: u16) -> Multiaddr {
     let peer = PeerId::random();
     format!("/ip4/127.0.0.1/tcp/{port}/p2p/{peer}")
         .parse()
         .unwrap()
+}
+
+fn webrtc_p2p_addr(port: u16) -> Multiaddr {
+    let peer = PeerId::random();
+    format!(
+        "/ip4/127.0.0.1/udp/{port}/webrtc-direct/certhash/uEiDikp5KVUgkLta1EjUN-IKbHk-dUBg8VzKgf5nXxLK46w/p2p/{peer}"
+    )
+    .parse()
+    .unwrap()
 }
 
 #[test]

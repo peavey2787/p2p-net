@@ -16,3 +16,4 @@ pub mod public_fallback;
 pub mod relay;
 pub mod relay_discovery;
 pub mod rendezvous;
+pub mod webrtc;

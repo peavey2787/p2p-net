@@ -3,7 +3,7 @@
 Implementation-facing guides for maintainers working on the Rust core,
 transports, runtime policies, bindings, discovery, and observability.
 
-- `API_IMPLEMENTATION.md` — six-primitives command routing and message delivery.
+- `API_IMPLEMENTATION.md` — application API command routing, message delivery, and telemetry queries.
 - `BEHAVIOUR_POLICY.md` — profile-driven libp2p behaviour construction.
 - `BINDINGS.md` — binding-safe facade for desktop/mobile/WebView shells.
 - `DCUTR_POLICY.md` — DCUtR upgrade policy, retry budget, and fallback counters.

@@ -4,7 +4,7 @@
 
 DHT provider discovery is the fallback discovery layer for application namespaces. It lets nodes announce and search for hashed namespace keys through Kademlia provider records when operator rendezvous peers are unavailable.
 
-The public application API remains the six primitives:
+The public application data-plane API remains the six primitives:
 
 - `connect_peer`
 - `disconnect_peer`

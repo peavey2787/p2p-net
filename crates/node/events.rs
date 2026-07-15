@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use libp2p::gossipsub::TopicHash;
@@ -5,7 +6,7 @@ use libp2p::swarm::SwarmEvent;
 use libp2p::{Multiaddr, PeerId, Swarm};
 use tokio::sync::{broadcast, Mutex};
 
-use crate::api::AppMessage;
+use crate::api::{AppMessage, NodeMetrics, PeerSource};
 use crate::connectivity::connection_strategy::PendingConnectionPlans;
 use crate::connectivity::dcutr::DcutrPolicy;
 use crate::connectivity::dht::DhtProviderState;
@@ -53,6 +54,7 @@ pub(crate) struct SwarmEventContext<'a> {
     pub(crate) heartbeat_topic_hash: &'a TopicHash,
     pub(crate) app_topic_hashes: &'a [TopicHash],
     pub(crate) app_messages: &'a broadcast::Sender<AppMessage>,
+    pub(crate) metrics: &'a mut NodeMetrics,
     pub(crate) local_peer: PeerId,
     pub(crate) network_id: u32,
 }
@@ -71,6 +73,60 @@ pub(crate) fn sync_peer_connectivity_snapshot(
     snapshot.auto_connect_dial_failures = ctx.auto_dial_stats.dial_failures;
     snapshot.auto_connect_awaiting_address_peers = ctx.auto_dial_stats.awaiting_address_count();
     snapshot.connection_plan_pending_peers = ctx.pending_connections.pending_count();
+}
+
+pub(crate) fn sync_swarm_connection_snapshot(
+    snapshot: &mut NodeSnapshot,
+    swarm: &Swarm<MeshBehaviour>,
+    ctx: &SwarmEventContext<'_>,
+) {
+    sync_peer_connectivity_snapshot(snapshot, ctx);
+
+    let application_namespaces = snapshot
+        .discovery_namespaces
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let swarm_peers = swarm.connected_peers().copied().collect::<Vec<_>>();
+    let application_swarm_peers = swarm_peers
+        .iter()
+        .copied()
+        .filter(|peer| {
+            ctx.peer_book
+                .has_application_namespace(peer, &application_namespaces)
+        })
+        .collect::<BTreeSet<_>>();
+    let relay_swarm_peers = swarm_peers
+        .iter()
+        .copied()
+        .filter(|peer| !application_swarm_peers.contains(peer))
+        .filter(|peer| is_relay_infrastructure_peer(*peer, ctx))
+        .collect::<BTreeSet<_>>();
+
+    let all_swarm = swarm_peers.len();
+    let infrastructure = all_swarm.saturating_sub(application_swarm_peers.len());
+    let relay = relay_swarm_peers.len();
+
+    snapshot.connected_peers = all_swarm;
+    snapshot.all_swarm_connections = all_swarm;
+    snapshot.application_peer_connections = application_swarm_peers.len();
+    snapshot.infrastructure_peer_connections = infrastructure;
+    snapshot.relay_peer_connections = relay;
+    snapshot.dht_routing_peer_connections = infrastructure.saturating_sub(relay);
+}
+
+fn is_relay_infrastructure_peer(peer: PeerId, ctx: &SwarmEventContext<'_>) -> bool {
+    if ctx.relay_state.relay_client_reservations.contains(&peer)
+        || ctx.relay_state.relay_client_attempted_peers.contains(&peer)
+    {
+        return true;
+    }
+    ctx.peer_book.record(&peer).is_some_and(|record| {
+        record.relay_preferred
+            || record.supports_relay == Some(true)
+            || record.sources.contains(&PeerSource::RelayDiscovery)
+            || record.sources.contains(&PeerSource::PublicRelayDiscovery)
+    })
 }
 
 /// Top-level swarm dispatch only. Responsibility-specific event handling lives in
@@ -166,7 +222,7 @@ pub(crate) async fn handle_swarm_event(
             .await;
         }
         SwarmEvent::Behaviour(MeshEvent::Gossipsub(libp2p::gossipsub::Event::Message {
-            propagation_source: _,
+            propagation_source,
             message,
             ..
         })) if ctx
@@ -174,7 +230,7 @@ pub(crate) async fn handle_swarm_event(
             .iter()
             .any(|topic| topic == &message.topic) =>
         {
-            app::handle_app_message(message.data, ctx).await;
+            app::handle_app_message(propagation_source, message.data, ctx).await;
         }
         SwarmEvent::Behaviour(MeshEvent::Gossipsub(libp2p::gossipsub::Event::Message {
             propagation_source,

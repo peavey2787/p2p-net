@@ -3,9 +3,11 @@ use std::time::Duration;
 use libp2p::identity::Keypair;
 use libp2p::swarm::Swarm;
 use libp2p::{noise, tcp, yamux, SwarmBuilder};
+use libp2p_webrtc::tokio::{Certificate as WebRtcCertificate, Transport as WebRtcTransport};
 
 use super::behaviour::{build_behaviour, BehaviourBuildContext, MeshBehaviour};
 use crate::common::error::NetError;
+use crate::connectivity::webrtc::WEBRTC_DIRECT_TRANSPORT;
 use crate::{NodeConfig, ResolvedNodeConfig};
 
 #[derive(Debug, Clone)]
@@ -30,6 +32,16 @@ pub async fn build_swarm(
         )
         .map_err(|e| NetError::Build(e.to_string()))?
         .with_quic()
+        .with_other_transport(|key| {
+            let certificate = WebRtcCertificate::generate(&mut rand::thread_rng()).map_err(
+                |err| -> Box<dyn std::error::Error + Send + Sync + 'static> { Box::new(err) },
+            )?;
+            Ok::<_, Box<dyn std::error::Error + Send + Sync + 'static>>(WebRtcTransport::new(
+                key.clone(),
+                certificate,
+            ))
+        })
+        .map_err(|e| NetError::Build(e.to_string()))?
         .with_dns()
         .map_err(|e| NetError::Build(e.to_string()))?
         .with_websocket(noise::Config::new, yamux::Config::default)
@@ -39,10 +51,10 @@ pub async fn build_swarm(
         .map_err(|e| NetError::Build(e.to_string()))?;
 
     // Only report transports/capabilities that are actually enabled by the
-    // resolved profile policy. Do not list WebRTC/WebTransport until they are
-    // implemented as real listeners.
+    // resolved profile policy. WebRTC-direct is a real swarm transport here,
+    // so it shares the same peer routing and connection state as TCP/QUIC/WS.
     let behaviour_policy = &resolved_cfg.enabled_behaviours;
-    let mut active = vec!["quic", "tcp", "websocket"];
+    let mut active = vec!["quic", "tcp", "websocket", WEBRTC_DIRECT_TRANSPORT];
     if behaviour_policy.gossipsub {
         active.push("gossipsub");
     }
