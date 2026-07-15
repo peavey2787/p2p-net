@@ -3,8 +3,11 @@
 //! Run:
 //! `cargo run --features dashboard --example p2p_node`
 
-use std::io;
+use std::fs::OpenOptions;
+use std::io::{self, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
+use std::time::SystemTime;
 
 use crossterm::event::{self, Event, KeyCode};
 use crossterm::execute;
@@ -17,8 +20,13 @@ use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
 use ratatui::Terminal;
 
+static BACKGROUND_WORKER_PANICKED: AtomicBool = AtomicBool::new(false);
+const PANIC_LOG_PATH: &str = "p2p-node-panic.log";
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    install_dashboard_panic_hook();
+
     let args: Vec<String> = std::env::args().collect();
 
     if let Some(path) = arg_value(&args, "--write-default-config") {
@@ -52,6 +60,14 @@ async fn run_ui(
     handle: p2p_net::NodeHandle,
 ) -> Result<(), Box<dyn std::error::Error>> {
     loop {
+        if BACKGROUND_WORKER_PANICKED.load(Ordering::Relaxed) {
+            handle.shutdown().await;
+            return Err(format!(
+                "background worker panicked; terminal restored; see {PANIC_LOG_PATH}"
+            )
+            .into());
+        }
+
         let snap = handle.snapshot.lock().await.clone();
         terminal.draw(|f| draw_dashboard(f, &snap))?;
         if event::poll(Duration::from_millis(200))? {
@@ -110,7 +126,7 @@ fn draw_dashboard(frame: &mut ratatui::Frame<'_>, snap: &NodeSnapshot) {
         .constraints([
             Constraint::Length(7),
             Constraint::Length(4),
-            Constraint::Length(8),
+            Constraint::Length(12),
             Constraint::Min(6),
         ])
         .split(frame.area());
@@ -206,4 +222,29 @@ fn arg_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     args.windows(2)
         .find(|pair| pair[0] == flag)
         .map(|pair| pair[1].as_str())
+}
+
+fn install_dashboard_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        BACKGROUND_WORKER_PANICKED.store(true, Ordering::Relaxed);
+
+        let _ = disable_raw_mode();
+        let mut stderr = io::stderr();
+        let _ = execute!(stderr, LeaveAlternateScreen);
+
+        if let Ok(mut log) = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(PANIC_LOG_PATH)
+        {
+            let _ = writeln!(log, "{:?}: {info}", SystemTime::now());
+        }
+
+        let _ = writeln!(
+            stderr,
+            "\nbackground worker panicked; terminal restored; see {PANIC_LOG_PATH}"
+        );
+        default_hook(info);
+    }));
 }

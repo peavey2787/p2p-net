@@ -183,5 +183,6 @@ PowerShell_transcript*.txt
 .p2p-net-identity-key
 .p2p-net-peer-cache.json
 p2p-node.json
+p2p-node-panic.log
 /.-identity-key
 /.-peer-cache.json
