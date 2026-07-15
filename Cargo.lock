@@ -3012,6 +3012,7 @@ dependencies = [
  "base64 0.22.1",
  "blake3",
  "crossterm",
+ "either",
  "futures",
  "hex",
  "libp2p",

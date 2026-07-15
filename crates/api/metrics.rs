@@ -16,6 +16,8 @@ pub(crate) const TRANSPORT_ACCOUNTING_OVERHEAD_BYTES: u64 = 64;
 /// Conservative per-side connection setup accounting used when libp2p reports
 /// a new connection but does not expose exact handshake byte totals.
 pub(crate) const CONNECTION_HANDSHAKE_ESTIMATE_BYTES: u64 = 1536;
+const MAX_TRACKED_PEER_BANDWIDTH: usize = 512;
+const MAX_TRACKED_TOPIC_BANDWIDTH: usize = 256;
 
 #[derive(Debug, Clone, Default)]
 pub struct NodeMetrics {
@@ -100,11 +102,11 @@ impl NodeMetrics {
         scoped
     }
 
-    pub(crate) fn record_connection_handshake(&mut self, peer_id: PeerId) {
+    pub(crate) fn record_connection_handshake(&mut self, peer_id: Option<PeerId>) {
         self.bandwidth
-            .record_sent(Some(peer_id), None, CONNECTION_HANDSHAKE_ESTIMATE_BYTES);
+            .record_sent(peer_id, None, CONNECTION_HANDSHAKE_ESTIMATE_BYTES);
         self.bandwidth
-            .record_received(Some(peer_id), None, CONNECTION_HANDSHAKE_ESTIMATE_BYTES);
+            .record_received(peer_id, None, CONNECTION_HANDSHAKE_ESTIMATE_BYTES);
     }
 
     pub(crate) fn record_storage_write(&mut self, bytes: usize) {
@@ -124,12 +126,20 @@ impl BandwidthMetrics {
     pub(crate) fn record_sent(&mut self, peer_id: Option<PeerId>, topic: Option<&str>, bytes: u64) {
         self.total_bytes_sent = self.total_bytes_sent.saturating_add(bytes);
         if let Some(peer_id) = peer_id {
-            let peer = self.peer_stats.entry(peer_id).or_default();
-            peer.bytes_sent = peer.bytes_sent.saturating_add(bytes);
+            if self.peer_stats.contains_key(&peer_id)
+                || self.peer_stats.len() < MAX_TRACKED_PEER_BANDWIDTH
+            {
+                let peer = self.peer_stats.entry(peer_id).or_default();
+                peer.bytes_sent = peer.bytes_sent.saturating_add(bytes);
+            }
         }
         if let Some(topic) = topic {
-            let topic = self.topic_stats.entry(topic.to_string()).or_default();
-            topic.bytes_sent = topic.bytes_sent.saturating_add(bytes);
+            if self.topic_stats.contains_key(topic)
+                || self.topic_stats.len() < MAX_TRACKED_TOPIC_BANDWIDTH
+            {
+                let topic = self.topic_stats.entry(topic.to_string()).or_default();
+                topic.bytes_sent = topic.bytes_sent.saturating_add(bytes);
+            }
         }
     }
 
@@ -141,12 +151,20 @@ impl BandwidthMetrics {
     ) {
         self.total_bytes_received = self.total_bytes_received.saturating_add(bytes);
         if let Some(peer_id) = peer_id {
-            let peer = self.peer_stats.entry(peer_id).or_default();
-            peer.bytes_recv = peer.bytes_recv.saturating_add(bytes);
+            if self.peer_stats.contains_key(&peer_id)
+                || self.peer_stats.len() < MAX_TRACKED_PEER_BANDWIDTH
+            {
+                let peer = self.peer_stats.entry(peer_id).or_default();
+                peer.bytes_recv = peer.bytes_recv.saturating_add(bytes);
+            }
         }
         if let Some(topic) = topic {
-            let topic = self.topic_stats.entry(topic.to_string()).or_default();
-            topic.bytes_recv = topic.bytes_recv.saturating_add(bytes);
+            if self.topic_stats.contains_key(topic)
+                || self.topic_stats.len() < MAX_TRACKED_TOPIC_BANDWIDTH
+            {
+                let topic = self.topic_stats.entry(topic.to_string()).or_default();
+                topic.bytes_recv = topic.bytes_recv.saturating_add(bytes);
+            }
         }
     }
 }

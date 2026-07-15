@@ -44,4 +44,4 @@ Immediate dial-construction errors are handled synchronously by trying the next 
 
 ## DCUtR behavior
 
-The planner does not run the hole-punch protocol directly. It records whether the operator policy allows DCUtR after a relay path exists. When a relayed connection is established, the existing connection event policy treats that connection as DCUtR-eligible, applies the per-peer retry budget, and keeps the relay circuit as fallback when configured.
+The planner does not run the hole-punch protocol directly. It records whether the operator policy allows DCUtR after a relay path exists. When a relayed connection is established, the DCUtR behaviour only attaches for intended app/manual/cache-discovered destination peers, applies the per-peer retry cooldown and attempt budget, and keeps the relay circuit as fallback when configured. Public relay servers are not namespace-filtered; only the relayed destination peer is gated.

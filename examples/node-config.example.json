@@ -71,6 +71,7 @@
       "announce": true,
       "discover": true,
       "discover_with_rendezvous_peers": true,
+      "refresh_interval_secs": 300,
       "max_namespaces_per_refresh": 16
     },
     "public_bootstrap": {
@@ -95,13 +96,13 @@
   "reserve_configured_relays": true,
   "connection_limits": {
     "enabled": true,
-    "max_pending_incoming": 64,
-    "max_pending_outgoing": 64,
-    "max_established_incoming": 256,
-    "max_established_outgoing": 128,
-    "max_established": 320,
-    "max_established_per_peer": 4,
-    "max_established_per_ip": 32
+    "max_pending_incoming": 32,
+    "max_pending_outgoing": 32,
+    "max_established_incoming": 64,
+    "max_established_outgoing": 64,
+    "max_established": 128,
+    "max_established_per_peer": 3,
+    "max_established_per_ip": 8
   },
   "message_security": {
     "max_heartbeat_wire_bytes": 4096,

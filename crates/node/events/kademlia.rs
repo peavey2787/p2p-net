@@ -1,11 +1,12 @@
 use crate::api::PeerSource;
 use crate::connectivity::dht::on_kademlia_event;
+use crate::connectivity::peer_cache;
 use crate::connectivity::relay::is_p2p_circuit_addr;
 
 use super::super::dial::{auto_dial_dht_provider, AutoDialOutcome};
 use super::super::push_pulse;
 use super::{sync_peer_connectivity_snapshot, SwarmEventContext};
-use crate::stack::MeshBehaviour;
+use crate::stack::{allow_dcutr_peer, MeshBehaviour};
 use libp2p::{Multiaddr, PeerId, Swarm};
 
 #[derive(Debug, Clone, Copy)]
@@ -16,6 +17,7 @@ struct AutoDialCandidate {
 
 fn record_dht_provider_peers(
     ev: &libp2p::kad::Event,
+    swarm: &mut Swarm<MeshBehaviour>,
     ctx: &mut SwarmEventContext<'_>,
 ) -> Vec<AutoDialCandidate> {
     let libp2p::kad::Event::OutboundQueryProgressed { id, result, .. } = ev else {
@@ -36,6 +38,7 @@ fn record_dht_provider_peers(
     for provider in providers {
         ctx.peer_book
             .record_namespace(*provider, namespace.clone(), PeerSource::DhtProvider);
+        allow_dcutr_peer(swarm, *provider);
         learned.push(AutoDialCandidate {
             peer: *provider,
             address_updated: false,
@@ -46,15 +49,16 @@ fn record_dht_provider_peers(
 
 fn record_kademlia_provider_addrs(
     ev: &libp2p::kad::Event,
+    swarm: &mut Swarm<MeshBehaviour>,
     ctx: &mut SwarmEventContext<'_>,
 ) -> Vec<AutoDialCandidate> {
     match ev {
         libp2p::kad::Event::RoutingUpdated {
             peer, addresses, ..
-        } => record_known_provider_addrs(peer, addresses.iter().cloned(), ctx),
+        } => record_known_provider_addrs(peer, addresses.iter().cloned(), swarm, ctx),
         libp2p::kad::Event::RoutablePeer { peer, address }
         | libp2p::kad::Event::PendingRoutablePeer { peer, address } => {
-            record_known_provider_addrs(peer, std::iter::once(address.clone()), ctx)
+            record_known_provider_addrs(peer, std::iter::once(address.clone()), swarm, ctx)
         }
         _ => Vec::new(),
     }
@@ -63,6 +67,7 @@ fn record_kademlia_provider_addrs(
 fn record_known_provider_addrs<I>(
     peer: &PeerId,
     addrs: I,
+    swarm: &mut Swarm<MeshBehaviour>,
     ctx: &mut SwarmEventContext<'_>,
 ) -> Vec<AutoDialCandidate>
 where
@@ -76,12 +81,14 @@ where
     if !is_dht_provider {
         return Vec::new();
     }
+    allow_dcutr_peer(swarm, *peer);
 
     let mut relay_preferred = false;
     for addr in addrs {
         relay_preferred |= is_p2p_circuit_addr(&addr);
         ctx.peer_book
-            .record_addr(*peer, addr, PeerSource::DhtProvider);
+            .record_addr(*peer, addr.clone(), PeerSource::DhtProvider);
+        peer_cache::record_seen_peer_addr_with_storage(ctx.discovery_cfg, peer, &addr, ctx.storage);
     }
     if relay_preferred {
         ctx.peer_book.record_relay_preferred(*peer, true);
@@ -145,12 +152,11 @@ pub(crate) async fn handle_event(
     ev: &libp2p::kad::Event,
     ctx: &mut SwarmEventContext<'_>,
 ) {
-    let mut auto_dial_candidates = record_dht_provider_peers(ev, ctx);
-    auto_dial_candidates.extend(record_kademlia_provider_addrs(ev, ctx));
+    let mut auto_dial_candidates = record_dht_provider_peers(ev, swarm, ctx);
+    auto_dial_candidates.extend(record_kademlia_provider_addrs(ev, swarm, ctx));
     let auto_dial_pulses = maybe_auto_dial_dht_providers(auto_dial_candidates, swarm, ctx);
 
-    let Some(line) = on_kademlia_event(swarm, ev, ctx.discovery_cfg, ctx.storage, ctx.dht_state)
-    else {
+    let Some(line) = on_kademlia_event(swarm, ev, ctx.dht_state) else {
         if !auto_dial_pulses.is_empty() {
             let mut guard = ctx.snapshot.lock().await;
             sync_dht_snapshot(&mut guard, ctx);

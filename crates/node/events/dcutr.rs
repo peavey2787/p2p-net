@@ -25,7 +25,6 @@ pub(crate) async fn handle_event(
         return;
     }
 
-    relay_state.dcutr_attempts = relay_state.dcutr_attempts.saturating_add(1);
     let succeeded = ev.result.is_ok();
     let debug = format!("{ev:?}");
     if succeeded {

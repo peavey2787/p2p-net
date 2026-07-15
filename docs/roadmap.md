@@ -131,7 +131,7 @@ Implemented notes:
 - Rendezvous `Discovered` events now record peer namespaces and addresses before dialing.
 - Rendezvous-discovered peers are auto-dialed through the shared `auto_dial_peer_from_book(...)` helper.
 - The old one-off `swarm.dial(addr.clone())` path inside rendezvous discovery was removed.
-- Existing peer-cache recording and Kademlia address learning remain in place.
+- Existing peer-cache recording remains app-peer scoped: Kademlia address learning is cached only for peers already discovered under the application namespace, not arbitrary public routing-table peers.
 - Public rendezvous discoveries preserve `public_rendezvous` source accounting when the rendezvous node itself came from the public fallback set.
 - Pending connection plans prevent duplicate dials for peers already connected or already in progress.
 - No trusted contact state is modified by rendezvous auto-connect.
@@ -307,6 +307,6 @@ Implemented notes:
 
 - `runtime_tasks` now owns small periodic/public-IP-triggered runtime tasks so `runtime.rs` remains focused on the event loop.
 - Public IP probe results add public external addresses to the swarm and immediately trigger a DHT namespace refresh.
-- The heartbeat tick performs bounded DHT namespace refreshes so provider announce/query does not depend on one startup moment.
+- The runtime performs bounded DHT namespace refreshes according to `discovery.dht.refresh_interval_secs` so provider announce/query does not depend on one startup moment.
 - If `discovery.public_bootstrap.relay_peers` is empty, resolved public bootstrap seed peers are also considered best-effort public relay candidates. Nodes that support Circuit Relay v2 can accept reservations; nodes that do not support it fail visibly without blocking DHT discovery or direct dials.
 - Peer-book source accounting records these derived relay candidates as public relay discovery candidates when public relay fallback is selected.

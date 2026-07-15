@@ -11,6 +11,7 @@ fn dht_discovery_defaults_to_run_alongside_rendezvous() {
     assert!(cfg.announce);
     assert!(cfg.discover);
     assert!(cfg.discover_with_rendezvous_peers);
+    assert_eq!(cfg.refresh_interval_secs, 300);
     assert!(cfg.should_discover(0));
     assert!(cfg.should_discover(1));
 }
@@ -40,6 +41,12 @@ fn dht_discovery_validation_rejects_inert_or_unbounded_config() {
         ..DhtDiscoveryConfig::default()
     };
     assert!(unbounded.validate().is_err());
+
+    let hot_loop = DhtDiscoveryConfig {
+        refresh_interval_secs: 0,
+        ..DhtDiscoveryConfig::default()
+    };
+    assert!(hot_loop.validate().is_err());
 }
 
 #[test]

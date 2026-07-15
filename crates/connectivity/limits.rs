@@ -29,13 +29,13 @@ impl Default for ConnectionLimitsConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            max_pending_incoming: Some(64),
-            max_pending_outgoing: Some(64),
-            max_established_incoming: Some(256),
-            max_established_outgoing: Some(128),
-            max_established: Some(320),
-            max_established_per_peer: Some(4),
-            max_established_per_ip: Some(32),
+            max_pending_incoming: Some(32),
+            max_pending_outgoing: Some(32),
+            max_established_incoming: Some(64),
+            max_established_outgoing: Some(64),
+            max_established: Some(128),
+            max_established_per_peer: Some(3),
+            max_established_per_ip: Some(8),
         }
     }
 }

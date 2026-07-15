@@ -6,7 +6,9 @@ use crate::api::PeerSource;
 use crate::connectivity::rendezvous::peer_record_addrs;
 use libp2p_rendezvous as rendezvous;
 
-use crate::stack::{on_rendezvous_client_event, on_rendezvous_server_event, MeshBehaviour};
+use crate::stack::{
+    allow_dcutr_peer, on_rendezvous_client_event, on_rendezvous_server_event, MeshBehaviour,
+};
 
 use super::super::dial::auto_dial_peer_from_book;
 use super::super::push_pulse;
@@ -17,7 +19,7 @@ pub(crate) async fn handle_client_event(
     ev: &rendezvous::client::Event,
     ctx: &mut SwarmEventContext<'_>,
 ) {
-    let auto_dial_candidates = record_rendezvous_discovery(ev, ctx);
+    let auto_dial_candidates = record_rendezvous_discovery(ev, swarm, ctx);
     let line = on_rendezvous_client_event(
         swarm,
         ev,
@@ -46,6 +48,7 @@ pub(crate) async fn handle_server_event(
 
 fn record_rendezvous_discovery(
     ev: &rendezvous::client::Event,
+    swarm: &mut Swarm<MeshBehaviour>,
     ctx: &mut SwarmEventContext<'_>,
 ) -> Vec<libp2p::PeerId> {
     let rendezvous::client::Event::Discovered {
@@ -64,6 +67,7 @@ fn record_rendezvous_discovery(
         let peer = registration.record.peer_id();
         let namespace = registration.namespace.to_string();
         ctx.peer_book.record_namespace(peer, namespace, source);
+        allow_dcutr_peer(swarm, peer);
         for addr in peer_record_addrs(registration) {
             ctx.peer_book.record_addr(peer, addr, source);
         }

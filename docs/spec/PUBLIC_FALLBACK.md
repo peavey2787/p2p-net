@@ -19,7 +19,8 @@ Default consumer shape:
       "enabled": true,
       "announce": true,
       "discover": true,
-      "discover_with_rendezvous_peers": true
+      "discover_with_rendezvous_peers": true,
+      "refresh_interval_secs": 300
     },
     "public_bootstrap": {
       "mode": "fallback_only",
@@ -142,4 +143,4 @@ Snapshots and metrics expose whether public fallback participated:
 
 Public bootstrap peers are only the entry point into the public libp2p DHT. They do not automatically know which peers belong to this app. Consumer mode therefore announces and queries the app discovery namespace through Kademlia provider records, then auto-dials peers learned for that namespace only.
 
-DHT provider announce/query runs at startup, after public IP probing produces external addresses, and periodically during the runtime heartbeat. This avoids the startup race where a node tries to publish before it has useful external addresses or before public DHT routing has warmed up.
+DHT provider announce/query runs at startup, after public IP probing produces external addresses, and periodically according to `discovery.dht.refresh_interval_secs`. This avoids the startup race where a node tries to publish before it has useful external addresses or before public DHT routing has warmed up, without turning every heartbeat into public-DHT work.

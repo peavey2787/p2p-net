@@ -40,7 +40,7 @@ Raw contact tags must not be published by default. The namespace model hashes ap
 
 ## Announcement
 
-When `discovery.dht.enabled` and `discovery.dht.announce` are true, startup calls Kademlia `start_providing(namespace_key)` for each derived namespace, bounded by `max_namespaces_per_refresh`.
+When `discovery.dht.enabled` and `discovery.dht.announce` are true, startup calls Kademlia `start_providing(namespace_key)` for each derived namespace, bounded by `max_namespaces_per_refresh`. Once a namespace has been announced, the runtime does not re-submit the same `start_providing` work on every heartbeat.
 
 ## Discovery
 
@@ -56,6 +56,16 @@ Operators can set:
 
 to run DHT provider lookup alongside rendezvous discovery.
 
+Repeated runtime refreshes are throttled by:
+
+```json
+{
+  "refresh_interval_secs": 300
+}
+```
+
+Startup discovery still runs immediately; the interval controls repeated announce/query work after startup and public-IP probe refreshes.
+
 ## Runtime results
 
-Provider lookup results update internal DHT provider state, observability counters, and the peer book used by `get_peers()`.
+Provider lookup results update internal DHT provider state, observability counters, and the peer book used by `get_peers()`. Kademlia routing-table peers are not persisted as application peers merely because they helped route a query; only peers discovered for the application namespace are promoted into the peer book/cache.

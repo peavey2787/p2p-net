@@ -105,6 +105,6 @@ That shape is the private/operator path. See `PRIVATE_INFRASTRUCTURE_FIRST.md` a
 
 ### Public DHT meetup retries
 
-Consumer mode does not assume one startup DHT query is enough. After the public IP probe discovers public external addresses, the node adds those addresses to libp2p and immediately reruns app-namespace DHT provider announcement/discovery. The runtime also refreshes app-namespace DHT discovery on the heartbeat so nodes can meet after bootstrap routing improves.
+Consumer mode does not assume one startup DHT query is enough. After the public IP probe discovers public external addresses, the node adds those addresses to libp2p and immediately reruns app-namespace DHT provider announcement/discovery. The runtime also refreshes app-namespace DHT discovery according to `discovery.dht.refresh_interval_secs` so nodes can meet after bootstrap routing improves without turning every heartbeat into public-DHT work.
 
 When no separate public relay fleet is configured, resolved public libp2p bootstrap peers are also tried as best-effort relay candidates. They are not app peers and they are not trusted contacts; they are only public infrastructure candidates. Relays that do not support reservation fail visibly while DHT discovery and direct-dial attempts continue.

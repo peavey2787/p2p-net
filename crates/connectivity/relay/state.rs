@@ -1,4 +1,5 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::time::Instant;
 
 use libp2p::{autonat, Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
@@ -65,6 +66,7 @@ pub struct RelayState {
     pub dcutr_upgrade_eligible_connections: usize,
     pub dcutr_retry_suppressed: usize,
     pub dcutr_attempts_by_peer: HashMap<PeerId, u32>,
+    pub dcutr_last_attempt_by_peer: HashMap<PeerId, Instant>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
