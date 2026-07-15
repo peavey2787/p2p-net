@@ -177,7 +177,11 @@ fn generated_default_config_reloads_successfully() {
     let loaded = NodeConfig::load_json_file(&path).expect("reload config");
     let _ = fs::remove_file(path);
     assert!(!loaded.relay.enabled);
-    assert_eq!(loaded.listen_addresses.len(), 3);
+    assert_eq!(loaded.listen_addresses.len(), 4);
+    assert!(loaded
+        .listen_addresses
+        .iter()
+        .any(|addr| addr.contains("/webrtc-direct")));
 }
 
 #[test]

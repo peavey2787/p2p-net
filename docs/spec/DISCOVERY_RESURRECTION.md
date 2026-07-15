@@ -1,6 +1,6 @@
 # Discovery resurrection model
 
-The discovery layer is designed to keep the six public primitives stable while allowing the node to recover a mesh after operator-owned infrastructure is temporarily unavailable.
+The discovery layer is designed to keep the public application API stable while allowing the node to recover a mesh after operator-owned infrastructure is temporarily unavailable.
 
 ## Infrastructure preference order
 
@@ -52,7 +52,7 @@ The implemented public fallback policy lives under `discovery.public_bootstrap`.
 
 ## DHT provider fallback
 
-DHT provider discovery lets a node announce and query hashed application namespace keys through Kademlia provider records. This is not a public API surface; it is fallback discovery plumbing behind the six primitives.
+DHT provider discovery lets a node announce and query hashed application namespace keys through Kademlia provider records. This is not a public API surface; it is fallback discovery plumbing behind the data-plane primitives.
 
 Startup uses DHT provider records after deriving the same hashed namespaces used by rendezvous discovery. Provider lookups run when rendezvous peers are absent by default, or alongside rendezvous when explicitly configured. See `docs/spec/DHT_PROVIDER_DISCOVERY.md`.
 

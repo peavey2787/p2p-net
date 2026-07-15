@@ -108,7 +108,7 @@ fn draw_dashboard(frame: &mut ratatui::Frame<'_>, snap: &NodeSnapshot) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(8),
+            Constraint::Length(7),
             Constraint::Length(4),
             Constraint::Length(8),
             Constraint::Min(6),
@@ -142,8 +142,12 @@ fn draw_dashboard(frame: &mut ratatui::Frame<'_>, snap: &NodeSnapshot) {
     frame.render_widget(transports, chunks[1]);
 
     let mesh = Paragraph::new(format!(
-        "Connected Peers: {} | PeerBook: known {} discovered {}\nAuto-Connect: enabled={} dial_attempts={} failures={} pending_plans={} awaiting_addrs={}\nPublic Fallback: mode={} bootstrap={} rendezvous={} relay={} public_rv_candidates={} reason={}\nRelay Server: {} ({}) | Mediator: {}\nServer Reservations: {} | Client Reservations: {} / attempts {} failures {}\nRelay Discovery: selected {} / candidates {} failures {}\nDHT Provider: enabled={} announced={} queries={} found={} peers={}\nActive Circuits: {} | Denied Requests: {} | Bytes Fwd: {} | DCUtR: enabled={} attempts={} successes={} failures={} fallback={} suppressed={}",
-        snap.connected_peers,
+        "Application Peers: {} | Infrastructure Peers: {} | DHT Routing Peers: {} | Relay Peers: {} | All Swarm Connections: {}\nPeerBook: known {} discovered {}\nAuto-Connect: enabled={} dial_attempts={} failures={} pending_plans={} awaiting_addrs={}\nPublic Fallback: mode={} bootstrap={} rendezvous={} relay={} public_rv_candidates={} reason={}\nRelay Server: {} ({}) | Mediator: {}\nServer Reservations: {} | Client Reservations: {} / attempts {} failures {}\nRelay Discovery: selected {} / candidates {} failures {}\nDHT Provider: enabled={} announced={} queries={} found={} peers={}\nActive Circuits: {} | Denied Requests: {} | Bytes Fwd: {} | DCUtR: enabled={} attempts={} successes={} failures={} fallback={} suppressed={}",
+        snap.application_peer_connections,
+        snap.infrastructure_peer_connections,
+        snap.dht_routing_peer_connections,
+        snap.relay_peer_connections,
+        snap.all_swarm_connections,
         snap.peer_book_known_peers,
         snap.peer_book_discovered_peers,
         snap.auto_connect_enabled,

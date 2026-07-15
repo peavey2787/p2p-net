@@ -4,6 +4,7 @@
   "identity_key_path": "state/consumer-node.identity.hex",
   "listen_addresses": [
     "/ip4/0.0.0.0/udp/4001/quic-v1",
+    "/ip4/0.0.0.0/udp/4003/webrtc-direct",
     "/ip4/0.0.0.0/tcp/4001",
     "/ip4/0.0.0.0/tcp/4002/ws"
   ],

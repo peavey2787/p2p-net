@@ -33,7 +33,7 @@ The top-level dispatcher remains `crates/node/events.rs`; it should only route
   are intentionally moved into narrower structs.
 - New libp2p behaviours should get their own focused event module unless their
   handling is truly only a one-line dispatch to `stack`.
-- New application protocols should build above the six primitives instead of
+- New application protocols should build above the public data-plane primitives instead of
   adding topic-specific logic to the dispatcher.
 
 This split is intentionally behavior-preserving. Resolved capability-driven behaviour construction can evolve without editing one large god file.

@@ -5,6 +5,7 @@ use libp2p::{PeerId, Swarm};
 use tokio::sync::Mutex;
 
 use super::super::snapshot::NodeSnapshot;
+use crate::api::accounted_transport_bytes;
 use crate::protocol::pulse::{validate_heartbeat_wire, HeartbeatValidationDecision};
 use crate::stack::MeshBehaviour;
 
@@ -18,6 +19,11 @@ pub(crate) async fn handle_heartbeat_message(
     data: Vec<u8>,
     ctx: &mut SwarmEventContext<'_>,
 ) {
+    ctx.metrics.bandwidth.record_received(
+        Some(peer),
+        Some("heartbeat"),
+        accounted_transport_bytes(data.len()),
+    );
     let validation = validate_heartbeat_wire(
         peer,
         &data,

@@ -89,7 +89,7 @@ sudo ./qa/tools/netem-linux.sh lo stop
 
 `qa/tests/discovery/discovery_namespace.rs` verifies hashed app discovery namespace derivation, duplicate tag removal, readable-debug guardrails, and node-config validation. The test is registered in `Cargo.toml`, so the canonical validation script picks it up automatically.
 
-`qa/tests/api/api_primitives.rs` verifies the six public primitives on `NodeHandle`, app-topic namespacing and validation, `AppMessage` encode/decode behavior, addressed-message filtering, and payload size bounds. The test is registered in `Cargo.toml`, so the canonical validation script picks it up automatically.
+`qa/tests/api/api_primitives.rs` verifies the six public data-plane primitives plus `get_metrics()` on `NodeHandle`, app-topic namespacing and validation, `AppMessage` encode/decode behavior, addressed-message filtering, telemetry scoping, and payload size bounds. The test is registered in `Cargo.toml`, so the canonical validation script picks it up automatically.
 
 ## Codebase hygiene validation
 

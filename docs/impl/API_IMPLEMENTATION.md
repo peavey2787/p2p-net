@@ -13,6 +13,7 @@ send_message(peer_id, topic, payload)
 broadcast(topic, payload)
 subscribe(topic)
 get_peers()
+get_metrics(peer_id)
 ```
 
 ## Internal flow
@@ -23,11 +24,13 @@ get_peers()
 4. Subscribed app topics are tracked by topic hash, separate from heartbeat gossip.
 5. Incoming app-topic messages are decoded by `node/events/app.rs` and sent through the local delivery bus only when they match the local network id and target peer id.
 6. `get_peers()` reads the internal peer book, which merges connected, cached, configured, rendezvous, DHT-provider, and relay-discovery records.
-7. `NodeSnapshot` exposes API/app counters for observability.
+7. `get_metrics(peer_id)` returns a clone of the runtime-owned `NodeMetrics`; `Some(peer_id)` filters the per-peer bandwidth map for cheaper queries.
+8. `NodeSnapshot` exposes API/app/operator counters for observability.
 
 This preserves SRP:
 
 - `crates/api/` owns public envelope/topic types.
+- `crates/api/metrics.rs` owns the public telemetry data structures.
 - `crates/node/handle.rs` owns public primitive methods and command types.
 - `crates/node/commands.rs` owns command execution against the swarm.
 - `crates/node/events/app.rs` owns incoming app-message delivery.

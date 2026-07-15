@@ -76,6 +76,12 @@ fn snapshot_json_includes_accurate_relay_fields() {
         public_bootstrap_seed_count: 2,
         public_rendezvous_candidate_count: 3,
         public_relay_candidate_count: 1,
+        connected_peers: 101,
+        all_swarm_connections: 101,
+        application_peer_connections: 1,
+        infrastructure_peer_connections: 100,
+        dht_routing_peer_connections: 95,
+        relay_peer_connections: 5,
         peer_book_known_peers: 5,
         peer_book_discovered_peers: 3,
         auto_connect_enabled: true,
@@ -147,6 +153,11 @@ fn snapshot_json_includes_accurate_relay_fields() {
     assert_eq!(json["public_bootstrap_seed_count"], 2);
     assert_eq!(json["public_rendezvous_candidate_count"], 3);
     assert_eq!(json["public_relay_candidate_count"], 1);
+    assert_eq!(json["all_swarm_connections"], 101);
+    assert_eq!(json["application_peer_connections"], 1);
+    assert_eq!(json["infrastructure_peer_connections"], 100);
+    assert_eq!(json["dht_routing_peer_connections"], 95);
+    assert_eq!(json["relay_peer_connections"], 5);
     assert_eq!(json["peer_book_known_peers"], 5);
     assert_eq!(json["peer_book_discovered_peers"], 3);
     assert_eq!(json["auto_connect_enabled"].as_bool(), Some(true));
@@ -161,6 +172,9 @@ fn snapshot_json_includes_accurate_relay_fields() {
     assert_eq!(json["app_messages_rejected"], 16);
     assert_eq!(json["api_commands_processed"], 17);
     assert_eq!(json["api_command_failures"], 1);
+    assert!(json.get("webrtc_enabled").is_none());
+    assert!(json.get("webrtc_attempts").is_none());
+    assert!(json.get("webrtc_messages_sent").is_none());
     assert!(json.get("relay_reservations").is_none());
     assert!(json.get("relay_circuits").is_none());
     assert!(json.get("dcutr_events").is_none());
@@ -170,6 +184,11 @@ fn snapshot_json_includes_accurate_relay_fields() {
 fn prometheus_metrics_exports_operator_counters() {
     let snap = NodeSnapshot {
         connected_peers: 7,
+        all_swarm_connections: 7,
+        application_peer_connections: 1,
+        infrastructure_peer_connections: 6,
+        dht_routing_peer_connections: 5,
+        relay_peer_connections: 1,
         peer_book_known_peers: 5,
         peer_book_discovered_peers: 3,
         auto_connect_enabled: true,
@@ -235,6 +254,11 @@ fn prometheus_metrics_exports_operator_counters() {
 
     let metrics = snapshot_to_prometheus_metrics(&snap);
     assert!(metrics.contains("p2p_connected_peers 7\n"));
+    assert!(metrics.contains("p2p_all_swarm_connections 7\n"));
+    assert!(metrics.contains("p2p_application_peer_connections 1\n"));
+    assert!(metrics.contains("p2p_infrastructure_peer_connections 6\n"));
+    assert!(metrics.contains("p2p_dht_routing_peer_connections 5\n"));
+    assert!(metrics.contains("p2p_relay_peer_connections 1\n"));
     assert!(metrics.contains("p2p_peer_book_known_peers 5\n"));
     assert!(metrics.contains("p2p_peer_book_discovered_peers 3\n"));
     assert!(metrics.contains("p2p_auto_connect_enabled 1\n"));
@@ -292,6 +316,9 @@ fn prometheus_metrics_exports_operator_counters() {
     assert!(metrics.contains("p2p_dcutr_relay_fallbacks 4\n"));
     assert!(metrics.contains("p2p_dcutr_upgrade_eligible_connections 5\n"));
     assert!(metrics.contains("p2p_dcutr_retry_suppressed 1\n"));
+    assert!(!metrics.contains("p2p_webrtc_enabled"));
+    assert!(!metrics.contains("p2p_webrtc_attempts"));
+    assert!(!metrics.contains("p2p_webrtc_messages_sent"));
 }
 
 #[test]
@@ -304,13 +331,19 @@ fn dashboard_distinguishes_discovered_pending_and_connected_peers() {
     assert!(dashboard.contains("Local Listen: {}"));
     assert!(dashboard.contains("public_addr_display(snap)"));
     assert!(dashboard.contains("local_listen_display(snap)"));
-    assert!(dashboard.contains("Connected Peers: {} | PeerBook: known {} discovered {}"));
+    assert!(dashboard.contains("Application Peers: {}"));
+    assert!(dashboard.contains("Infrastructure Peers: {}"));
+    assert!(dashboard.contains("DHT Routing Peers: {}"));
+    assert!(dashboard.contains("Relay Peers: {}"));
+    assert!(dashboard.contains("All Swarm Connections: {}"));
     assert!(dashboard.contains("Auto-Connect: enabled={}"));
     assert!(dashboard.contains("dial_attempts={}"));
     assert!(dashboard.contains("pending_plans={}"));
     assert!(dashboard.contains("awaiting_addrs={}"));
     assert!(dashboard.contains("connection_plan_pending_peers"));
     assert!(dashboard.contains("auto_connect_awaiting_address_peers"));
+    assert!(dashboard.contains("application_peer_connections"));
+    assert!(dashboard.contains("all_swarm_connections"));
 }
 
 #[test]
@@ -377,7 +410,7 @@ fn relay_state_updates_snapshot_counters_without_mixing_meanings() {
 }
 
 #[tokio::test]
-async fn dashboard_does_not_claim_inactive_or_unimplemented_transports() {
+async fn dashboard_reports_native_transports_without_inactive_capabilities() {
     let cfg = NodeConfig {
         identity_key_path: temp_path("observability-transports-key")
             .to_string_lossy()
@@ -403,7 +436,8 @@ async fn dashboard_does_not_claim_inactive_or_unimplemented_transports() {
     let _ = fs::remove_file(key_path);
     let _ = fs::remove_file(cache_path);
 
-    assert!(!active.iter().any(|name| name == "webrtc-direct"));
+    assert!(active.iter().any(|name| name == "webrtc-direct"));
+    assert!(!active.iter().any(|name| name == "webrtc-fallback"));
     assert!(!active.iter().any(|name| name == "webtransport"));
     assert!(!active.iter().any(|name| name == "relay-server"));
     assert!(!active.iter().any(|name| name == "rendezvous-client"));

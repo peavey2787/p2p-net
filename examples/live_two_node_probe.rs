@@ -140,8 +140,10 @@ fn probe_config(label: &str, nonce: u128, transport_port: u16, websocket_port: u
         .to_string_lossy()
         .to_string();
     cfg.discovery.namespace.tags = vec![format!("live-dcutr-{nonce}")];
+    let webrtc_port = transport_port.saturating_add(50);
     cfg.listen_addresses = vec![
         format!("/ip4/0.0.0.0/udp/{transport_port}/quic-v1"),
+        format!("/ip4/0.0.0.0/udp/{webrtc_port}/webrtc-direct"),
         format!("/ip4/0.0.0.0/tcp/{transport_port}"),
         format!("/ip4/0.0.0.0/tcp/{websocket_port}/ws"),
     ];
@@ -174,13 +176,10 @@ fn cleanup(cfg: &NodeConfig) {
 }
 
 fn supported_relay_addr_score(addr: &libp2p::Multiaddr) -> Option<u8> {
-    let unsupported = addr.iter().any(|protocol| {
-        matches!(
-            protocol,
-            Protocol::WebTransport | Protocol::WebRTCDirect | Protocol::P2pWebRtcDirect
-        )
-    });
-    if unsupported {
+    if addr
+        .iter()
+        .any(|protocol| matches!(protocol, Protocol::WebTransport))
+    {
         return None;
     }
     if addr
@@ -190,9 +189,14 @@ fn supported_relay_addr_score(addr: &libp2p::Multiaddr) -> Option<u8> {
         Some(0)
     } else if addr
         .iter()
-        .any(|protocol| matches!(protocol, Protocol::Tcp(_)))
+        .any(|protocol| matches!(protocol, Protocol::WebRTCDirect | Protocol::P2pWebRtcDirect))
     {
         Some(1)
+    } else if addr
+        .iter()
+        .any(|protocol| matches!(protocol, Protocol::Tcp(_)))
+    {
+        Some(2)
     } else {
         None
     }
@@ -206,6 +210,7 @@ fn relay_route_key(addr: &libp2p::Multiaddr) -> Option<String> {
             Protocol::P2p(peer) if relay.is_none() => relay = Some(peer),
             Protocol::P2pCircuit => break,
             Protocol::Quic | Protocol::QuicV1 => transport = Some("quic"),
+            Protocol::WebRTCDirect | Protocol::P2pWebRtcDirect => transport = Some("webrtc"),
             Protocol::Tcp(_) => transport = Some("tcp"),
             _ => {}
         }

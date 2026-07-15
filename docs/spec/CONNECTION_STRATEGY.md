@@ -1,6 +1,6 @@
 # Connection strategy planner specification
 
-`connect_peer(...)` remains one of the six public application primitives. The public call accepts a concrete multiaddr, while the node event loop may expand that request into an ordered internal dial plan using the peer book.
+`connect_peer(...)` remains one of the six public application data-plane primitives. The public call accepts a concrete multiaddr, while the node event loop may expand that request into an ordered internal dial plan using the peer book.
 
 ## Goals
 

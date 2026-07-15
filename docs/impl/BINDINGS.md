@@ -12,7 +12,7 @@ The shared core remains responsible for:
 - libp2p transport and behaviour construction
 - relay, mediator, rendezvous, DCUtR, and gossip policy
 - snapshots and Prometheus-style metrics
-- the six application primitives on `NodeHandle`
+- the six application data-plane primitives plus `get_metrics()` on `NodeHandle`
 
 Binding hosts are responsible for:
 
@@ -40,7 +40,7 @@ Binding hosts are responsible for:
 - `node_snapshot_to_json_string(snapshot)`
 - `prepare_binding_start_plan(config_json, runtime_spec)`
 
-The facade deliberately uses strings, enums, JSON, and existing config/snapshot types. It does not expose libp2p internals to app shells. Host-language bindings should map the six `NodeHandle` primitives directly: `connect_peer`, `disconnect_peer`, `send_message`, `broadcast`, `subscribe`, and `get_peers`.
+The facade deliberately uses strings, enums, JSON, and existing config/snapshot types. It does not expose libp2p internals to app shells. Host-language bindings should map the six `NodeHandle` data-plane primitives directly: `connect_peer`, `disconnect_peer`, `send_message`, `broadcast`, `subscribe`, and `get_peers`. Bindings that need resource accounting should also expose `get_metrics(peer_id)`.
 
 ## Recommended shell model
 

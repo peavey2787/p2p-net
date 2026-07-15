@@ -4,7 +4,7 @@ use std::path::Path;
 use libp2p::PeerId;
 use p2p_net::{
     app_topic_name, decode_app_message, encode_app_message, normalize_app_topic, AppMessage,
-    PeerInfo, PeerSource, MAX_APP_MESSAGE_BYTES,
+    NodeMetrics, PeerInfo, PeerSource, MAX_APP_MESSAGE_BYTES,
 };
 
 #[test]
@@ -84,7 +84,7 @@ fn peer_info_exposes_discovery_sources_and_capability_hints() {
 }
 
 #[test]
-fn node_handle_exposes_exact_six_general_purpose_primitives() {
+fn node_handle_exposes_six_app_primitives_plus_metrics_query() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let handle_rs =
         fs::read_to_string(manifest_dir.join("crates/node/handle.rs")).expect("read handle source");
@@ -96,6 +96,7 @@ fn node_handle_exposes_exact_six_general_purpose_primitives() {
         "broadcast",
         "subscribe",
         "get_peers",
+        "get_metrics",
     ] {
         assert!(
             handle_rs.contains(&format!("pub async fn {primitive}")),
@@ -111,4 +112,51 @@ fn node_handle_exposes_exact_six_general_purpose_primitives() {
     assert!(handle_rs.contains("NodeCommand::Broadcast"));
     assert!(handle_rs.contains("NodeCommand::Subscribe"));
     assert!(handle_rs.contains("NodeCommand::GetPeers"));
+    assert!(handle_rs.contains("NodeCommand::GetMetrics"));
+
+    let api_rs =
+        fs::read_to_string(manifest_dir.join("crates/api/mod.rs")).expect("read api source");
+    assert!(api_rs.contains("pub trait P2PNode"));
+    assert!(api_rs.contains("fn get_metrics"));
+}
+
+#[test]
+fn node_metrics_can_be_scoped_to_one_peer() {
+    let peer_a = PeerId::random();
+    let peer_b = PeerId::random();
+    let mut metrics = NodeMetrics::default();
+    metrics.bandwidth.total_bytes_sent = 300;
+    metrics
+        .bandwidth
+        .peer_stats
+        .entry(peer_a)
+        .or_default()
+        .bytes_sent = 100;
+    metrics
+        .bandwidth
+        .peer_stats
+        .entry(peer_b)
+        .or_default()
+        .bytes_sent = 200;
+    metrics
+        .bandwidth
+        .topic_stats
+        .entry("chat/general".to_string())
+        .or_default()
+        .bytes_sent = 300;
+
+    let scoped = metrics.for_peer(Some(peer_a));
+    assert_eq!(scoped.bandwidth.total_bytes_sent, 300);
+    assert_eq!(scoped.bandwidth.peer_stats.len(), 1);
+    assert_eq!(
+        scoped
+            .bandwidth
+            .peer_stats
+            .get(&peer_a)
+            .expect("peer_a stats")
+            .bytes_sent,
+        100
+    );
+    assert!(!scoped.bandwidth.peer_stats.contains_key(&peer_b));
+    assert!(scoped.bandwidth.topic_stats.is_empty());
 }

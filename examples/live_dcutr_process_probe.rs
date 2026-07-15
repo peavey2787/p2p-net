@@ -228,8 +228,10 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         cfg.discovery.relay_discovery.enabled = false;
         cfg.relay_peers.clear();
     }
+    let webrtc_port = transport_port.saturating_add(50);
     cfg.listen_addresses = vec![
         format!("/ip4/0.0.0.0/udp/{transport_port}/quic-v1"),
+        format!("/ip4/0.0.0.0/udp/{webrtc_port}/webrtc-direct"),
         format!("/ip4/0.0.0.0/tcp/{transport_port}"),
         format!("/ip4/0.0.0.0/tcp/{websocket_port}/ws"),
     ];
@@ -437,12 +439,10 @@ fn select_untried_relay(
 }
 
 fn supported_relay_addr_score(addr: &Multiaddr) -> Option<u8> {
-    if addr.iter().any(|protocol| {
-        matches!(
-            protocol,
-            Protocol::WebTransport | Protocol::WebRTCDirect | Protocol::P2pWebRtcDirect
-        )
-    }) {
+    if addr
+        .iter()
+        .any(|protocol| matches!(protocol, Protocol::WebTransport))
+    {
         return None;
     }
     if addr
@@ -452,9 +452,14 @@ fn supported_relay_addr_score(addr: &Multiaddr) -> Option<u8> {
         Some(0)
     } else if addr
         .iter()
-        .any(|protocol| matches!(protocol, Protocol::Tcp(_)))
+        .any(|protocol| matches!(protocol, Protocol::WebRTCDirect | Protocol::P2pWebRtcDirect))
     {
         Some(1)
+    } else if addr
+        .iter()
+        .any(|protocol| matches!(protocol, Protocol::Tcp(_)))
+    {
+        Some(2)
     } else {
         None
     }
@@ -468,6 +473,7 @@ fn relay_route_key(addr: &Multiaddr) -> Option<String> {
             Protocol::P2p(peer) if relay.is_none() => relay = Some(peer),
             Protocol::P2pCircuit => break,
             Protocol::Quic | Protocol::QuicV1 => transport = Some("quic"),
+            Protocol::WebRTCDirect | Protocol::P2pWebRtcDirect => transport = Some("webrtc"),
             Protocol::Tcp(_) => transport = Some("tcp"),
             _ => {}
         }

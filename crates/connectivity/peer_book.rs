@@ -1,4 +1,4 @@
-//! Unified in-memory peer book for the public six-primitives API.
+//! Unified in-memory peer book for the public application API.
 //!
 //! Discovery sources update this structure with peer ids, addresses, namespaces,
 //! capability hints, and connection state. `get_peers()` reads from this single
@@ -187,6 +187,25 @@ impl PeerBook {
     #[must_use]
     pub fn record(&self, peer_id: &PeerId) -> Option<&PeerRecord> {
         self.peers.get(peer_id)
+    }
+
+    #[must_use]
+    pub fn records(&self) -> impl Iterator<Item = &PeerRecord> {
+        self.peers.values()
+    }
+
+    #[must_use]
+    pub fn has_application_namespace(
+        &self,
+        peer_id: &PeerId,
+        namespaces: &BTreeSet<String>,
+    ) -> bool {
+        self.record(peer_id).is_some_and(|record| {
+            record
+                .namespaces
+                .iter()
+                .any(|namespace| namespaces.contains(namespace))
+        })
     }
 
     #[must_use]

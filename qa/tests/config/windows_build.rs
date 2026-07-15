@@ -8,6 +8,7 @@ async fn windows_tokio_boot_smoke() {
             .to_string(),
         listen_addresses: vec![
             "/ip4/127.0.0.1/udp/0/quic-v1".to_string(),
+            "/ip4/127.0.0.1/udp/0/webrtc-direct".to_string(),
             "/ip4/127.0.0.1/tcp/0".to_string(),
             "/ip4/127.0.0.1/tcp/0/ws".to_string(),
         ],

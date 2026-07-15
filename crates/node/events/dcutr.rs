@@ -36,7 +36,6 @@ pub(crate) async fn handle_event(
             relay_state.dcutr_relay_fallbacks = relay_state.dcutr_relay_fallbacks.saturating_add(1);
         }
     }
-
     let mut guard = snapshot.lock().await;
     guard.apply_relay_state(relay_state);
     push_pulse(
