@@ -5,17 +5,16 @@
 //! discovery running alongside rendezvous so public rendezvous and DHT
 //! resurrection can complement each other.
 
-use crate::common::error::config_error;
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::common::error::config_error;
 use libp2p::kad::{self, QueryId};
 use libp2p::swarm::Swarm;
 use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
 
 use crate::connectivity::discovery::DiscoveryConfig;
-use crate::connectivity::peer_cache;
-use crate::platform::NodeStorage;
 use crate::stack::MeshBehaviour;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -30,6 +29,8 @@ pub struct DhtDiscoveryConfig {
     /// Run provider lookups even when rendezvous peers are configured.
     /// Consumer defaults keep this on so DHT resurrection complements rendezvous.
     pub discover_with_rendezvous_peers: bool,
+    /// Minimum seconds between periodic DHT namespace refreshes.
+    pub refresh_interval_secs: u64,
     /// Bound startup work when many app tags are configured.
     pub max_namespaces_per_refresh: usize,
 }
@@ -41,6 +42,7 @@ impl Default for DhtDiscoveryConfig {
             announce: true,
             discover: true,
             discover_with_rendezvous_peers: true,
+            refresh_interval_secs: 300,
             max_namespaces_per_refresh: 16,
         }
     }
@@ -56,6 +58,11 @@ impl DhtDiscoveryConfig {
         if self.max_namespaces_per_refresh == 0 {
             return Err(config_error(
                 "discovery.dht.max_namespaces_per_refresh must be at least 1",
+            ));
+        }
+        if self.refresh_interval_secs == 0 {
+            return Err(config_error(
+                "discovery.dht.refresh_interval_secs must be at least 1",
             ));
         }
         Ok(())
@@ -90,6 +97,7 @@ pub struct DhtProviderState {
     pub discovered_provider_peers: HashMap<PeerId, BTreeSet<String>>,
     pub auto_connect_attempted_peers: HashSet<PeerId>,
     pub auto_connect_waiting_for_addrs: HashSet<PeerId>,
+    provider_query_started_unix_secs: HashMap<String, u64>,
     start_providing_queries: HashMap<QueryId, String>,
     get_provider_queries: HashMap<QueryId, String>,
 }
@@ -151,6 +159,32 @@ impl DhtProviderState {
             .any(|active| active == namespace)
     }
 
+    fn provider_announce_inflight(&self, namespace: &str) -> bool {
+        self.start_providing_queries
+            .values()
+            .any(|active| active == namespace)
+    }
+
+    fn should_announce_namespace(&self, namespace: &str) -> bool {
+        !self.namespaces_announced.contains(namespace)
+            && !self.provider_announce_inflight(namespace)
+    }
+
+    fn should_query_namespace(
+        &self,
+        namespace: &str,
+        now: u64,
+        refresh_interval_secs: u64,
+    ) -> bool {
+        if self.provider_query_inflight(namespace) {
+            return false;
+        }
+        self.provider_query_started_unix_secs
+            .get(namespace)
+            .map(|last| now.saturating_sub(*last) >= refresh_interval_secs)
+            .unwrap_or(true)
+    }
+
     fn complete_get_providers(&mut self, id: &QueryId) -> Option<String> {
         self.get_provider_queries.remove(id)
     }
@@ -168,6 +202,7 @@ pub fn start_dht_namespace_discovery(
     state: &mut DhtProviderState,
 ) -> DhtNamespacePlan {
     let dht_cfg = &discovery_cfg.dht;
+    let now = now_unix_secs();
     let mut plan = DhtNamespacePlan {
         enabled: dht_cfg.enabled,
         ..DhtNamespacePlan::default()
@@ -191,7 +226,7 @@ pub fn start_dht_namespace_discovery(
         .take(dht_cfg.max_namespaces_per_refresh)
     {
         let key = dht_record_key(&namespace);
-        if dht_cfg.announce {
+        if dht_cfg.announce && state.should_announce_namespace(&namespace) {
             state.announce_attempts = state.announce_attempts.saturating_add(1);
             match swarm.behaviour_mut().kademlia.start_providing(key.clone()) {
                 Ok(query_id) => {
@@ -208,11 +243,14 @@ pub fn start_dht_namespace_discovery(
         }
 
         if dht_cfg.should_discover(rendezvous_peer_count) {
-            if state.provider_query_inflight(&namespace) {
+            if !state.should_query_namespace(&namespace, now, dht_cfg.refresh_interval_secs) {
                 continue;
             }
             let query_id = swarm.behaviour_mut().kademlia.get_providers(key);
             state.track_get_providers(query_id, &namespace);
+            state
+                .provider_query_started_unix_secs
+                .insert(namespace.clone(), now);
             state.provider_queries = state.provider_queries.saturating_add(1);
             plan.provider_queries = plan.provider_queries.saturating_add(1);
         }
@@ -224,8 +262,6 @@ pub fn start_dht_namespace_discovery(
 pub fn on_kademlia_event(
     swarm: &mut Swarm<MeshBehaviour>,
     event: &kad::Event,
-    discovery_cfg: &DiscoveryConfig,
-    storage: &dyn NodeStorage,
     state: &mut DhtProviderState,
 ) -> Option<String> {
     match event {
@@ -302,21 +338,24 @@ pub fn on_kademlia_event(
             _ => None,
         },
         kad::Event::RoutingUpdated {
-            peer, addresses, ..
-        } => {
-            for addr in addresses.iter() {
-                peer_cache::record_seen_peer_addr_with_storage(discovery_cfg, peer, addr, storage);
-            }
-            None
-        }
+            peer: _,
+            addresses: _,
+            ..
+        } => None,
         kad::Event::RoutablePeer { peer, address }
         | kad::Event::PendingRoutablePeer { peer, address } => {
             add_peer_addr_to_kademlia(swarm, peer, address.clone());
-            peer_cache::record_seen_peer_addr_with_storage(discovery_cfg, peer, address, storage);
             None
         }
         _ => None,
     }
+}
+
+fn now_unix_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or_default()
 }
 
 fn add_peer_addr_to_kademlia(swarm: &mut Swarm<MeshBehaviour>, peer: &PeerId, addr: Multiaddr) {

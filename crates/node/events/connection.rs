@@ -1,7 +1,10 @@
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::ConnectionId;
 use libp2p::{autonat, identify, Multiaddr, PeerId, Swarm};
+use std::collections::BTreeSet;
+use std::time::{Duration, Instant};
 
+use crate::api::PeerSource;
 use crate::connectivity::addr::is_local_direct_addr;
 use crate::connectivity::peer_cache;
 use crate::connectivity::relay::{
@@ -50,18 +53,19 @@ pub(crate) async fn handle_identify_observed_addr(
     let supports_dcutr = protocols
         .iter()
         .any(|protocol| protocol.starts_with("/libp2p/dcutr"));
-    ctx.peer_book.record_capabilities(
-        *peer_id,
-        Some(supports_relay_hop),
-        Some(supports_rendezvous),
-        Some(supports_dcutr),
-    );
-
     let relay_pulse = if supports_relay_hop {
         maybe_reserve_dht_relay(*peer_id, info, swarm, ctx)
     } else {
         None
     };
+    if ctx.peer_book.record(peer_id).is_some() || relay_pulse.is_some() {
+        ctx.peer_book.record_capabilities(
+            *peer_id,
+            Some(supports_relay_hop),
+            Some(supports_rendezvous),
+            Some(supports_dcutr),
+        );
+    }
 
     let observed_addr = &info.observed_addr;
     let classification = classify_listen_addr(observed_addr);
@@ -179,21 +183,6 @@ pub(crate) async fn handle_connection_established(
     swarm: &mut Swarm<MeshBehaviour>,
     ctx: &mut SwarmEventContext<'_>,
 ) {
-    peer_cache::record_seen_peer_addr_with_storage(
-        ctx.discovery_cfg,
-        &peer_id,
-        &remote_addr,
-        ctx.storage,
-    );
-    ctx.metrics
-        .record_storage_write(remote_addr.to_string().len());
-
-    ctx.peer_book
-        .record_connected(peer_id, Some(remote_addr.clone()));
-    ctx.metrics.record_connection_handshake(peer_id);
-    ctx.pending_connections.complete(&peer_id);
-    ctx.auto_dial_stats.clear_awaiting(&peer_id);
-
     if ctx.relay_cfg.enabled && !ctx.relay_cfg.schedule.is_open_now_utc() {
         let _ = swarm.close_connection(connection_id);
         ctx.relay_state.health = RelayServiceHealth::ClosedBySchedule;
@@ -228,6 +217,40 @@ pub(crate) async fn handle_connection_established(
         return;
     }
 
+    let track_as_application_peer = should_track_peer_in_peer_book(peer_id, ctx);
+    if relayed_endpoint && !is_intended_relayed_destination(peer_id, ctx) {
+        let _ = swarm.close_connection(connection_id);
+        ctx.relay_state.denied_circuits = ctx.relay_state.denied_circuits.saturating_add(1);
+        let mut guard = ctx.snapshot.lock().await;
+        sync_swarm_connection_snapshot(&mut guard, swarm, ctx);
+        guard.connection_limit_events = guard.connection_limit_events.saturating_add(1);
+        guard.apply_relay_state(ctx.relay_state);
+        push_pulse(
+            &mut guard.pulses,
+            format!(
+                "relayed connection closed for non-application peer={peer_id}; relay infrastructure remains allowed"
+            ),
+        );
+        return;
+    }
+
+    if track_as_application_peer {
+        peer_cache::record_seen_peer_addr_with_storage(
+            ctx.discovery_cfg,
+            &peer_id,
+            &remote_addr,
+            ctx.storage,
+        );
+        ctx.metrics
+            .record_storage_write(remote_addr.to_string().len());
+        ctx.peer_book
+            .record_connected(peer_id, Some(remote_addr.clone()));
+    }
+    ctx.metrics
+        .record_connection_handshake(track_as_application_peer.then_some(peer_id));
+    ctx.pending_connections.complete(&peer_id);
+    ctx.auto_dial_stats.clear_awaiting(&peer_id);
+
     let mut guard = ctx.snapshot.lock().await;
     sync_swarm_connection_snapshot(&mut guard, swarm, ctx);
     guard.connection_cap_disconnects = ctx.connection_caps.cap_disconnects;
@@ -245,18 +268,28 @@ pub(crate) async fn handle_connection_established(
 
         if ctx.dcutr_policy.enabled && ctx.dcutr_policy.attempt_after_relay_connection {
             let max_attempts = ctx.dcutr_policy.max_attempts_per_peer;
-            let attempt_budget = {
-                let attempts = ctx
-                    .relay_state
-                    .dcutr_attempts_by_peer
-                    .entry(peer_id.to_owned())
-                    .or_insert(0);
-                if *attempts >= max_attempts {
-                    None
-                } else {
-                    *attempts = attempts.saturating_add(1);
-                    Some(*attempts)
-                }
+            let now = Instant::now();
+            let retry_interval = Duration::from_secs(ctx.dcutr_policy.retry_interval_secs.max(1));
+            let attempts = ctx
+                .relay_state
+                .dcutr_attempts_by_peer
+                .entry(peer_id.to_owned())
+                .or_insert(0);
+            let cooldown_remaining = ctx
+                .relay_state
+                .dcutr_last_attempt_by_peer
+                .get(&peer_id)
+                .and_then(|last| retry_interval.checked_sub(now.duration_since(*last)));
+            let attempt_budget = if *attempts >= max_attempts {
+                None
+            } else if cooldown_remaining.is_some() {
+                None
+            } else {
+                *attempts = attempts.saturating_add(1);
+                ctx.relay_state
+                    .dcutr_last_attempt_by_peer
+                    .insert(peer_id.to_owned(), now);
+                Some(*attempts)
             };
 
             if let Some(attempt_budget) = attempt_budget {
@@ -264,6 +297,7 @@ pub(crate) async fn handle_connection_established(
                     .relay_state
                     .dcutr_upgrade_eligible_connections
                     .saturating_add(1);
+                ctx.relay_state.dcutr_attempts = ctx.relay_state.dcutr_attempts.saturating_add(1);
                 push_pulse(
                     &mut guard.pulses,
                     format!(
@@ -275,9 +309,7 @@ pub(crate) async fn handle_connection_established(
                     ctx.relay_state.dcutr_retry_suppressed.saturating_add(1);
                 push_pulse(
                     &mut guard.pulses,
-                    format!(
-                        "dcutr retry suppressed for {peer_id}; max_attempts_per_peer={max_attempts} reached; relay fallback retained via {remote_addr}",
-                    ),
+                    dcutr_suppressed_pulse(peer_id, max_attempts, cooldown_remaining, &remote_addr),
                 );
             }
         } else {
@@ -291,6 +323,49 @@ pub(crate) async fn handle_connection_established(
     }
 }
 
+fn dcutr_suppressed_pulse(
+    peer_id: PeerId,
+    max_attempts: u32,
+    cooldown_remaining: Option<Duration>,
+    remote_addr: &Multiaddr,
+) -> String {
+    if let Some(remaining) = cooldown_remaining {
+        return format!(
+            "dcutr retry suppressed for {peer_id}; retry cooldown remaining={}s; relay fallback retained via {remote_addr}",
+            remaining.as_secs().saturating_add(1)
+        );
+    }
+    format!(
+        "dcutr retry suppressed for {peer_id}; max_attempts_per_peer={max_attempts} reached; relay fallback retained via {remote_addr}",
+    )
+}
+
+fn should_track_peer_in_peer_book(peer_id: PeerId, ctx: &SwarmEventContext<'_>) -> bool {
+    ctx.peer_book.record(&peer_id).is_some_and(|record| {
+        record.sources.iter().any(|source| {
+            matches!(
+                source,
+                PeerSource::Manual
+                    | PeerSource::PeerCache
+                    | PeerSource::Rendezvous
+                    | PeerSource::PublicRendezvous
+                    | PeerSource::DhtProvider
+            )
+        }) || !record.namespaces.is_empty()
+    })
+}
+
+fn is_intended_relayed_destination(peer_id: PeerId, ctx: &SwarmEventContext<'_>) -> bool {
+    let namespaces = ctx
+        .discovery_cfg
+        .rendezvous_namespaces(ctx.network_id)
+        .map(|items| items.into_iter().collect::<BTreeSet<_>>())
+        .unwrap_or_default();
+    ctx.peer_book
+        .has_application_namespace(&peer_id, &namespaces)
+        || should_track_peer_in_peer_book(peer_id, ctx)
+}
+
 pub(crate) async fn handle_connection_closed(
     peer_id: PeerId,
     connection_id: ConnectionId,
@@ -302,7 +377,7 @@ pub(crate) async fn handle_connection_closed(
         .connected_peers()
         .any(|connected| connected == &peer_id)
     {
-        ctx.peer_book.record_disconnected(peer_id);
+        ctx.peer_book.record_disconnected_if_known(peer_id);
     }
     let mut guard = ctx.snapshot.lock().await;
     sync_swarm_connection_snapshot(&mut guard, swarm, ctx);
@@ -330,8 +405,10 @@ pub(crate) async fn handle_outgoing_connection_error(
 ) {
     let mut planner_pulses = Vec::new();
     if let Some(peer) = peer_id.as_ref() {
-        peer_cache::record_peer_addr_failure_with_storage(ctx.discovery_cfg, peer, ctx.storage);
-        ctx.peer_book.record_failure(peer.to_owned());
+        if ctx.peer_book.record(peer).is_some() {
+            peer_cache::record_peer_addr_failure_with_storage(ctx.discovery_cfg, peer, ctx.storage);
+            ctx.peer_book.record_failure(peer.to_owned());
+        }
 
         let mut fallback_dial_started = false;
         while let Some(attempt) = ctx.pending_connections.next_after_failure(peer) {

@@ -30,7 +30,9 @@ use crate::connectivity::identity;
 use crate::connectivity::rendezvous::RendezvousState;
 use crate::platform::{DesktopPlatformRuntime, NodeStorage, PlatformRuntime};
 use crate::protocol::pulse::heartbeat_topic;
-use crate::stack::{build_swarm, refresh_rendezvous, reserve_selected_relays, seed_bootstrap};
+use crate::stack::{
+    allow_dcutr_peer, build_swarm, refresh_rendezvous, reserve_selected_relays, seed_bootstrap,
+};
 
 pub use capabilities::{apply_resolved_capabilities, resolve_node_config};
 pub use config::NodeConfig;
@@ -87,6 +89,23 @@ pub async fn start_node_with_platform(
         public_rendezvous_candidate_count,
         public_relay_candidate_count,
     } = startup::prepare_startup_discovery(&cfg, &resolved_config, storage.as_ref()).await?;
+
+    for record in peer_book.records() {
+        if !record.namespaces.is_empty()
+            || record.sources.iter().any(|source| {
+                matches!(
+                    source,
+                    crate::api::PeerSource::Manual
+                        | crate::api::PeerSource::PeerCache
+                        | crate::api::PeerSource::DhtProvider
+                        | crate::api::PeerSource::Rendezvous
+                        | crate::api::PeerSource::PublicRendezvous
+                )
+            })
+        {
+            allow_dcutr_peer(&mut swarm, record.peer_id);
+        }
+    }
 
     seed_bootstrap(&mut swarm, &startup_plan.dial_addrs);
     let selected_relay_peers = relay_selection_plan.selected_addrs.clone();

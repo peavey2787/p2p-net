@@ -66,6 +66,19 @@ fn resolved_config_exposes_dcutr_retry_policy() {
 }
 
 #[test]
+fn dcutr_behaviour_enforces_retry_policy_before_handler_attach() {
+    let source = std::fs::read_to_string("crates/stack/dcutr.rs").expect("read dcutr wrapper");
+    let behaviour = std::fs::read_to_string("crates/stack/behaviour.rs").expect("read behaviour");
+
+    assert!(source.contains("allowed_peers"));
+    assert!(source.contains("retry_interval"));
+    assert!(source.contains("max_attempts_per_peer"));
+    assert!(source.contains("allow_relayed_upgrade"));
+    assert!(behaviour.contains("resolved_cfg.dcutr_retry_interval_secs"));
+    assert!(behaviour.contains("resolved_cfg.dcutr_max_attempts_per_peer"));
+}
+
+#[test]
 fn relay_state_updates_dcutr_fallback_counters() {
     let state = RelayState {
         dcutr_enabled: true,

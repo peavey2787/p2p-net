@@ -217,7 +217,13 @@ pub fn build_behaviour(ctx: BehaviourBuildContext<'_>) -> MeshBehaviour {
         autonat: autonat::Behaviour::new(local_peer, Default::default()),
         dcutr: behaviour_policy
             .dcutr
-            .then(|| DcutrBehaviour::new(local_peer))
+            .then(|| {
+                DcutrBehaviour::new(
+                    local_peer,
+                    resolved_cfg.dcutr_retry_interval_secs,
+                    resolved_cfg.dcutr_max_attempts_per_peer,
+                )
+            })
             .into(),
         external_address_candidates: ExternalAddressCandidates::new(),
         relay_client: relay_behaviour,

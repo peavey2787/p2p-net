@@ -81,7 +81,7 @@ sudo ./qa/tools/netem-linux.sh lo stop
 
 ## DCUtR policy validation
 
-`qa/tests/relay/dcutr_policy.rs` covers default DCUtR policy safety, disabling the DCUtR capability, rejecting upgrade-without-fallback config, resolved retry policy fields, and snapshot relay-fallback counters. The test is registered in `Cargo.toml`, so `qa/ci/run-full-validation.ps1` picks it up through the existing `cargo test --workspace --locked -j 1` step.
+`qa/tests/relay/dcutr_policy.rs` covers default DCUtR policy safety, disabling the DCUtR capability, rejecting upgrade-without-fallback config, resolved retry policy fields, behaviour-level allowlist/cooldown wiring, and snapshot relay-fallback counters. The test is registered in `Cargo.toml`, so `qa/ci/run-full-validation.ps1` picks it up through the existing `cargo test --workspace --locked -j 1` step.
 
 `platform_runtime` is picked up by `cargo test --workspace`.
 

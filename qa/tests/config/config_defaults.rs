@@ -28,6 +28,7 @@ fn public_fallback_is_enabled_by_default_for_normal_app_mode() {
     assert!(cfg.discovery.rendezvous.client_enabled);
     assert!(!cfg.discovery.rendezvous.server_enabled);
     assert!(cfg.discovery.dht.discover_with_rendezvous_peers);
+    assert_eq!(cfg.discovery.dht.refresh_interval_secs, 300);
     assert!(cfg.discovery.public_bootstrap.bootstrap_decision(0).used);
     assert!(!cfg.discovery.public_bootstrap.bootstrap_decision(1).used);
     assert!(!cfg.discovery.public_bootstrap.rendezvous_decision(1).used);

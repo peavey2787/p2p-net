@@ -15,6 +15,8 @@ For every derived namespace up to `max_namespaces_per_refresh`:
 1. `start_providing(namespace_key)` announces the local node as a provider when announcement is enabled.
 2. `get_providers(namespace_key)` queries for other providers when discovery is enabled and the DHT policy says discovery should run.
 
+Startup performs the first announce/query immediately. Runtime refreshes are throttled by `discovery.dht.refresh_interval_secs` and already-announced namespaces are not re-submitted every heartbeat.
+
 ## Event behavior
 
 `MeshEvent::Kademlia` is handled by `node/events/kademlia.rs` instead of falling through to generic discovery dispatch.
@@ -28,9 +30,9 @@ Handled results include:
   addresses before they have been copied into the application peer book
 - failed asynchronous provider dials become eligible for the next periodic
   provider result instead of being suppressed for the rest of the process
-- routing updates and routable-peer address learning
+- routing updates and routable-peer address learning for already discovered provider peers
 
-Kademlia address-learning events are written to the peer cache so later startup can prefer healthy cached peers before public fallback.
+Kademlia routing-table peers are not written to the peer cache merely because they helped route a query. Address-learning events are promoted to the peer book/cache only for peers already discovered as providers of the application namespace.
 
 ## Observability
 

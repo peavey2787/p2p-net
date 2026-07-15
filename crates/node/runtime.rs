@@ -5,7 +5,7 @@
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures::StreamExt;
 use libp2p::gossipsub::{IdentTopic, TopicHash};
@@ -37,8 +37,6 @@ use super::runtime_tasks::{
     apply_dht_refresh_snapshot, apply_public_ip_probe_result, publish_heartbeat,
 };
 use super::snapshot::NodeSnapshot;
-
-const DHT_REFRESH_TICKS: usize = 1;
 
 pub(crate) struct NodeRuntimeContext {
     pub(crate) cfg: NodeConfig,
@@ -195,7 +193,7 @@ struct RuntimeState {
     connection_caps: ConnectionCapState,
     app_topic_hashes: Vec<TopicHash>,
     metrics: NodeMetrics,
-    dht_refresh_ticks: usize,
+    last_dht_refresh: Instant,
 }
 
 impl RuntimeState {
@@ -225,7 +223,7 @@ impl RuntimeState {
             connection_caps: ConnectionCapState::new(&cfg.connection_limits),
             app_topic_hashes: Vec::new(),
             metrics: NodeMetrics::default(),
-            dht_refresh_ticks: 0,
+            last_dht_refresh: Instant::now(),
         }
     }
 }
@@ -288,9 +286,9 @@ async fn tick_runtime(
         .saturating_add(1);
     runtime_state.metrics.compute.active_request_count =
         u32::try_from(runtime_state.pending_connections.pending_count()).unwrap_or(u32::MAX);
-    runtime_state.dht_refresh_ticks = runtime_state.dht_refresh_ticks.saturating_add(1);
-    let dht_plan = if runtime_state.dht_refresh_ticks >= DHT_REFRESH_TICKS {
-        runtime_state.dht_refresh_ticks = 0;
+    let dht_refresh_interval = Duration::from_secs(cfg.discovery.dht.refresh_interval_secs.max(1));
+    let dht_plan = if runtime_state.last_dht_refresh.elapsed() >= dht_refresh_interval {
+        runtime_state.last_dht_refresh = Instant::now();
         Some(start_dht_namespace_discovery(
             swarm,
             cfg.network_id,

@@ -175,6 +175,13 @@ impl PeerBook {
         record.mark_seen();
     }
 
+    pub fn record_disconnected_if_known(&mut self, peer_id: PeerId) {
+        if let Some(record) = self.peers.get_mut(&peer_id) {
+            record.connected = false;
+            record.mark_seen();
+        }
+    }
+
     pub fn record_failure(&mut self, peer_id: PeerId) {
         let record = self
             .peers
@@ -265,5 +272,13 @@ mod tests {
         assert_eq!(peers[0].supports_relay, Some(true));
         assert_eq!(peers[0].supports_dcutr, Some(true));
         assert!(book.record(&peer).expect("record").relay_preferred);
+    }
+
+    #[test]
+    fn disconnected_unknown_peer_does_not_create_record() {
+        let mut book = PeerBook::default();
+        book.record_disconnected_if_known(PeerId::random());
+
+        assert!(book.is_empty());
     }
 }

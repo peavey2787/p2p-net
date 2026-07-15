@@ -38,6 +38,7 @@
       "announce": true,
       "discover": true,
       "discover_with_rendezvous_peers": true,
+      "refresh_interval_secs": 300,
       "max_namespaces_per_refresh": 16
     },
     "relay_discovery": {

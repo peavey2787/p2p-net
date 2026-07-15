@@ -1,10 +1,12 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::task::{Context, Poll};
+use std::time::{Duration, Instant};
 
+use either::Either;
 use libp2p::core::{transport::PortUse, Endpoint};
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::{
-    ConnectionDenied, ConnectionId, FromSwarm, NetworkBehaviour, THandler, THandlerInEvent,
+    dummy, ConnectionDenied, ConnectionId, FromSwarm, NetworkBehaviour, THandler, THandlerInEvent,
     THandlerOutEvent, ToSwarm,
 };
 use libp2p::{dcutr, Multiaddr, PeerId};
@@ -23,14 +25,28 @@ const MAX_PUBLIC_QUIC_CANDIDATES: usize = 8;
 pub struct DcutrBehaviour {
     inner: dcutr::Behaviour,
     public_quic_candidates: HashSet<Multiaddr>,
+    retry_interval: Duration,
+    max_attempts_per_peer: u32,
+    allowed_peers: HashSet<PeerId>,
+    attempts_by_peer: HashMap<PeerId, u32>,
+    last_attempt_by_peer: HashMap<PeerId, Instant>,
 }
 
 impl DcutrBehaviour {
-    pub fn new(local_peer: PeerId) -> Self {
+    pub fn new(local_peer: PeerId, retry_interval_secs: u64, max_attempts_per_peer: u32) -> Self {
         Self {
             inner: dcutr::Behaviour::new(local_peer),
             public_quic_candidates: HashSet::new(),
+            retry_interval: Duration::from_secs(retry_interval_secs.max(1)),
+            max_attempts_per_peer: max_attempts_per_peer.max(1),
+            allowed_peers: HashSet::new(),
+            attempts_by_peer: HashMap::new(),
+            last_attempt_by_peer: HashMap::new(),
         }
+    }
+
+    pub fn allow_peer(&mut self, peer: PeerId) {
+        self.allowed_peers.insert(peer);
     }
 
     fn accept_candidate(&mut self, addr: &Multiaddr) -> bool {
@@ -44,6 +60,29 @@ impl DcutrBehaviour {
             return false;
         }
         self.public_quic_candidates.insert(addr.clone());
+        true
+    }
+
+    fn allow_relayed_upgrade(&mut self, peer: PeerId) -> bool {
+        if !self.allowed_peers.contains(&peer) {
+            return false;
+        }
+        let attempts = self.attempts_by_peer.entry(peer).or_default();
+        if *attempts >= self.max_attempts_per_peer {
+            return false;
+        }
+
+        let now = Instant::now();
+        if self
+            .last_attempt_by_peer
+            .get(&peer)
+            .is_some_and(|last| now.duration_since(*last) < self.retry_interval)
+        {
+            return false;
+        }
+
+        *attempts = attempts.saturating_add(1);
+        self.last_attempt_by_peer.insert(peer, now);
         true
     }
 }
@@ -79,6 +118,13 @@ impl NetworkBehaviour for DcutrBehaviour {
         local_addr: &Multiaddr,
         remote_addr: &Multiaddr,
     ) -> Result<THandler<Self>, ConnectionDenied> {
+        if local_addr
+            .iter()
+            .any(|protocol| matches!(protocol, Protocol::P2pCircuit))
+            && !self.allow_relayed_upgrade(peer)
+        {
+            return Ok(Either::Right(dummy::ConnectionHandler));
+        }
         self.inner.handle_established_inbound_connection(
             connection_id,
             peer,
@@ -95,6 +141,13 @@ impl NetworkBehaviour for DcutrBehaviour {
         role_override: Endpoint,
         port_use: PortUse,
     ) -> Result<THandler<Self>, ConnectionDenied> {
+        if addr
+            .iter()
+            .any(|protocol| matches!(protocol, Protocol::P2pCircuit))
+            && !self.allow_relayed_upgrade(peer)
+        {
+            return Ok(Either::Right(dummy::ConnectionHandler));
+        }
         self.inner.handle_established_outbound_connection(
             connection_id,
             peer,
@@ -148,7 +201,7 @@ mod tests {
 
     #[test]
     fn public_candidate_count_is_bounded() {
-        let mut behaviour = DcutrBehaviour::new(PeerId::random());
+        let mut behaviour = DcutrBehaviour::new(PeerId::random(), 60, 3);
         for suffix in 1..=MAX_PUBLIC_QUIC_CANDIDATES {
             let addr = format!("/ip4/8.8.8.{suffix}/udp/4001/quic-v1")
                 .parse()
@@ -160,5 +213,43 @@ mod tests {
 
         assert!(!behaviour.accept_candidate(&overflow));
         assert!(behaviour.accept_candidate(&lan));
+    }
+
+    #[test]
+    fn relayed_upgrade_policy_enforces_attempt_budget_and_cooldown() {
+        let peer = PeerId::random();
+        let mut behaviour = DcutrBehaviour::new(PeerId::random(), 60, 2);
+        behaviour.allow_peer(peer);
+
+        assert!(behaviour.allow_relayed_upgrade(peer));
+        assert!(!behaviour.allow_relayed_upgrade(peer));
+
+        let last = behaviour
+            .last_attempt_by_peer
+            .get_mut(&peer)
+            .expect("last attempt recorded");
+        *last = last
+            .checked_sub(Duration::from_secs(61))
+            .expect("instant subtracts");
+        assert!(behaviour.allow_relayed_upgrade(peer));
+
+        let last = behaviour
+            .last_attempt_by_peer
+            .get_mut(&peer)
+            .expect("last attempt recorded");
+        *last = last
+            .checked_sub(Duration::from_secs(61))
+            .expect("instant subtracts");
+        assert!(!behaviour.allow_relayed_upgrade(peer));
+    }
+
+    #[test]
+    fn relayed_upgrade_policy_rejects_unmarked_peers() {
+        let peer = PeerId::random();
+        let mut behaviour = DcutrBehaviour::new(PeerId::random(), 60, 2);
+
+        assert!(!behaviour.allow_relayed_upgrade(peer));
+        behaviour.allow_peer(peer);
+        assert!(behaviour.allow_relayed_upgrade(peer));
     }
 }

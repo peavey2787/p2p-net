@@ -12,7 +12,7 @@ use crate::common::error::NetError;
 use crate::connectivity::connection_strategy::{build_connection_plan, PendingConnectionPlans};
 use crate::connectivity::dcutr::DcutrPolicy;
 use crate::connectivity::peer_book::PeerBook;
-use crate::stack::{extract_p2p_peer_id, MeshBehaviour};
+use crate::stack::{allow_dcutr_peer, extract_p2p_peer_id, MeshBehaviour};
 
 use super::dial::dial_connection_plan;
 use super::handle::NodeCommand;
@@ -56,6 +56,7 @@ pub(crate) async fn handle_node_command(command: NodeCommand, ctx: NodeCommandCo
                         reason: "refusing to dial local peer id".to_string(),
                     })
                 } else {
+                    allow_dcutr_peer(swarm, peer);
                     peer_book.record_addr(peer, addr.clone(), PeerSource::Manual);
                     let plan = build_connection_plan(addr, peer_book, dcutr_policy);
                     dial_connection_plan(swarm, pending_connections, &plan)
