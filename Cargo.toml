@@ -16,6 +16,7 @@ default = ["dns"]
 # LAN multicast discovery/mDNS is intentionally not included.
 dns = ["libp2p/dns"]
 dashboard = ["dep:crossterm", "dep:ratatui"]
+webrtc-oob-probe = ["dep:webrtc"]
 
 [lib]
 name = "p2p_net"
@@ -31,6 +32,13 @@ bench = false
 [[example]]
 name = "six_primitives"
 path = "examples/six_primitives.rs"
+test = false
+bench = false
+
+[[example]]
+name = "live_webrtc_oob_probe"
+path = "examples/live_webrtc_oob_probe.rs"
+required-features = ["webrtc-oob-probe"]
 test = false
 bench = false
 
@@ -202,7 +210,7 @@ tracing = "0.1"
 blake3 = "1"
 rand = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-webrtc = "0.8.0"
+webrtc = { version = "0.8.0", optional = true }
 libp2p-webrtc = { version = "0.9.0-alpha.1", features = ["tokio"] }
 
 [dev-dependencies]
@@ -218,3 +226,4 @@ base64 = "0.22"
 libp2p-dns = { path = "external/libp2p-dns" }
 libp2p-dcutr = { path = "external/libp2p-dcutr" }
 libp2p-mdns = { path = "external/libp2p-mdns-placeholder" }
+libp2p-webrtc = { path = "external/libp2p-webrtc" }
