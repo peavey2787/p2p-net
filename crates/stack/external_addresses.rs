@@ -9,17 +9,22 @@ use libp2p::swarm::{
 };
 use libp2p::{Multiaddr, PeerId};
 
+const MAX_EXTERNAL_ADDRESS_CACHE: usize = 32;
+
 /// Bridges application-confirmed public addresses into libp2p behaviours that
 /// consume external-address candidates, including DCUtR.
 pub struct ExternalAddressCandidates {
     pending: VecDeque<ExternalAddressAction>,
     candidate_seen: HashSet<Multiaddr>,
+    candidate_order: VecDeque<Multiaddr>,
     confirmed_seen: HashSet<Multiaddr>,
+    confirmed_order: VecDeque<Multiaddr>,
 }
 
 enum ExternalAddressAction {
     Candidate(Multiaddr),
     Confirm(Multiaddr),
+    Expire(Multiaddr),
 }
 
 impl ExternalAddressCandidates {
@@ -27,7 +32,9 @@ impl ExternalAddressCandidates {
         Self {
             pending: VecDeque::new(),
             candidate_seen: HashSet::new(),
+            candidate_order: VecDeque::new(),
             confirmed_seen: HashSet::new(),
+            confirmed_order: VecDeque::new(),
         }
     }
 
@@ -35,7 +42,14 @@ impl ExternalAddressCandidates {
         if !supports_dcutr_port_reuse(&address) {
             return;
         }
-        if self.candidate_seen.insert(address.clone()) {
+        if remember_bounded(
+            &mut self.candidate_seen,
+            &mut self.candidate_order,
+            address.clone(),
+            MAX_EXTERNAL_ADDRESS_CACHE,
+        )
+        .is_some()
+        {
             self.pending
                 .push_back(ExternalAddressAction::Candidate(address));
         }
@@ -43,11 +57,41 @@ impl ExternalAddressCandidates {
 
     pub fn add_confirmed(&mut self, address: Multiaddr) {
         self.add_candidate(address.clone());
-        if self.confirmed_seen.insert(address.clone()) {
+        if let Some(evicted) = remember_bounded(
+            &mut self.confirmed_seen,
+            &mut self.confirmed_order,
+            address.clone(),
+            MAX_EXTERNAL_ADDRESS_CACHE,
+        ) {
+            if evicted != address {
+                self.pending
+                    .push_back(ExternalAddressAction::Expire(evicted));
+            }
             self.pending
                 .push_back(ExternalAddressAction::Confirm(address));
         }
     }
+}
+
+fn remember_bounded(
+    seen: &mut HashSet<Multiaddr>,
+    order: &mut VecDeque<Multiaddr>,
+    address: Multiaddr,
+    max_entries: usize,
+) -> Option<Multiaddr> {
+    if !seen.insert(address.clone()) {
+        return None;
+    }
+    order.push_back(address.clone());
+    while seen.len() > max_entries {
+        let Some(evicted) = order.pop_front() else {
+            break;
+        };
+        if seen.remove(&evicted) {
+            return Some(evicted);
+        }
+    }
+    Some(address)
 }
 
 fn supports_dcutr_port_reuse(address: &Multiaddr) -> bool {
@@ -127,6 +171,9 @@ impl NetworkBehaviour for ExternalAddressCandidates {
             Some(ExternalAddressAction::Confirm(address)) => {
                 Poll::Ready(ToSwarm::ExternalAddrConfirmed(address))
             }
+            Some(ExternalAddressAction::Expire(address)) => {
+                Poll::Ready(ToSwarm::ExternalAddrExpired(address))
+            }
             None => Poll::Pending,
         }
     }
@@ -160,5 +207,19 @@ mod tests {
 
         assert!(behaviour.candidate_seen.contains(&quic));
         assert!(behaviour.confirmed_seen.contains(&quic));
+    }
+
+    #[test]
+    fn observed_external_address_sets_are_bounded() {
+        let mut behaviour = ExternalAddressCandidates::new();
+        for suffix in 1..=MAX_EXTERNAL_ADDRESS_CACHE + 5 {
+            let addr: Multiaddr = format!("/ip4/203.0.113.{suffix}/udp/4001/quic-v1")
+                .parse()
+                .unwrap();
+            behaviour.add_confirmed(addr);
+        }
+
+        assert_eq!(behaviour.candidate_seen.len(), MAX_EXTERNAL_ADDRESS_CACHE);
+        assert_eq!(behaviour.confirmed_seen.len(), MAX_EXTERNAL_ADDRESS_CACHE);
     }
 }

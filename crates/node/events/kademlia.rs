@@ -6,8 +6,11 @@ use crate::connectivity::relay::is_p2p_circuit_addr;
 use super::super::dial::{auto_dial_dht_provider, AutoDialOutcome};
 use super::super::push_pulse;
 use super::{sync_peer_connectivity_snapshot, SwarmEventContext};
-use crate::stack::{allow_dcutr_peer, MeshBehaviour};
+use crate::stack::{add_peer_address_to_discovery, allow_dcutr_peer, MeshBehaviour};
 use libp2p::{Multiaddr, PeerId, Swarm};
+use std::collections::HashSet;
+
+const APPLICATION_DIAL_OUTGOING_HEADROOM: u32 = 8;
 
 #[derive(Debug, Clone, Copy)]
 struct AutoDialCandidate {
@@ -39,6 +42,17 @@ fn record_dht_provider_peers(
         ctx.peer_book
             .record_namespace(*provider, namespace.clone(), PeerSource::DhtProvider);
         allow_dcutr_peer(swarm, *provider);
+        if swarm.is_connected(provider) {
+            // Provider discovery can finish after an inbound relayed
+            // connection has already arrived. The exact namespace record is
+            // sufficient to promote that live connection immediately.
+            ctx.peer_book.record_connected(*provider, None);
+            ctx.relay_state.unverified_relayed_peers.remove(provider);
+        }
+        if *provider != ctx.local_peer {
+            ctx.dht_state
+                .start_provider_addr_lookup_if_due(swarm, *provider);
+        }
         learned.push(AutoDialCandidate {
             peer: *provider,
             address_updated: false,
@@ -53,6 +67,9 @@ fn record_kademlia_provider_addrs(
     ctx: &mut SwarmEventContext<'_>,
 ) -> Vec<AutoDialCandidate> {
     match ev {
+        libp2p::kad::Event::OutboundQueryProgressed { id, result, .. } => {
+            record_provider_addr_lookup_result(id, result, swarm, ctx)
+        }
         libp2p::kad::Event::RoutingUpdated {
             peer, addresses, ..
         } => record_known_provider_addrs(peer, addresses.iter().cloned(), swarm, ctx),
@@ -62,6 +79,42 @@ fn record_kademlia_provider_addrs(
         }
         _ => Vec::new(),
     }
+}
+
+fn record_provider_addr_lookup_result(
+    id: &libp2p::kad::QueryId,
+    result: &libp2p::kad::QueryResult,
+    swarm: &mut Swarm<MeshBehaviour>,
+    ctx: &mut SwarmEventContext<'_>,
+) -> Vec<AutoDialCandidate> {
+    let Some(target_peer) = ctx.dht_state.provider_addr_lookup_peer(id) else {
+        return Vec::new();
+    };
+
+    let closest_peers = match result {
+        libp2p::kad::QueryResult::GetClosestPeers(Ok(ok)) => &ok.peers,
+        libp2p::kad::QueryResult::GetClosestPeers(Err(
+            libp2p::kad::GetClosestPeersError::Timeout { peers, .. },
+        )) => peers,
+        _ => return Vec::new(),
+    };
+
+    for info in closest_peers {
+        for addr in &info.addrs {
+            add_peer_address_to_discovery(swarm, info.peer_id, addr.clone());
+        }
+    }
+
+    let target_addrs = closest_peers
+        .iter()
+        .filter(|info| info.peer_id == target_peer)
+        .flat_map(|info| info.addrs.iter().cloned())
+        .collect::<Vec<_>>();
+    if target_addrs.is_empty() {
+        return Vec::new();
+    }
+
+    record_known_provider_addrs(&target_peer, target_addrs, swarm, ctx)
 }
 
 fn record_known_provider_addrs<I>(
@@ -85,6 +138,7 @@ where
 
     let mut relay_preferred = false;
     for addr in addrs {
+        add_peer_address_to_discovery(swarm, *peer, addr.clone());
         relay_preferred |= is_p2p_circuit_addr(&addr);
         ctx.peer_book
             .record_addr(*peer, addr.clone(), PeerSource::DhtProvider);
@@ -112,6 +166,9 @@ fn maybe_auto_dial_dht_providers(
 
     for candidate in peers {
         let peer = candidate.peer;
+        if ctx.auto_dial_stats.is_suppressed(&peer) {
+            continue;
+        }
         let should_attempt = if candidate.address_updated {
             ctx.dht_state.should_auto_connect_after_addr_update(&peer)
         } else {
@@ -119,6 +176,16 @@ fn maybe_auto_dial_dht_providers(
         };
         if !should_attempt {
             continue;
+        }
+        let released = if peer == ctx.local_peer {
+            0
+        } else {
+            release_outbound_dht_infrastructure_for_app_dial(peer, swarm, ctx)
+        };
+        if released > 0 {
+            pulses.push(format!(
+                "dht provider auto-connect released {released} unrelated outbound DHT peer(s) for application dial headroom target={peer}"
+            ));
         }
         let outcome = auto_dial_dht_provider(
             peer,
@@ -132,8 +199,12 @@ fn maybe_auto_dial_dht_providers(
 
         ctx.auto_dial_stats.record_outcome(&peer, &outcome);
         match &outcome {
-            AutoDialOutcome::DialStarted(_) | AutoDialOutcome::DialFailed(_) => {
+            AutoDialOutcome::DialStarted(_) | AutoDialOutcome::AddressResolutionStarted(_) => {
                 ctx.dht_state.mark_auto_connect_attempted(peer);
+            }
+            AutoDialOutcome::DialFailed(_) => {
+                ctx.dht_state.mark_auto_connect_attempted(peer);
+                ctx.dht_state.mark_auto_connect_failed(&peer);
             }
             AutoDialOutcome::AwaitingAddress => {
                 ctx.dht_state.mark_auto_connect_waiting_for_addrs(peer);
@@ -145,6 +216,38 @@ fn maybe_auto_dial_dht_providers(
         }
     }
     pulses
+}
+
+fn release_outbound_dht_infrastructure_for_app_dial(
+    target: PeerId,
+    swarm: &mut Swarm<MeshBehaviour>,
+    ctx: &mut SwarmEventContext<'_>,
+) -> usize {
+    let to_release = ctx
+        .connection_caps
+        .outgoing_connections_to_release(APPLICATION_DIAL_OUTGOING_HEADROOM);
+    if to_release == 0 {
+        return 0;
+    }
+
+    let mut seen = HashSet::new();
+    let victims = ctx
+        .connection_caps
+        .outgoing_peers()
+        .filter(|peer| *peer != target)
+        // After the Identify retention fix, unrelated public DHT-routing
+        // peers are precisely the outbound peers absent from PeerBook.
+        .filter(|peer| ctx.peer_book.record(peer).is_none())
+        .filter(|peer| !ctx.relay_state.relay_client_reservations.contains(peer))
+        .filter(|peer| !ctx.relay_state.relay_client_attempted_peers.contains(peer))
+        .filter(|peer| seen.insert(*peer))
+        .take(to_release)
+        .collect::<Vec<_>>();
+
+    for peer in &victims {
+        let _ = swarm.disconnect_peer_id(*peer);
+    }
+    victims.len()
 }
 
 pub(crate) async fn handle_event(

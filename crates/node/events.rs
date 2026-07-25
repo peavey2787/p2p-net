@@ -18,7 +18,7 @@ use crate::connectivity::rendezvous::RendezvousState;
 use crate::platform::NodeStorage;
 use crate::protocol::pulse::{HeartbeatReplayCache, MessageSecurityConfig};
 use crate::protocol::reputation::ReputationStore;
-use crate::stack::{on_mesh_event, MeshBehaviour, MeshEvent};
+use crate::stack::{on_mesh_event, IdentifyAddressState, MeshBehaviour, MeshEvent};
 
 use super::dial::AutoDialStats;
 use super::snapshot::NodeSnapshot;
@@ -55,6 +55,7 @@ pub(crate) struct SwarmEventContext<'a> {
     pub(crate) app_topic_hashes: &'a [TopicHash],
     pub(crate) app_messages: &'a broadcast::Sender<AppMessage>,
     pub(crate) metrics: &'a mut NodeMetrics,
+    pub(crate) identify_addresses: &'a mut IdentifyAddressState,
     pub(crate) local_peer: PeerId,
     pub(crate) network_id: u32,
 }
@@ -146,12 +147,14 @@ pub(crate) async fn handle_swarm_event(
         } => {
             let remote_addr = endpoint.get_remote_address().clone();
             let relayed_endpoint = endpoint.is_relayed();
+            let outgoing = endpoint.is_dialer();
             let endpoint_debug = format!("{endpoint:?}");
             connection::handle_connection_established(
                 peer_id,
                 connection_id,
                 remote_addr,
                 relayed_endpoint,
+                outgoing,
                 endpoint_debug,
                 swarm,
                 ctx,
@@ -190,7 +193,7 @@ pub(crate) async fn handle_swarm_event(
             connection::handle_autonat_event(ev, ctx).await;
         }
         SwarmEvent::Behaviour(MeshEvent::RelayClient(ev)) => {
-            relay_client::handle_event(ev, ctx.snapshot, ctx.relay_state).await;
+            relay_client::handle_event(ev, swarm, ctx.snapshot, ctx.relay_state).await;
         }
         SwarmEvent::Behaviour(MeshEvent::RelayServer(ev)) => {
             relay_server::handle_event(ev, ctx.snapshot, ctx.relay_state).await;
@@ -248,10 +251,24 @@ pub(crate) async fn handle_swarm_event(
         SwarmEvent::Behaviour(MeshEvent::Identify(ev)) => {
             connection::handle_identify_observed_addr(swarm, &ev, ctx).await;
             let event = MeshEvent::Identify(ev);
-            on_mesh_event(swarm, &event, ctx.discovery_cfg, ctx.storage, ctx.peer_book);
+            on_mesh_event(
+                swarm,
+                &event,
+                ctx.discovery_cfg,
+                ctx.storage,
+                ctx.peer_book,
+                ctx.identify_addresses,
+            );
         }
         SwarmEvent::Behaviour(ev) => {
-            on_mesh_event(swarm, &ev, ctx.discovery_cfg, ctx.storage, ctx.peer_book);
+            on_mesh_event(
+                swarm,
+                &ev,
+                ctx.discovery_cfg,
+                ctx.storage,
+                ctx.peer_book,
+                ctx.identify_addresses,
+            );
         }
         _ => {}
     }

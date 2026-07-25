@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use libp2p::{Multiaddr, PeerId};
 use tokio::sync::{broadcast, mpsc, oneshot, Mutex};
@@ -8,6 +9,8 @@ use crate::api::{AppMessage, AppSubscription, NodeMetrics, P2PNode, PeerInfo};
 use crate::common::error::NetError;
 
 use super::snapshot::NodeSnapshot;
+
+const NODE_COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Clone)]
 pub struct NodeHandle {
@@ -92,7 +95,16 @@ impl NodeHandle {
     pub async fn shutdown(&self) {
         let _ = self.shutdown_tx.send(()).await;
         if let Some(task) = self.task.lock().await.take() {
-            let _ = task.await;
+            let mut task = task;
+            tokio::select! {
+                result = &mut task => {
+                    let _ = result;
+                }
+                _ = tokio::time::sleep(Duration::from_secs(5)) => {
+                    task.abort();
+                    let _ = task.await;
+                }
+            }
         }
     }
 
@@ -105,8 +117,14 @@ impl NodeHandle {
             .send(build(reply))
             .await
             .map_err(|_| NetError::ApiCommand("node command channel is closed".to_string()))?;
-        response
+        tokio::time::timeout(NODE_COMMAND_TIMEOUT, response)
             .await
+            .map_err(|_| {
+                NetError::ApiCommand(format!(
+                    "node command response timed out after {}s",
+                    NODE_COMMAND_TIMEOUT.as_secs()
+                ))
+            })?
             .map_err(|_| NetError::ApiCommand("node command response was dropped".to_string()))?
     }
 }

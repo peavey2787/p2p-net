@@ -10,6 +10,11 @@ use crate::common::error::NetError;
 use crate::connectivity::webrtc::WEBRTC_DIRECT_TRANSPORT;
 use crate::{NodeConfig, ResolvedNodeConfig};
 
+// Keep this comfortably above the default libp2p Ping cadence. A shorter
+// timeout continuously tears down otherwise healthy DHT, relay, and app
+// connections between keepalives, creating CPU churn and allocator growth.
+const SWARM_IDLE_CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
+
 #[derive(Debug, Clone)]
 pub struct TransportPlan {
     pub active: Vec<&'static str>,
@@ -120,7 +125,7 @@ pub async fn build_swarm(
             })
         })
         .map_err(|e| NetError::Build(e.to_string()))?
-        .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::from_secs(60)))
+        .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(SWARM_IDLE_CONNECTION_TIMEOUT))
         .build();
 
     let listen_addrs = cfg.parsed_listen_addresses()?;

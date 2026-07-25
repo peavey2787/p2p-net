@@ -58,6 +58,7 @@ pub struct RelayState {
     pub relay_discovery_replacements: usize,
     pub relayed_listen_addrs: BTreeSet<String>,
     pub relay_bytes_forwarded: u64,
+    pub unverified_relayed_peers: HashMap<PeerId, Instant>,
     pub dcutr_enabled: bool,
     pub dcutr_attempts: usize,
     pub dcutr_successes: usize,

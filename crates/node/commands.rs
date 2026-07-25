@@ -15,6 +15,7 @@ use crate::connectivity::peer_book::PeerBook;
 use crate::stack::{allow_dcutr_peer, extract_p2p_peer_id, MeshBehaviour};
 
 use super::dial::dial_connection_plan;
+use super::dial::AutoDialStats;
 use super::handle::NodeCommand;
 use super::snapshot::NodeSnapshot;
 
@@ -26,6 +27,7 @@ pub(crate) struct NodeCommandContext<'a> {
     pub(crate) snapshot: &'a Arc<Mutex<NodeSnapshot>>,
     pub(crate) peer_book: &'a mut PeerBook,
     pub(crate) pending_connections: &'a mut PendingConnectionPlans,
+    pub(crate) auto_dial_stats: &'a mut AutoDialStats,
     pub(crate) dcutr_policy: &'a DcutrPolicy,
     pub(crate) metrics: &'a mut NodeMetrics,
 }
@@ -39,6 +41,7 @@ pub(crate) async fn handle_node_command(command: NodeCommand, ctx: NodeCommandCo
         snapshot,
         peer_book,
         pending_connections,
+        auto_dial_stats,
         dcutr_policy,
         metrics,
     } = ctx;
@@ -56,6 +59,7 @@ pub(crate) async fn handle_node_command(command: NodeCommand, ctx: NodeCommandCo
                         reason: "refusing to dial local peer id".to_string(),
                     })
                 } else {
+                    auto_dial_stats.allow_peer(&peer);
                     allow_dcutr_peer(swarm, peer);
                     peer_book.record_addr(peer, addr.clone(), PeerSource::Manual);
                     let plan = build_connection_plan(addr, peer_book, dcutr_policy);
@@ -74,6 +78,9 @@ pub(crate) async fn handle_node_command(command: NodeCommand, ctx: NodeCommandCo
                 NetError::ApiCommand(format!("disconnect_peer failed for {peer_id}: {err:?}"))
             });
             let success = result.is_ok();
+            if success {
+                auto_dial_stats.suppress_peer(peer_id);
+            }
             let _ = reply.send(result);
             (success, false)
         }
@@ -124,9 +131,6 @@ pub(crate) async fn handle_node_command(command: NodeCommand, ctx: NodeCommandCo
             (success, false)
         }
         NodeCommand::GetPeers(reply) => {
-            for peer in swarm.connected_peers().copied() {
-                peer_book.record_connected(peer, None);
-            }
             let peers = peer_book.peers();
             let _ = reply.send(Ok(peers));
             (true, false)

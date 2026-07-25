@@ -5,7 +5,6 @@
 //! discovery running alongside rendezvous so public rendezvous and DHT
 //! resurrection can complement each other.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::common::error::config_error;
@@ -13,9 +12,25 @@ use libp2p::kad::{self, QueryId};
 use libp2p::swarm::Swarm;
 use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::connectivity::discovery::DiscoveryConfig;
 use crate::stack::MeshBehaviour;
+
+const MAX_TRACKED_PROVIDER_PEERS: usize = 2048;
+const PROVIDER_ADDR_LOOKUP_COOLDOWN_SECS: u64 = 30;
+const AUTO_CONNECT_RETRY_COOLDOWN_SECS: u64 = 5;
+const AUTO_CONNECT_RETRY_WINDOW_SECS: u64 = 300;
+const MAX_AUTO_CONNECT_ATTEMPTS_PER_WINDOW: u32 = 8;
+const DHT_PROVIDER_KEY_REPLICAS: u8 = 3;
+const DHT_PROVIDER_ANCHOR_PREFIX_BYTES: usize = 2;
+const DHT_PROVIDER_ANCHOR_MAX_ATTEMPTS: u32 = 1 << 20;
+const DHT_PROVIDER_ANCHOR_CONTEXT: &str = "p2p-net.dht.provider.anchor.v1";
+const MULTIHASH_SHA2_256_CODE: u8 = 0x12;
+const SHA2_256_DIGEST_BYTES: u8 = 32;
+
+mod state;
+pub use state::DhtProviderState;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -85,113 +100,115 @@ pub struct DhtNamespacePlan {
     pub errors: Vec<String>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct DhtProviderState {
-    pub announce_attempts: usize,
-    pub announce_failures: usize,
-    pub namespaces_announced: BTreeSet<String>,
-    pub provider_queries: usize,
-    pub provider_query_failures: usize,
-    pub provider_records_found: usize,
-    pub provider_queries_finished: usize,
-    pub discovered_provider_peers: HashMap<PeerId, BTreeSet<String>>,
-    pub auto_connect_attempted_peers: HashSet<PeerId>,
-    pub auto_connect_waiting_for_addrs: HashSet<PeerId>,
-    provider_query_started_unix_secs: HashMap<String, u64>,
-    start_providing_queries: HashMap<QueryId, String>,
-    get_provider_queries: HashMap<QueryId, String>,
-}
-
-impl DhtProviderState {
-    pub fn track_start_providing(&mut self, id: QueryId, namespace: &str) {
-        self.start_providing_queries
-            .insert(id, namespace.to_string());
-    }
-
-    pub fn track_get_providers(&mut self, id: QueryId, namespace: &str) {
-        self.get_provider_queries.insert(id, namespace.to_string());
-    }
-
-    #[must_use]
-    pub fn provider_peer_count(&self) -> usize {
-        self.discovered_provider_peers.len()
-    }
-
-    pub fn mark_auto_connect_attempted(&mut self, peer: PeerId) -> bool {
-        self.auto_connect_waiting_for_addrs.remove(&peer);
-        self.auto_connect_attempted_peers.insert(peer)
-    }
-
-    pub fn mark_auto_connect_waiting_for_addrs(&mut self, peer: PeerId) -> bool {
-        if self.auto_connect_attempted_peers.contains(&peer) {
-            return false;
-        }
-        self.auto_connect_waiting_for_addrs.insert(peer)
-    }
-
-    pub fn mark_auto_connect_failed(&mut self, peer: &PeerId) -> bool {
-        self.auto_connect_waiting_for_addrs.remove(peer);
-        self.auto_connect_attempted_peers.remove(peer)
-    }
-
-    #[must_use]
-    pub fn should_auto_connect_provider_result(&self, peer: &PeerId) -> bool {
-        !self.auto_connect_attempted_peers.contains(peer)
-            && !self.auto_connect_waiting_for_addrs.contains(peer)
-    }
-
-    #[must_use]
-    pub fn should_auto_connect_after_addr_update(&self, peer: &PeerId) -> bool {
-        !self.auto_connect_attempted_peers.contains(peer)
-    }
-
-    fn complete_start_providing(&mut self, id: &QueryId) -> Option<String> {
-        self.start_providing_queries.remove(id)
-    }
-
-    pub fn provider_namespace(&self, id: &QueryId) -> Option<String> {
-        self.get_provider_queries.get(id).cloned()
-    }
-
-    fn provider_query_inflight(&self, namespace: &str) -> bool {
-        self.get_provider_queries
-            .values()
-            .any(|active| active == namespace)
-    }
-
-    fn provider_announce_inflight(&self, namespace: &str) -> bool {
-        self.start_providing_queries
-            .values()
-            .any(|active| active == namespace)
-    }
-
-    fn should_announce_namespace(&self, namespace: &str) -> bool {
-        !self.namespaces_announced.contains(namespace)
-            && !self.provider_announce_inflight(namespace)
-    }
-
-    fn should_query_namespace(
-        &self,
-        namespace: &str,
-        now: u64,
-        refresh_interval_secs: u64,
-    ) -> bool {
-        if self.provider_query_inflight(namespace) {
-            return false;
-        }
-        self.provider_query_started_unix_secs
-            .get(namespace)
-            .map(|last| now.saturating_sub(*last) >= refresh_interval_secs)
-            .unwrap_or(true)
-    }
-
-    fn complete_get_providers(&mut self, id: &QueryId) -> Option<String> {
-        self.get_provider_queries.remove(id)
-    }
-}
-
 pub fn dht_record_key(namespace: &str) -> kad::RecordKey {
-    kad::RecordKey::new(&namespace.as_bytes())
+    provider_multihash_key(namespace.as_bytes())
+}
+
+fn dht_record_replica_key(namespace: &str, replica: u8) -> kad::RecordKey {
+    if replica == 0 {
+        dht_record_key(namespace)
+    } else {
+        provider_multihash_key(format!("{namespace}/provider-replica/{replica}").as_bytes())
+    }
+}
+
+fn dht_record_replica_tracking_key(namespace: &str, replica: u8) -> String {
+    if replica == 0 {
+        namespace.to_string()
+    } else {
+        format!("{namespace}:provider-replica:{replica}")
+    }
+}
+
+fn dht_provider_keys(
+    namespace: &str,
+    discovery_cfg: &DiscoveryConfig,
+) -> Vec<(String, kad::RecordKey)> {
+    let public_anchors = discovery_cfg
+        .public_bootstrap
+        .mode
+        .is_enabled()
+        .then(|| {
+            discovery_cfg
+                .public_bootstrap
+                .bootstrap_seed_peers
+                .iter()
+                .filter_map(|addr| {
+                    addr.rsplit_once("/p2p/")
+                        .and_then(|(_, peer)| peer.parse::<PeerId>().ok())
+                })
+                .take(usize::from(DHT_PROVIDER_KEY_REPLICAS))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    if !public_anchors.is_empty() {
+        return public_anchors
+            .into_iter()
+            .enumerate()
+            .map(|(replica, anchor)| {
+                (
+                    format!("{namespace}:provider-anchor:{replica}"),
+                    anchored_provider_key(namespace, &anchor, replica as u8),
+                )
+            })
+            .collect();
+    }
+
+    (0..DHT_PROVIDER_KEY_REPLICAS)
+        .map(|replica| {
+            (
+                dht_record_replica_tracking_key(namespace, replica),
+                dht_record_replica_key(namespace, replica),
+            )
+        })
+        .collect()
+}
+
+fn anchored_provider_key(namespace: &str, anchor: &PeerId, replica: u8) -> kad::RecordKey {
+    let anchor_bytes = anchor.to_bytes();
+    let target = Sha256::digest(&anchor_bytes);
+    let mut material = Vec::with_capacity(
+        DHT_PROVIDER_ANCHOR_CONTEXT.len()
+            + namespace.len()
+            + anchor_bytes.len()
+            + std::mem::size_of::<u32>()
+            + 2,
+    );
+    material.extend_from_slice(DHT_PROVIDER_ANCHOR_CONTEXT.as_bytes());
+    material.push(0);
+    material.extend_from_slice(namespace.as_bytes());
+    material.push(replica);
+    material.extend_from_slice(&anchor_bytes);
+    let counter_offset = material.len();
+    material.extend_from_slice(&0_u32.to_be_bytes());
+
+    for counter in 0..DHT_PROVIDER_ANCHOR_MAX_ATTEMPTS {
+        material[counter_offset..].copy_from_slice(&counter.to_be_bytes());
+        let digest = Sha256::digest(&material);
+        let mut candidate = [0_u8; 34];
+        candidate[0] = MULTIHASH_SHA2_256_CODE;
+        candidate[1] = SHA2_256_DIGEST_BYTES;
+        candidate[2..].copy_from_slice(&digest);
+        let location = Sha256::digest(candidate);
+        if location[..DHT_PROVIDER_ANCHOR_PREFIX_BYTES]
+            == target[..DHT_PROVIDER_ANCHOR_PREFIX_BYTES]
+        {
+            return kad::RecordKey::new(&candidate);
+        }
+    }
+    dht_record_replica_key(namespace, replica)
+}
+
+fn provider_multihash_key(material: impl AsRef<[u8]>) -> kad::RecordKey {
+    let digest = Sha256::digest(material.as_ref());
+    let mut key = Vec::with_capacity(2 + digest.len());
+    // Public IPFS/libp2p DHT implementations commonly validate provider keys
+    // as content multihashes.
+    key.push(MULTIHASH_SHA2_256_CODE);
+    key.push(SHA2_256_DIGEST_BYTES);
+    key.extend_from_slice(&digest);
+    kad::RecordKey::new(&key)
 }
 
 pub fn start_dht_namespace_discovery(
@@ -200,6 +217,24 @@ pub fn start_dht_namespace_discovery(
     discovery_cfg: &DiscoveryConfig,
     rendezvous_peer_count: usize,
     state: &mut DhtProviderState,
+) -> DhtNamespacePlan {
+    start_dht_namespace_discovery_with_interval(
+        swarm,
+        network_id,
+        discovery_cfg,
+        rendezvous_peer_count,
+        state,
+        discovery_cfg.dht.refresh_interval_secs,
+    )
+}
+
+pub fn start_dht_namespace_discovery_with_interval(
+    swarm: &mut Swarm<MeshBehaviour>,
+    network_id: u32,
+    discovery_cfg: &DiscoveryConfig,
+    rendezvous_peer_count: usize,
+    state: &mut DhtProviderState,
+    refresh_interval_secs: u64,
 ) -> DhtNamespacePlan {
     let dht_cfg = &discovery_cfg.dht;
     let now = now_unix_secs();
@@ -225,34 +260,63 @@ pub fn start_dht_namespace_discovery(
         .into_iter()
         .take(dht_cfg.max_namespaces_per_refresh)
     {
-        let key = dht_record_key(&namespace);
-        if dht_cfg.announce && state.should_announce_namespace(&namespace) {
-            state.announce_attempts = state.announce_attempts.saturating_add(1);
-            match swarm.behaviour_mut().kademlia.start_providing(key.clone()) {
-                Ok(query_id) => {
-                    state.track_start_providing(query_id, &namespace);
-                    plan.announce_attempts = plan.announce_attempts.saturating_add(1);
-                }
-                Err(err) => {
-                    state.announce_failures = state.announce_failures.saturating_add(1);
-                    plan.errors.push(format!(
-                        "dht provider announce failed namespace={namespace}: {err}"
-                    ));
-                }
-            }
-        }
+        let remote_provider_connected = state
+            .discovered_provider_peers
+            .keys()
+            .any(|peer| peer != swarm.local_peer_id() && swarm.is_connected(peer));
+        let query_refresh_interval = if remote_provider_connected {
+            dht_cfg.refresh_interval_secs.max(1)
+        } else {
+            refresh_interval_secs.max(1)
+        };
+        // During the bounded startup window, re-publish after relay/public
+        // reachability has had time to become confirmed. The first publication
+        // can otherwise capture no useful external address and remain stale
+        // for the full steady-state refresh interval.
+        let announce_refresh_interval = refresh_interval_secs.max(1);
 
-        if dht_cfg.should_discover(rendezvous_peer_count) {
-            if !state.should_query_namespace(&namespace, now, dht_cfg.refresh_interval_secs) {
-                continue;
+        for (replica, (tracking_key, key)) in state
+            .provider_keys(&namespace, discovery_cfg)
+            .into_iter()
+            .enumerate()
+        {
+            if dht_cfg.announce
+                && state.should_announce_key(
+                    &tracking_key,
+                    &namespace,
+                    now,
+                    announce_refresh_interval,
+                )
+            {
+                state.announce_attempts = state.announce_attempts.saturating_add(1);
+                match swarm.behaviour_mut().kademlia.start_providing(key.clone()) {
+                    Ok(query_id) => {
+                        state.track_start_providing_for_key(query_id, &namespace, &tracking_key);
+                        state
+                            .provider_announce_started_unix_secs
+                            .insert(tracking_key.clone(), now);
+                        plan.announce_attempts = plan.announce_attempts.saturating_add(1);
+                    }
+                    Err(err) => {
+                        state.announce_failures = state.announce_failures.saturating_add(1);
+                        plan.errors.push(format!(
+                            "dht provider announce failed namespace={namespace} replica={replica}: {err}"
+                        ));
+                    }
+                }
             }
-            let query_id = swarm.behaviour_mut().kademlia.get_providers(key);
-            state.track_get_providers(query_id, &namespace);
-            state
-                .provider_query_started_unix_secs
-                .insert(namespace.clone(), now);
-            state.provider_queries = state.provider_queries.saturating_add(1);
-            plan.provider_queries = plan.provider_queries.saturating_add(1);
+
+            if dht_cfg.should_discover(rendezvous_peer_count)
+                && state.should_query_key(&tracking_key, now, query_refresh_interval)
+            {
+                let query_id = swarm.behaviour_mut().kademlia.get_providers(key);
+                state.track_get_providers_for_key(query_id, &namespace, &tracking_key);
+                state
+                    .provider_query_started_unix_secs
+                    .insert(tracking_key, now);
+                state.provider_queries = state.provider_queries.saturating_add(1);
+                plan.provider_queries = plan.provider_queries.saturating_add(1);
+            }
         }
     }
 
@@ -295,12 +359,7 @@ pub fn on_kademlia_event(
                     .unwrap_or_else(|| "<unknown>".to_string());
                 let mut learned = 0usize;
                 for provider in providers {
-                    let inserted = state
-                        .discovered_provider_peers
-                        .entry(*provider)
-                        .or_default()
-                        .insert(namespace.clone());
-                    if inserted {
+                    if state.record_provider_peer(*provider, namespace.clone()) {
                         learned = learned.saturating_add(1);
                     }
                 }
@@ -333,6 +392,25 @@ pub fn on_kademlia_event(
                 state.provider_query_failures = state.provider_query_failures.saturating_add(1);
                 Some(format!(
                     "dht provider lookup failed namespace={namespace} error={err:?}"
+                ))
+            }
+            kad::QueryResult::GetClosestPeers(Ok(result)) => {
+                let peer = state.complete_provider_addr_lookup(id)?;
+                let peer_addr_count = result
+                    .peers
+                    .iter()
+                    .find(|info| info.peer_id == peer)
+                    .map(|info| info.addrs.len())
+                    .unwrap_or_default();
+                Some(format!(
+                    "dht provider address lookup finished peer={peer} target_addrs={peer_addr_count} closest_peers={}",
+                    result.peers.len()
+                ))
+            }
+            kad::QueryResult::GetClosestPeers(Err(err)) => {
+                let peer = state.complete_provider_addr_lookup(id)?;
+                Some(format!(
+                    "dht provider address lookup failed peer={peer} error={err:?}"
                 ))
             }
             _ => None,
@@ -371,3 +449,6 @@ fn add_peer_addr_to_kademlia(swarm: &mut Swarm<MeshBehaviour>, peer: &PeerId, ad
         );
     }
 }
+
+#[cfg(test)]
+mod tests;

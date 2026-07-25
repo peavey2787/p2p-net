@@ -81,9 +81,19 @@ fn many_connections_from_same_ip_hit_the_ip_cap() {
     let addr: libp2p::Multiaddr = "/ip4/127.0.0.1/tcp/4001".parse().unwrap();
 
     for i in 0..4 {
-        assert!(!caps.record_established(libp2p::swarm::ConnectionId::new_unchecked(i), &addr));
+        assert!(!caps.record_established(
+            libp2p::swarm::ConnectionId::new_unchecked(i),
+            PeerId::random(),
+            &addr,
+            false,
+        ));
     }
-    assert!(caps.record_established(libp2p::swarm::ConnectionId::new_unchecked(99), &addr));
+    assert!(caps.record_established(
+        libp2p::swarm::ConnectionId::new_unchecked(99),
+        PeerId::random(),
+        &addr,
+        false,
+    ));
     assert_eq!(caps.cap_disconnects, 1);
 }
 

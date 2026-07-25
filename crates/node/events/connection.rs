@@ -1,184 +1,36 @@
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::ConnectionId;
-use libp2p::{autonat, identify, Multiaddr, PeerId, Swarm};
-use std::collections::BTreeSet;
+use libp2p::{autonat, Multiaddr, PeerId, Swarm};
 use std::time::{Duration, Instant};
 
 use crate::api::PeerSource;
-use crate::connectivity::addr::is_local_direct_addr;
+use crate::connectivity::addr::{has_reachable_transport, is_local_direct_addr};
 use crate::connectivity::peer_cache;
-use crate::connectivity::relay::{
-    relay_peer_id, relay_reservation_addr, update_nat_state, RelayServiceHealth,
-};
-use crate::connectivity::relay_discovery::{
-    relay_candidate_addr, supported_relay_addr_score, RelayCandidateSource,
-};
+use crate::connectivity::relay::{relay_peer_id, update_nat_state, RelayServiceHealth};
 use crate::stack::{
-    add_external_address_candidate, add_hole_punch_candidate, add_peer_address_to_discovery,
-    refresh_rendezvous, MeshBehaviour,
+    add_external_address_candidate, add_hole_punch_candidate, refresh_rendezvous, MeshBehaviour,
 };
 
 use super::super::push_pulse;
 use super::{sync_swarm_connection_snapshot, SwarmEventContext};
 
+mod identify;
 mod listen_addr;
 
+pub(crate) use self::identify::handle_identify_observed_addr;
 use self::listen_addr::{
     autonat_status_label, classify_listen_addr, record_listen_addr_snapshot,
     remove_listen_addr_snapshot, ListenAddrClass,
 };
 
-const MAX_PUBLIC_DHT_RELAY_ATTEMPTS: usize = 8;
-
-pub(crate) async fn handle_identify_observed_addr(
-    swarm: &mut Swarm<MeshBehaviour>,
-    ev: &identify::Event,
-    ctx: &mut SwarmEventContext<'_>,
-) {
-    let (peer_id, info) = match ev {
-        identify::Event::Received { peer_id, info, .. } => (peer_id, info),
-        _ => return,
-    };
-    let protocols = info
-        .protocols
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>();
-    let supports_relay_hop = protocols
-        .iter()
-        .any(|protocol| protocol == "/libp2p/circuit/relay/0.2.0/hop");
-    let supports_rendezvous = protocols
-        .iter()
-        .any(|protocol| protocol.starts_with("/rendezvous/"));
-    let supports_dcutr = protocols
-        .iter()
-        .any(|protocol| protocol.starts_with("/libp2p/dcutr"));
-    let relay_pulse = if supports_relay_hop {
-        maybe_reserve_dht_relay(*peer_id, info, swarm, ctx)
-    } else {
-        None
-    };
-    if ctx.peer_book.record(peer_id).is_some() || relay_pulse.is_some() {
-        ctx.peer_book.record_capabilities(
-            *peer_id,
-            Some(supports_relay_hop),
-            Some(supports_rendezvous),
-            Some(supports_dcutr),
-        );
-    }
-
-    let observed_addr = &info.observed_addr;
-    let classification = classify_listen_addr(observed_addr);
-    if classification.advertise_as_external() {
-        add_external_address_candidate(swarm, observed_addr.clone());
-    }
-
-    let mut guard = ctx.snapshot.lock().await;
-    record_listen_addr_snapshot(&mut guard, observed_addr, classification);
-    guard.apply_relay_state(ctx.relay_state);
-    if let Some(pulse) = relay_pulse {
-        push_pulse(&mut guard.pulses, pulse);
-    }
-    match classification {
-        ListenAddrClass::PublicDirect => push_pulse(
-            &mut guard.pulses,
-            format!("identify observed public direct addr {observed_addr}"),
-        ),
-        ListenAddrClass::Relayed => push_pulse(
-            &mut guard.pulses,
-            format!("identify observed relayed addr {observed_addr}"),
-        ),
-        ListenAddrClass::LocalOnly => {}
-    }
-}
-
-fn maybe_reserve_dht_relay(
-    peer_id: PeerId,
-    info: &identify::Info,
-    swarm: &mut Swarm<MeshBehaviour>,
-    ctx: &mut SwarmEventContext<'_>,
-) -> Option<String> {
-    if peer_id == *swarm.local_peer_id() {
-        return None;
-    }
-    let policy = &ctx.discovery_cfg.relay_discovery;
-    if !policy.enabled
-        || !policy.use_dht_relays
-        || !ctx.discovery_cfg.public_bootstrap.mode.is_enabled()
-        || ctx.relay_state.relay_client_reservations.len() >= policy.min_reservations
-        || ctx.relay_state.relay_client_attempted_peers.len() >= MAX_PUBLIC_DHT_RELAY_ATTEMPTS
-        || ctx
-            .relay_state
-            .relay_client_attempted_peers
-            .contains(&peer_id)
-    {
-        return None;
-    }
-
-    let candidate = info
-        .listen_addrs
-        .iter()
-        .filter(|addr| !is_local_direct_addr(addr))
-        .filter_map(|addr| {
-            let mut addr = addr.clone();
-            if !addr
-                .iter()
-                .any(|protocol| matches!(protocol, Protocol::P2p(_)))
-            {
-                addr.push(Protocol::P2p(peer_id));
-            }
-            relay_candidate_addr(addr, RelayCandidateSource::PublicFallback)
-        })
-        .filter_map(|candidate| {
-            supported_relay_addr_score(&candidate.addr).map(|score| (score, candidate))
-        })
-        .min_by_key(|(score, _)| *score)?
-        .1;
-    let reservation_addr = relay_reservation_addr(&candidate.addr)?;
-
-    add_peer_address_to_discovery(swarm, peer_id, candidate.addr.clone());
-    ctx.relay_state.relay_client_attempted_peers.insert(peer_id);
-    ctx.relay_state.relay_discovery_candidate_count = ctx
-        .relay_state
-        .relay_discovery_candidate_count
-        .saturating_add(1);
-    ctx.relay_state.relay_discovery_public_candidates = ctx
-        .relay_state
-        .relay_discovery_public_candidates
-        .saturating_add(1);
-    ctx.relay_state
-        .relay_discovery_selected_relays
-        .insert(candidate.addr.to_string());
-
-    match swarm.listen_on(reservation_addr.clone()) {
-        Ok(_) => {
-            ctx.relay_state.relay_client_reservation_attempts = ctx
-                .relay_state
-                .relay_client_reservation_attempts
-                .saturating_add(1);
-            Some(format!(
-                "relay_discovery dht reservation requested relay={peer_id} addr={reservation_addr}"
-            ))
-        }
-        Err(err) => {
-            ctx.relay_state.relay_client_reservation_failures = ctx
-                .relay_state
-                .relay_client_reservation_failures
-                .saturating_add(1);
-            ctx.relay_state.relay_discovery_failures =
-                ctx.relay_state.relay_discovery_failures.saturating_add(1);
-            Some(format!(
-                "relay_discovery dht reservation failed relay={peer_id} addr={reservation_addr} error={err}"
-            ))
-        }
-    }
-}
+const MAX_UNVERIFIED_RELAYED_PEERS: usize = 8;
 
 pub(crate) async fn handle_connection_established(
     peer_id: PeerId,
     connection_id: ConnectionId,
     remote_addr: Multiaddr,
     relayed_endpoint: bool,
+    outgoing: bool,
     endpoint_debug: String,
     swarm: &mut Swarm<MeshBehaviour>,
     ctx: &mut SwarmEventContext<'_>,
@@ -197,9 +49,9 @@ pub(crate) async fn handle_connection_established(
         return;
     }
 
-    let over_ip_cap = ctx
-        .connection_caps
-        .record_established(connection_id, &remote_addr);
+    let over_ip_cap =
+        ctx.connection_caps
+            .record_established(connection_id, peer_id, &remote_addr, outgoing);
     if over_ip_cap {
         let _ = swarm.close_connection(connection_id);
         ctx.metrics
@@ -218,20 +70,38 @@ pub(crate) async fn handle_connection_established(
     }
 
     let track_as_application_peer = should_track_peer_in_peer_book(peer_id, ctx);
-    if relayed_endpoint && !is_intended_relayed_destination(peer_id, ctx) {
-        let _ = swarm.close_connection(connection_id);
-        ctx.relay_state.denied_circuits = ctx.relay_state.denied_circuits.saturating_add(1);
-        let mut guard = ctx.snapshot.lock().await;
-        sync_swarm_connection_snapshot(&mut guard, swarm, ctx);
-        guard.connection_limit_events = guard.connection_limit_events.saturating_add(1);
-        guard.apply_relay_state(ctx.relay_state);
-        push_pulse(
-            &mut guard.pulses,
-            format!(
-                "relayed connection closed for non-application peer={peer_id}; relay infrastructure remains allowed"
-            ),
-        );
-        return;
+    let mut evicted_unverified_peer = None;
+    if relayed_endpoint && !track_as_application_peer {
+        if !ctx
+            .relay_state
+            .unverified_relayed_peers
+            .contains_key(&peer_id)
+            && ctx.relay_state.unverified_relayed_peers.len() >= MAX_UNVERIFIED_RELAYED_PEERS
+        {
+            // A public relay reservation is intentionally reachable by
+            // unrelated peers. Rotate the oldest verification candidate
+            // instead of rejecting every newcomer once the small bounded pool
+            // fills; otherwise random relay traffic can permanently starve the
+            // actual application peer before Identify proves compatibility.
+            if let Some(oldest_peer) = ctx
+                .relay_state
+                .unverified_relayed_peers
+                .iter()
+                .min_by_key(|(_, connected_at)| **connected_at)
+                .map(|(peer, _)| *peer)
+            {
+                ctx.relay_state
+                    .unverified_relayed_peers
+                    .remove(&oldest_peer);
+                let _ = swarm.disconnect_peer_id(oldest_peer);
+                evicted_unverified_peer = Some(oldest_peer);
+            }
+        }
+        ctx.relay_state
+            .unverified_relayed_peers
+            .insert(peer_id, Instant::now());
+    } else {
+        ctx.relay_state.unverified_relayed_peers.remove(&peer_id);
     }
 
     if track_as_application_peer {
@@ -260,7 +130,26 @@ pub(crate) async fn handle_connection_established(
         &mut guard.pulses,
         format!("connection endpoint peer={peer_id} relayed={relayed_endpoint} {endpoint_debug}"),
     );
+    if let Some(evicted_peer) = evicted_unverified_peer {
+        push_pulse(
+            &mut guard.pulses,
+            format!(
+                "rotated unverified relayed peer={evicted_peer} for new verification candidate={peer_id}; slots={MAX_UNVERIFIED_RELAYED_PEERS}"
+            ),
+        );
+    }
     if relayed_endpoint {
+        if !track_as_application_peer {
+            guard.apply_relay_state(ctx.relay_state);
+            push_pulse(
+                &mut guard.pulses,
+                format!(
+                    "relayed connection pending application verification peer={peer_id}; DCUtR deferred"
+                ),
+            );
+            return;
+        }
+
         if ctx.dcutr_policy.keep_relay_fallback {
             ctx.relay_state.dcutr_relay_fallbacks =
                 ctx.relay_state.dcutr_relay_fallbacks.saturating_add(1);
@@ -355,17 +244,6 @@ fn should_track_peer_in_peer_book(peer_id: PeerId, ctx: &SwarmEventContext<'_>) 
     })
 }
 
-fn is_intended_relayed_destination(peer_id: PeerId, ctx: &SwarmEventContext<'_>) -> bool {
-    let namespaces = ctx
-        .discovery_cfg
-        .rendezvous_namespaces(ctx.network_id)
-        .map(|items| items.into_iter().collect::<BTreeSet<_>>())
-        .unwrap_or_default();
-    ctx.peer_book
-        .has_application_namespace(&peer_id, &namespaces)
-        || should_track_peer_in_peer_book(peer_id, ctx)
-}
-
 pub(crate) async fn handle_connection_closed(
     peer_id: PeerId,
     connection_id: ConnectionId,
@@ -377,7 +255,15 @@ pub(crate) async fn handle_connection_closed(
         .connected_peers()
         .any(|connected| connected == &peer_id)
     {
+        if ctx
+            .peer_book
+            .record(&peer_id)
+            .is_some_and(|record| !record.namespaces.is_empty())
+        {
+            ctx.dht_state.mark_auto_connect_disconnected(&peer_id);
+        }
         ctx.peer_book.record_disconnected_if_known(peer_id);
+        ctx.relay_state.unverified_relayed_peers.remove(&peer_id);
     }
     let mut guard = ctx.snapshot.lock().await;
     sync_swarm_connection_snapshot(&mut guard, swarm, ctx);
@@ -404,7 +290,11 @@ pub(crate) async fn handle_outgoing_connection_error(
     ctx: &mut SwarmEventContext<'_>,
 ) {
     let mut planner_pulses = Vec::new();
+    let mut application_dial_error = None;
     if let Some(peer) = peer_id.as_ref() {
+        if should_track_peer_in_peer_book(*peer, ctx) {
+            application_dial_error = Some(format!("peer={peer} error={error_debug}"));
+        }
         if ctx.peer_book.record(peer).is_some() {
             peer_cache::record_peer_addr_failure_with_storage(ctx.discovery_cfg, peer, ctx.storage);
             ctx.peer_book.record_failure(peer.to_owned());
@@ -438,6 +328,9 @@ pub(crate) async fn handle_outgoing_connection_error(
         }
     }
     let mut guard = ctx.snapshot.lock().await;
+    if application_dial_error.is_some() {
+        guard.last_application_dial_error = application_dial_error;
+    }
     guard.connection_limit_events = guard.connection_limit_events.saturating_add(1);
     sync_swarm_connection_snapshot(&mut guard, swarm, ctx);
     push_pulse(
@@ -455,14 +348,20 @@ pub(crate) async fn handle_new_listen_addr(
     ctx: &mut SwarmEventContext<'_>,
 ) {
     let classification = classify_listen_addr(&address);
-    if classification.advertise_as_external() {
+    let mut relayed_addr_confirmed_by_reservation = false;
+    let mut relayed_addr_pending_reservation = false;
+    let relayed_route_public =
+        !classification.is_relayed() || relayed_route_has_public_relay_endpoint(&address);
+    if matches!(classification, ListenAddrClass::PublicDirect) {
         add_external_address_candidate(swarm, address.clone());
     } else if matches!(classification, ListenAddrClass::LocalOnly) {
         add_hole_punch_candidate(swarm, address.clone());
     }
-    if classification.is_relayed() {
+    if classification.is_relayed() && relayed_route_public {
         if let Some(relay) = relay_peer_id(&address) {
             if ctx.relay_state.relay_client_reservations.contains(&relay) {
+                relayed_addr_confirmed_by_reservation = true;
+                add_external_address_candidate(swarm, address.clone());
                 ctx.relay_state
                     .relayed_listen_addrs
                     .insert(address.to_string());
@@ -472,6 +371,7 @@ pub(crate) async fn handle_new_listen_addr(
                     .entry(relay)
                     .or_default()
                     .insert(address.to_string());
+                relayed_addr_pending_reservation = true;
             }
         }
     }
@@ -485,7 +385,10 @@ pub(crate) async fn handle_new_listen_addr(
     );
 
     let mut guard = ctx.snapshot.lock().await;
-    record_listen_addr_snapshot(&mut guard, &address, classification);
+    if !classification.is_relayed() || relayed_addr_confirmed_by_reservation {
+        record_listen_addr_snapshot(&mut guard, &address, classification);
+    }
+    guard.apply_relay_state(ctx.relay_state);
     guard.rendezvous_register_attempts = ctx.rendezvous_state.register_attempts;
     guard.rendezvous_register_failures = ctx.rendezvous_state.register_failures;
     guard.rendezvous_discover_attempts = ctx.rendezvous_state.discover_attempts;
@@ -512,13 +415,31 @@ pub(crate) async fn handle_new_listen_addr(
         ),
         ListenAddrClass::Relayed => push_pulse(
             &mut guard.pulses,
-            format!("relay_client relayed listen addr confirmed {address}"),
+            if relayed_addr_confirmed_by_reservation {
+                format!("relay_client relayed listen addr confirmed {address}")
+            } else if relayed_addr_pending_reservation {
+                format!("relay_client relayed listen addr pending reservation {address}")
+            } else {
+                format!("relay_client relayed listen addr ignored non-public relay route {address}")
+            },
         ),
         ListenAddrClass::LocalOnly => push_pulse(
             &mut guard.pulses,
             format!("local/private listen addr {address}; not advertised as public reachability"),
         ),
     }
+}
+
+fn relayed_route_has_public_relay_endpoint(addr: &Multiaddr) -> bool {
+    let mut relay_route = Multiaddr::empty();
+    for protocol in addr.iter() {
+        if matches!(protocol, Protocol::P2pCircuit) {
+            break;
+        }
+        relay_route.push(protocol);
+    }
+
+    has_reachable_transport(&relay_route) && !is_local_direct_addr(&relay_route)
 }
 
 pub(crate) async fn handle_expired_listen_addr(
