@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub(super) const CACHE_VERSION: u32 = 2;
+pub(super) const CACHE_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub(super) struct PeerCacheFile {

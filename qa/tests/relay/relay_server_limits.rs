@@ -153,9 +153,9 @@ fn per_ip_connection_cap_tracker_counts_and_flags_excess() {
     let second = libp2p::swarm::ConnectionId::new_unchecked(2);
 
     assert_eq!(multiaddr_ip_key(&addr).as_deref(), Some("127.0.0.1"));
-    assert!(!caps.record_established(first, &addr));
+    assert!(!caps.record_established(first, PeerId::random(), &addr, false));
     assert_eq!(caps.count_for_ip("127.0.0.1"), 1);
-    assert!(caps.record_established(second, &addr));
+    assert!(caps.record_established(second, PeerId::random(), &addr, false));
     assert_eq!(caps.cap_disconnects, 1);
     caps.record_closed(first);
     assert_eq!(caps.count_for_ip("127.0.0.1"), 1);

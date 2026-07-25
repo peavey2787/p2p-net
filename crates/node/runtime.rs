@@ -3,7 +3,6 @@
 //! Startup code constructs the swarm and initial discovery state, then hands
 //! ownership to this module so `node::mod` stays focused on public startup.
 
-use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -15,7 +14,7 @@ use tokio::task::JoinHandle;
 
 use crate::api::{AppMessage, NodeMetrics};
 use crate::connectivity::connection_strategy::PendingConnectionPlans;
-use crate::connectivity::dht::{start_dht_namespace_discovery, DhtProviderState};
+use crate::connectivity::dht::{start_dht_namespace_discovery_with_interval, DhtProviderState};
 use crate::connectivity::limits::ConnectionCapState;
 use crate::connectivity::peer_book::PeerBook;
 use crate::connectivity::relay::{RelayReservationPlan, RelayState};
@@ -24,7 +23,7 @@ use crate::connectivity::rendezvous::RendezvousState;
 use crate::platform::NodeStorage;
 use crate::protocol::pulse::HeartbeatReplayCache;
 use crate::protocol::reputation::ReputationStore;
-use crate::stack::MeshBehaviour;
+use crate::stack::{IdentifyAddressState, MeshBehaviour};
 
 use super::commands::{self, NodeCommandContext};
 use super::config::NodeConfig;
@@ -33,11 +32,14 @@ use super::events::{self, SwarmEventContext};
 use super::handle::NodeCommand;
 use super::profile::ResolvedNodeConfig;
 use super::public_ip;
+use super::runtime_maintenance;
 use super::runtime_tasks::{
     apply_dht_refresh_snapshot, apply_public_ip_probe_result, publish_heartbeat,
 };
 use super::snapshot::NodeSnapshot;
 
+const DHT_STARTUP_REFRESH_INTERVAL_SECS: u64 = 5;
+const DHT_STARTUP_REFRESHES: usize = 12;
 pub(crate) struct NodeRuntimeContext {
     pub(crate) cfg: NodeConfig,
     pub(crate) resolved_config: ResolvedNodeConfig,
@@ -141,6 +143,7 @@ async fn run_node_runtime(ctx: NodeRuntimeContext) {
                             snapshot: &snapshot,
                             peer_book: &mut runtime_state.peer_book,
                             pending_connections: &mut runtime_state.pending_connections,
+                            auto_dial_stats: &mut runtime_state.auto_dial_stats,
                             dcutr_policy: &cfg.dcutr,
                             metrics: &mut runtime_state.metrics,
                         },
@@ -172,6 +175,7 @@ async fn run_node_runtime(ctx: NodeRuntimeContext) {
                     app_topic_hashes: &runtime_state.app_topic_hashes,
                     app_messages: &messages_tx,
                     metrics: &mut runtime_state.metrics,
+                    identify_addresses: &mut runtime_state.identify_addresses,
                     local_peer,
                     network_id: cfg.network_id,
                 };
@@ -193,7 +197,9 @@ struct RuntimeState {
     connection_caps: ConnectionCapState,
     app_topic_hashes: Vec<TopicHash>,
     metrics: NodeMetrics,
+    identify_addresses: IdentifyAddressState,
     last_dht_refresh: Instant,
+    dht_startup_refreshes: usize,
 }
 
 impl RuntimeState {
@@ -209,7 +215,7 @@ impl RuntimeState {
         Self {
             rep: ReputationStore::new(cfg.message_security.reputation.clone()),
             replay_cache: HeartbeatReplayCache::new(&cfg.message_security),
-            relay_state: initial_relay_state(
+            relay_state: runtime_maintenance::initial_relay_state(
                 cfg,
                 resolved_config,
                 &relay_reservation_plan,
@@ -223,42 +229,10 @@ impl RuntimeState {
             connection_caps: ConnectionCapState::new(&cfg.connection_limits),
             app_topic_hashes: Vec::new(),
             metrics: NodeMetrics::default(),
+            identify_addresses: IdentifyAddressState::default(),
             last_dht_refresh: Instant::now(),
+            dht_startup_refreshes: 0,
         }
-    }
-}
-
-fn initial_relay_state(
-    cfg: &NodeConfig,
-    resolved_config: &ResolvedNodeConfig,
-    relay_reservation_plan: &RelayReservationPlan,
-    relay_selection_plan: &RelaySelectionPlan,
-) -> RelayState {
-    RelayState {
-        server_enabled: cfg.relay.is_active_now(),
-        health: cfg.relay.health_now(),
-        relay_client_reservation_attempts: relay_reservation_plan.attempted,
-        relay_client_reservation_failures: relay_reservation_plan.errors.len(),
-        dcutr_enabled: resolved_config.dcutr_enabled,
-        relay_discovery_selected_relays: relay_selection_plan
-            .selected_strings()
-            .into_iter()
-            .collect::<BTreeSet<_>>(),
-        relay_discovery_candidate_count: relay_selection_plan.total_candidates(),
-        relay_discovery_configured_candidates: relay_selection_plan.configured_candidates,
-        relay_discovery_cached_candidates: relay_selection_plan.cached_candidates,
-        relay_discovery_rendezvous_candidates: relay_selection_plan.rendezvous_candidates,
-        relay_discovery_public_candidates: relay_selection_plan.public_candidates,
-        relay_discovery_ignored_candidates: relay_selection_plan.ignored_candidates,
-        relay_discovery_failures: relay_selection_plan
-            .errors
-            .len()
-            .saturating_add(relay_reservation_plan.errors.len()),
-        relay_discovery_replacements: 0,
-        // Keep requested relay listeners out of advertised reachability until
-        // the relay transport confirms them with `NewListenAddr`.
-        relayed_listen_addrs: BTreeSet::new(),
-        ..RelayState::default()
     }
 }
 
@@ -273,6 +247,23 @@ async fn tick_runtime(
 ) {
     events::enforce_relay_schedule(&cfg.relay, swarm, snapshot, &mut runtime_state.relay_state)
         .await;
+    runtime_maintenance::close_expired_unverified_relayed(
+        swarm,
+        snapshot,
+        &mut runtime_state.relay_state,
+    )
+    .await;
+    runtime_maintenance::maintain_application_connections(
+        cfg,
+        swarm,
+        local_peer,
+        snapshot,
+        &runtime_state.peer_book,
+        &mut runtime_state.pending_connections,
+        &mut runtime_state.dht_state,
+        &mut runtime_state.auto_dial_stats,
+    )
+    .await;
     if let Ok(bytes) = publish_heartbeat(swarm, local_peer, heartbeat_topic, snapshot).await {
         runtime_state
             .metrics
@@ -286,15 +277,26 @@ async fn tick_runtime(
         .saturating_add(1);
     runtime_state.metrics.compute.active_request_count =
         u32::try_from(runtime_state.pending_connections.pending_count()).unwrap_or(u32::MAX);
-    let dht_refresh_interval = Duration::from_secs(cfg.discovery.dht.refresh_interval_secs.max(1));
+    let dht_refresh_secs = if runtime_state.dht_startup_refreshes < DHT_STARTUP_REFRESHES {
+        cfg.discovery
+            .dht
+            .refresh_interval_secs
+            .max(1)
+            .min(DHT_STARTUP_REFRESH_INTERVAL_SECS)
+    } else {
+        cfg.discovery.dht.refresh_interval_secs.max(1)
+    };
+    let dht_refresh_interval = Duration::from_secs(dht_refresh_secs);
     let dht_plan = if runtime_state.last_dht_refresh.elapsed() >= dht_refresh_interval {
         runtime_state.last_dht_refresh = Instant::now();
-        Some(start_dht_namespace_discovery(
+        runtime_state.dht_startup_refreshes = runtime_state.dht_startup_refreshes.saturating_add(1);
+        Some(start_dht_namespace_discovery_with_interval(
             swarm,
             cfg.network_id,
             &cfg.discovery,
             runtime_state.rendezvous_state.registered_with.len(),
             &mut runtime_state.dht_state,
+            dht_refresh_secs,
         ))
     } else {
         None

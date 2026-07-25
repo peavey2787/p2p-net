@@ -11,6 +11,8 @@ use libp2p::{Multiaddr, PeerId};
 
 use crate::api::{PeerInfo, PeerSource};
 
+const MAX_ADDRS_PER_PEER: usize = 64;
+
 /// One normalized peer record in the local peer book.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PeerRecord {
@@ -103,6 +105,7 @@ impl PeerBook {
             .or_insert_with(|| PeerRecord::new(peer_id));
         record.sources.insert(source);
         record.addresses.insert(addr.to_string());
+        prune_peer_addrs(record);
         record.mark_seen();
     }
 
@@ -130,6 +133,7 @@ impl PeerBook {
         record.sources.insert(PeerSource::Connected);
         if let Some(addr) = addr {
             record.addresses.insert(addr.to_string());
+            prune_peer_addrs(record);
         }
         record.mark_seen();
     }
@@ -237,6 +241,15 @@ impl PeerBook {
     }
 }
 
+fn prune_peer_addrs(record: &mut PeerRecord) {
+    while record.addresses.len() > MAX_ADDRS_PER_PEER {
+        let Some(oldest_sorted) = record.addresses.iter().next().cloned() else {
+            break;
+        };
+        record.addresses.remove(&oldest_sorted);
+    }
+}
+
 fn now_unix_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -280,5 +293,22 @@ mod tests {
         book.record_disconnected_if_known(PeerId::random());
 
         assert!(book.is_empty());
+    }
+
+    #[test]
+    fn peer_record_addresses_are_bounded() {
+        let peer = PeerId::random();
+        let mut book = PeerBook::default();
+        for port in 10_000..10_000 + MAX_ADDRS_PER_PEER + 5 {
+            let addr = format!("/ip4/203.0.113.1/tcp/{port}/p2p/{peer}")
+                .parse::<Multiaddr>()
+                .expect("multiaddr");
+            book.record_addr(peer, addr, PeerSource::DhtProvider);
+        }
+
+        assert_eq!(
+            book.record(&peer).expect("record").addresses.len(),
+            MAX_ADDRS_PER_PEER
+        );
     }
 }

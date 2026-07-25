@@ -1,4 +1,5 @@
 use std::convert::Infallible;
+use std::time::Duration;
 
 use libp2p::allow_block_list::{self, AllowedPeers, BlockedPeers};
 use libp2p::autonat;
@@ -20,6 +21,8 @@ use crate::connectivity::relay::{RelayAccess, RelayServiceConfig};
 use crate::ResolvedNodeConfig;
 
 use super::{DcutrBehaviour, ExternalAddressCandidates};
+
+const KADEMLIA_QUERY_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[derive(NetworkBehaviour)]
 #[behaviour(to_swarm = "MeshEvent")]
@@ -152,7 +155,9 @@ pub fn build_behaviour(ctx: BehaviourBuildContext<'_>) -> MeshBehaviour {
     let behaviour_policy = &resolved_cfg.enabled_behaviours;
 
     let store = kad::store::MemoryStore::new(local_peer);
-    let mut kademlia = kad::Behaviour::new(local_peer, store);
+    let mut kad_config = kad::Config::default();
+    kad_config.set_query_timeout(KADEMLIA_QUERY_TIMEOUT);
+    let mut kademlia = kad::Behaviour::with_config(local_peer, store, kad_config);
     let kad_mode = if behaviour_policy.kademlia_server {
         Some(kad::Mode::Server)
     } else if behaviour_policy.kademlia_client {
@@ -162,10 +167,11 @@ pub fn build_behaviour(ctx: BehaviourBuildContext<'_>) -> MeshBehaviour {
     };
     kademlia.set_mode(kad_mode);
 
-    let identify = identify::Behaviour::new(identify::Config::new(
-        format!("/p2p-net/net-{network_id}/1.0.0"),
-        local_key.public(),
-    ));
+    let identify_protocol = discovery_cfg
+        .application_protocol_version(network_id)
+        .expect("validated discovery namespace configuration");
+    let identify =
+        identify::Behaviour::new(identify::Config::new(identify_protocol, local_key.public()));
 
     let relay_server_active = behaviour_policy.relay_server && relay_cfg.enabled;
     let relay_server = relay_server_active

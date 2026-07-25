@@ -4,6 +4,8 @@ use std::collections::VecDeque;
 
 use crate::connectivity::relay::{RelayServiceHealth, RelayState};
 
+const MAX_SNAPSHOT_ADDRS: usize = 16;
+
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct NodeSnapshot {
     pub network_id: u32,
@@ -71,6 +73,8 @@ pub struct NodeSnapshot {
     pub auto_connect_dial_attempts: usize,
     pub auto_connect_dial_failures: usize,
     pub auto_connect_awaiting_address_peers: usize,
+    /// Most recent outbound error for a namespace-associated application peer.
+    pub last_application_dial_error: Option<String>,
     pub connection_plan_pending_peers: usize,
     pub relay_server_enabled: bool,
     pub mediator_enabled: bool,
@@ -153,12 +157,8 @@ pub struct NodeSnapshot {
 impl NodeSnapshot {
     pub(crate) fn record_public_external_addr(&mut self, addr: impl Into<String>) {
         let addr = addr.into();
-        if !self.public_direct_listen_addresses.contains(&addr) {
-            self.public_direct_listen_addresses.push(addr.clone());
-        }
-        if !self.public_ip_probe_external_addresses.contains(&addr) {
-            self.public_ip_probe_external_addresses.push(addr.clone());
-        }
+        push_unique_recent(&mut self.public_direct_listen_addresses, addr.clone());
+        push_unique_recent(&mut self.public_ip_probe_external_addresses, addr.clone());
         if self.public_addr.is_none() {
             self.public_addr = Some(addr);
         }
@@ -218,6 +218,14 @@ impl NodeSnapshot {
         self.dcutr_relay_fallbacks = relay_state.dcutr_relay_fallbacks;
         self.dcutr_upgrade_eligible_connections = relay_state.dcutr_upgrade_eligible_connections;
         self.dcutr_retry_suppressed = relay_state.dcutr_retry_suppressed;
+    }
+}
+
+fn push_unique_recent(values: &mut Vec<String>, value: String) {
+    values.retain(|existing| existing != &value);
+    values.insert(0, value);
+    if values.len() > MAX_SNAPSHOT_ADDRS {
+        values.truncate(MAX_SNAPSHOT_ADDRS);
     }
 }
 

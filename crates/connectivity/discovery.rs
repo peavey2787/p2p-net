@@ -10,6 +10,8 @@ use super::public_fallback::PublicBootstrapConfig;
 use super::relay_discovery::RelayDiscoveryPolicy;
 use super::rendezvous::RendezvousConfig;
 
+const APPLICATION_COMPATIBILITY_CONTEXT: &str = "p2p-net.application.compatibility.v1";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DiscoveryConfig {
@@ -140,5 +142,70 @@ impl DiscoveryConfig {
         network_id: u32,
     ) -> Result<Vec<DiscoveryNamespace>, crate::common::error::NetError> {
         self.namespace.derived_namespaces(network_id)
+    }
+
+    /// Identify protocol version used as a connection-local application
+    /// compatibility proof.
+    ///
+    /// The value contains only a domain-separated hash of the complete,
+    /// canonical namespace set. It lets the receiving side verify an inbound
+    /// direct or relayed connection before gossip mesh formation without
+    /// exposing readable discovery tags.
+    pub fn application_protocol_version(
+        &self,
+        network_id: u32,
+    ) -> Result<String, crate::common::error::NetError> {
+        let mut namespaces = self.rendezvous_namespaces(network_id)?;
+        namespaces.sort_unstable();
+        namespaces.dedup();
+
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(APPLICATION_COMPATIBILITY_CONTEXT.as_bytes());
+        hasher.update(&network_id.to_be_bytes());
+        for namespace in namespaces {
+            hasher.update(&[0]);
+            hasher.update(namespace.as_bytes());
+        }
+        let fingerprint = hasher.finalize().to_hex();
+        Ok(format!("/p2p-net/net-{network_id}/app-{fingerprint}/1.0.0"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn application_protocol_proves_exact_namespace_set_without_leaking_tag() {
+        let mut config = DiscoveryConfig::default();
+        config.namespace.tags = vec!["private desktop group".to_string()];
+
+        let protocol = config.application_protocol_version(7).expect("protocol");
+
+        assert!(protocol.starts_with("/p2p-net/net-7/app-"));
+        assert!(!protocol.contains("private"));
+        assert_eq!(
+            protocol,
+            config.application_protocol_version(7).expect("stable")
+        );
+
+        config.namespace.tags = vec!["different group".to_string()];
+        assert_ne!(
+            protocol,
+            config.application_protocol_version(7).expect("different")
+        );
+    }
+
+    #[test]
+    fn application_protocol_is_independent_of_tag_order() {
+        let mut first = DiscoveryConfig::default();
+        first.namespace.tags = vec!["alpha".to_string(), "beta".to_string()];
+        let mut second = first.clone();
+        second.namespace.tags.reverse();
+
+        assert_eq!(
+            first.application_protocol_version(1).expect("first"),
+            second.application_protocol_version(1).expect("second")
+        );
     }
 }

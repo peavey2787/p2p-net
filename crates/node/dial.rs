@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 
 use libp2p::{PeerId, Swarm};
 
@@ -10,11 +10,16 @@ use crate::connectivity::dcutr::DcutrPolicy;
 use crate::connectivity::peer_book::PeerBook;
 use crate::stack::MeshBehaviour;
 
+const MAX_AUTO_DIAL_AWAITING_PEERS: usize = 2048;
+
 #[derive(Debug, Default)]
 pub(crate) struct AutoDialStats {
     pub(crate) dial_attempts: usize,
     pub(crate) dial_failures: usize,
     awaiting_address_peers: HashSet<PeerId>,
+    awaiting_address_order: VecDeque<PeerId>,
+    suppressed_peers: HashSet<PeerId>,
+    suppressed_order: VecDeque<PeerId>,
 }
 
 impl AutoDialStats {
@@ -30,7 +35,11 @@ impl AutoDialStats {
                 self.awaiting_address_peers.remove(peer);
             }
             AutoDialOutcome::AwaitingAddress => {
-                self.awaiting_address_peers.insert(*peer);
+                self.mark_awaiting_address(*peer);
+            }
+            AutoDialOutcome::AddressResolutionStarted(_) => {
+                self.dial_attempts = self.dial_attempts.saturating_add(1);
+                self.mark_awaiting_address(*peer);
             }
             AutoDialOutcome::AlreadyConnected => {
                 self.awaiting_address_peers.remove(peer);
@@ -51,6 +60,39 @@ impl AutoDialStats {
     pub(crate) fn awaiting_address_count(&self) -> usize {
         self.awaiting_address_peers.len()
     }
+
+    pub(crate) fn suppress_peer(&mut self, peer: PeerId) {
+        if self.suppressed_peers.insert(peer) {
+            self.suppressed_order.push_back(peer);
+        }
+        while self.suppressed_peers.len() > MAX_AUTO_DIAL_AWAITING_PEERS {
+            let Some(evicted) = self.suppressed_order.pop_front() else {
+                break;
+            };
+            self.suppressed_peers.remove(&evicted);
+        }
+    }
+
+    pub(crate) fn allow_peer(&mut self, peer: &PeerId) {
+        self.suppressed_peers.remove(peer);
+    }
+
+    #[must_use]
+    pub(crate) fn is_suppressed(&self, peer: &PeerId) -> bool {
+        self.suppressed_peers.contains(peer)
+    }
+
+    fn mark_awaiting_address(&mut self, peer: PeerId) {
+        if self.awaiting_address_peers.insert(peer) {
+            self.awaiting_address_order.push_back(peer);
+        }
+        while self.awaiting_address_peers.len() > MAX_AUTO_DIAL_AWAITING_PEERS {
+            let Some(evicted) = self.awaiting_address_order.pop_front() else {
+                break;
+            };
+            self.awaiting_address_peers.remove(&evicted);
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,6 +102,7 @@ pub(crate) enum AutoDialOutcome {
     AlreadyConnected,
     AlreadyPending,
     AwaitingAddress,
+    AddressResolutionStarted(String),
     DialStarted(String),
     DialFailed(String),
 }
@@ -69,7 +112,10 @@ impl AutoDialOutcome {
     pub(crate) fn should_pulse(&self) -> bool {
         matches!(
             self,
-            Self::AwaitingAddress | Self::DialStarted(_) | Self::DialFailed(_)
+            Self::AwaitingAddress
+                | Self::AddressResolutionStarted(_)
+                | Self::DialStarted(_)
+                | Self::DialFailed(_)
         )
     }
 
@@ -84,6 +130,9 @@ impl AutoDialOutcome {
                 "auto-connect awaiting dialable address peer={peer}; \
                  peer is known/discovered but not yet dialable"
             ),
+            Self::AddressResolutionStarted(plan) => {
+                format!("auto-connect address resolution started peer={peer} {plan}")
+            }
             Self::DialStarted(plan) => format!("auto-connect dial started peer={peer} {plan}"),
             Self::DialFailed(reason) => {
                 format!("auto-connect dial failed peer={peer} reason={reason}")
@@ -154,12 +203,10 @@ pub(crate) fn auto_dial_dht_provider(
     // contribute those addresses instead of waiting for a later peer-book event
     // that may never arrive.
     match swarm.dial(peer) {
-        Ok(()) => {
-            AutoDialOutcome::DialStarted("source=kademlia address_resolution=behaviour".to_string())
-        }
-        Err(err) => {
-            AutoDialOutcome::DialFailed(format!("Kademlia peer-id dial failed immediately: {err}"))
-        }
+        Ok(()) => AutoDialOutcome::AddressResolutionStarted(
+            "source=kademlia address_resolution=behaviour".to_string(),
+        ),
+        Err(_) => AutoDialOutcome::AwaitingAddress,
     }
 }
 
@@ -205,4 +252,28 @@ fn dial_connection_attempt(
             err
         )
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn explicit_disconnect_suppression_is_bounded_and_reversible() {
+        let mut stats = AutoDialStats::default();
+        let retained = PeerId::random();
+        stats.suppress_peer(retained);
+        for _ in 0..MAX_AUTO_DIAL_AWAITING_PEERS {
+            stats.suppress_peer(PeerId::random());
+        }
+
+        assert_eq!(stats.suppressed_peers.len(), MAX_AUTO_DIAL_AWAITING_PEERS);
+        assert!(!stats.is_suppressed(&retained));
+
+        let peer = PeerId::random();
+        stats.suppress_peer(peer);
+        assert!(stats.is_suppressed(&peer));
+        stats.allow_peer(&peer);
+        assert!(!stats.is_suppressed(&peer));
+    }
 }

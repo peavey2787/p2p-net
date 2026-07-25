@@ -5,12 +5,12 @@ use libp2p::{PeerId, Swarm};
 use tokio::sync::Mutex;
 
 use super::super::snapshot::NodeSnapshot;
-use crate::api::accounted_transport_bytes;
+use crate::api::{accounted_transport_bytes, PeerSource};
 use crate::protocol::pulse::{validate_heartbeat_wire, HeartbeatValidationDecision};
 use crate::stack::MeshBehaviour;
 
 use super::super::push_pulse;
-use super::SwarmEventContext;
+use super::{sync_peer_connectivity_snapshot, SwarmEventContext};
 
 pub(crate) async fn handle_heartbeat_message(
     swarm: &mut Swarm<MeshBehaviour>,
@@ -39,7 +39,11 @@ pub(crate) async fn handle_heartbeat_message(
                 .behaviour_mut()
                 .gossipsub
                 .report_message_validation_result(&msg_id, &peer, MessageAcceptance::Accept);
+            if validation.envelope.is_some() {
+                record_heartbeat_peer(peer, ctx);
+            }
             let mut guard = ctx.snapshot.lock().await;
+            sync_peer_connectivity_snapshot(&mut guard, ctx);
             guard.gossip_messages_accepted = guard.gossip_messages_accepted.saturating_add(1);
             if let Some(env) = validation.envelope {
                 push_pulse(
@@ -68,6 +72,17 @@ pub(crate) async fn handle_heartbeat_message(
             reject_heartbeat(swarm, peer, &msg_id, ctx, "rejected_heartbeat").await;
         }
     }
+}
+
+fn record_heartbeat_peer(peer: PeerId, ctx: &mut SwarmEventContext<'_>) {
+    if let Ok(namespaces) = ctx.discovery_cfg.rendezvous_namespaces(ctx.network_id) {
+        for namespace in namespaces {
+            ctx.peer_book
+                .record_namespace(peer, namespace, PeerSource::Connected);
+        }
+    }
+    ctx.peer_book.record_connected(peer, None);
+    ctx.relay_state.unverified_relayed_peers.remove(&peer);
 }
 
 pub(crate) async fn handle_unexpected_topic_message(

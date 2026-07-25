@@ -203,7 +203,12 @@ fn valid_dialable_entries_from_file(
     file: &PeerCacheFile,
     now: u64,
 ) -> Vec<CachedPeerAddr> {
-    let _cache_version = file.version;
+    // Version 2 accidentally retained unrelated public DHT/Identify peers as
+    // application peers. Discard it once instead of redialing polluted
+    // infrastructure entries forever after the retention bug is fixed.
+    if file.version < CACHE_VERSION {
+        return Vec::new();
+    }
     let mut entries = Vec::new();
     entries.extend(file.dialable_addrs.clone());
     entries.extend(file.entries.clone());
@@ -249,6 +254,9 @@ fn valid_identities_from_file(
     file: &PeerCacheFile,
     now: u64,
 ) -> Vec<CachedPeerIdentity> {
+    if file.version < CACHE_VERSION {
+        return Vec::new();
+    }
     let mut identities = file.identities.clone();
     for entry in valid_dialable_entries_from_file(cfg, file, now) {
         identities.push(CachedPeerIdentity {

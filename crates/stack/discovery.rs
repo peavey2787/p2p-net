@@ -1,3 +1,5 @@
+use std::collections::{HashMap, VecDeque};
+
 use libp2p::swarm::Swarm;
 use libp2p::{identify, Multiaddr, PeerId};
 use libp2p_rendezvous as rendezvous;
@@ -13,6 +15,56 @@ use crate::connectivity::rendezvous::{
 use crate::platform::NodeStorage;
 
 use super::behaviour::{MeshBehaviour, MeshEvent};
+
+const MAX_IDENTIFY_ADDRS_PER_PEER: usize = 8;
+const MAX_IDENTIFY_ROUTING_PEERS: usize = 2_048;
+
+/// Bounded Identify address memory for Kademlia routing peers, kept out of the application peer book and cache.
+#[derive(Debug, Default)]
+pub struct IdentifyAddressState {
+    by_peer: HashMap<PeerId, VecDeque<Multiaddr>>,
+    peer_order: VecDeque<PeerId>,
+}
+
+impl IdentifyAddressState {
+    fn record(&mut self, swarm: &mut Swarm<MeshBehaviour>, peer: PeerId, address: Multiaddr) {
+        let is_new_peer = !self.by_peer.contains_key(&peer);
+        let addresses = self.by_peer.entry(peer).or_default();
+        if addresses.iter().any(|known| known == &address) {
+            return;
+        }
+        addresses.push_back(address.clone());
+        swarm.behaviour_mut().kademlia.add_address(&peer, address);
+
+        while addresses.len() > MAX_IDENTIFY_ADDRS_PER_PEER {
+            let Some(expired) = addresses.pop_front() else {
+                break;
+            };
+            swarm
+                .behaviour_mut()
+                .kademlia
+                .remove_address(&peer, &expired);
+        }
+
+        if is_new_peer {
+            self.peer_order.push_back(peer);
+        }
+        while self.by_peer.len() > MAX_IDENTIFY_ROUTING_PEERS {
+            let Some(expired_peer) = self.peer_order.pop_front() else {
+                break;
+            };
+            let Some(expired_addresses) = self.by_peer.remove(&expired_peer) else {
+                continue;
+            };
+            for expired in expired_addresses {
+                swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .remove_address(&expired_peer, &expired);
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StartupDiscoveryPlan {
@@ -88,9 +140,7 @@ pub fn seed_bootstrap(swarm: &mut Swarm<MeshBehaviour>, addrs: &[Multiaddr]) {
     let _ = swarm.behaviour_mut().kademlia.bootstrap();
 }
 
-/// Dial selected relay peers and request a Circuit Relay v2 reservation by
-/// listening on each relay's `/p2p-circuit` address. Selected relays may come
-/// from operator config, cache/rendezvous discovery, or public fallback.
+/// Dial selected relays and request Circuit Relay v2 reservations.
 pub fn reserve_selected_relays(
     swarm: &mut Swarm<MeshBehaviour>,
     relay_addrs: &[Multiaddr],
@@ -132,9 +182,7 @@ pub fn reserve_selected_relays(
     plan
 }
 
-/// Dial configured rendezvous peers and issue register/discover requests when enabled.
-/// Registration is safe to call repeatedly; the caller passes `RendezvousState` so we avoid
-/// repeated registrations after one succeeds.
+/// Dial configured rendezvous peers and issue deduplicated register/discover requests.
 pub fn refresh_rendezvous(
     swarm: &mut Swarm<MeshBehaviour>,
     network_id: u32,
@@ -236,9 +284,17 @@ pub fn on_mesh_event(
     discovery_cfg: &DiscoveryConfig,
     storage: &dyn NodeStorage,
     peer_book: &mut PeerBook,
+    identify_addresses: &mut IdentifyAddressState,
 ) {
     if let MeshEvent::Identify(ev) = event {
-        on_identify_event(swarm, ev, discovery_cfg, storage, peer_book);
+        on_identify_event(
+            swarm,
+            ev,
+            discovery_cfg,
+            storage,
+            peer_book,
+            identify_addresses,
+        );
     }
 }
 
@@ -394,12 +450,38 @@ fn on_identify_event(
     discovery_cfg: &DiscoveryConfig,
     storage: &dyn NodeStorage,
     peer_book: &mut PeerBook,
+    identify_addresses: &mut IdentifyAddressState,
 ) {
     if let identify::Event::Received { peer_id, info, .. } = event {
-        for addr in &info.listen_addrs {
-            add_peer_address_to_discovery(swarm, peer_id.to_owned(), addr.clone());
-            peer_cache::record_seen_peer_addr_with_storage(discovery_cfg, peer_id, addr, storage);
-            peer_book.record_addr(peer_id.to_owned(), addr.clone(), PeerSource::Connected);
+        let known_record = peer_book.record(peer_id);
+        let distribute_to_swarm = known_record.is_some();
+        let persist_as_application_peer = known_record.is_some_and(|record| {
+            !record.namespaces.is_empty()
+                || record.sources.iter().any(|source| {
+                    matches!(
+                        source,
+                        PeerSource::Manual
+                            | PeerSource::PeerCache
+                            | PeerSource::DhtProvider
+                            | PeerSource::Rendezvous
+                            | PeerSource::PublicRendezvous
+                    )
+                })
+        });
+        for addr in info.listen_addrs.iter().take(MAX_IDENTIFY_ADDRS_PER_PEER) {
+            identify_addresses.record(swarm, *peer_id, addr.clone());
+            if distribute_to_swarm {
+                swarm.add_peer_address(*peer_id, addr.clone());
+                peer_book.record_addr(*peer_id, addr.clone(), PeerSource::Connected);
+            }
+            if persist_as_application_peer {
+                peer_cache::record_seen_peer_addr_with_storage(
+                    discovery_cfg,
+                    peer_id,
+                    addr,
+                    storage,
+                );
+            }
         }
     }
 }

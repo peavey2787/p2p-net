@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::ConnectionId;
-use libp2p::Multiaddr;
+use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
 
 /// Global connection caps for the node.
@@ -112,7 +112,9 @@ impl ConnectionLimitsConfig {
 #[derive(Debug, Clone, Default)]
 pub struct ConnectionCapState {
     max_established_per_ip: Option<u32>,
+    max_established_outgoing: Option<u32>,
     by_connection: HashMap<ConnectionId, String>,
+    outgoing_by_connection: HashMap<ConnectionId, PeerId>,
     by_ip: HashMap<String, u32>,
     pub cap_disconnects: usize,
 }
@@ -121,7 +123,12 @@ impl ConnectionCapState {
     pub fn new(cfg: &ConnectionLimitsConfig) -> Self {
         Self {
             max_established_per_ip: cfg.enabled.then_some(cfg.max_established_per_ip).flatten(),
+            max_established_outgoing: cfg
+                .enabled
+                .then_some(cfg.max_established_outgoing)
+                .flatten(),
             by_connection: HashMap::new(),
+            outgoing_by_connection: HashMap::new(),
             by_ip: HashMap::new(),
             cap_disconnects: 0,
         }
@@ -131,8 +138,13 @@ impl ConnectionCapState {
     pub fn record_established(
         &mut self,
         connection_id: ConnectionId,
+        peer_id: PeerId,
         remote_addr: &Multiaddr,
+        outgoing: bool,
     ) -> bool {
+        if outgoing {
+            self.outgoing_by_connection.insert(connection_id, peer_id);
+        }
         let Some(ip) = multiaddr_ip_key(remote_addr) else {
             return false;
         };
@@ -153,6 +165,7 @@ impl ConnectionCapState {
     }
 
     pub fn record_closed(&mut self, connection_id: ConnectionId) {
+        self.outgoing_by_connection.remove(&connection_id);
         let Some(ip) = self.by_connection.remove(&connection_id) else {
             return;
         };
@@ -166,6 +179,21 @@ impl ConnectionCapState {
 
     pub fn count_for_ip(&self, ip: &str) -> u32 {
         self.by_ip.get(ip).copied().unwrap_or(0)
+    }
+
+    /// Number of outbound connections to release before a high-priority
+    /// application-peer dial.
+    pub fn outgoing_connections_to_release(&self, desired_headroom: u32) -> usize {
+        let Some(limit) = self.max_established_outgoing else {
+            return 0;
+        };
+        let current = u32::try_from(self.outgoing_by_connection.len()).unwrap_or(u32::MAX);
+        let available = limit.saturating_sub(current);
+        usize::try_from(desired_headroom.saturating_sub(available)).unwrap_or(usize::MAX)
+    }
+
+    pub fn outgoing_peers(&self) -> impl Iterator<Item = PeerId> + '_ {
+        self.outgoing_by_connection.values().copied()
     }
 }
 

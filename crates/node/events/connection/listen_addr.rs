@@ -4,6 +4,8 @@ use crate::connectivity::addr::{is_local_direct_addr, is_public_direct_addr};
 use crate::connectivity::relay::is_p2p_circuit_addr;
 use crate::node::NodeSnapshot;
 
+const MAX_SNAPSHOT_ADDRS: usize = 16;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ListenAddrClass {
     PublicDirect,
@@ -39,18 +41,18 @@ pub(super) fn record_listen_addr_snapshot(
     let addr_string = addr.to_string();
     match classification {
         ListenAddrClass::PublicDirect => {
-            push_unique(
+            push_unique_recent(
                 &mut snapshot.public_direct_listen_addresses,
                 addr_string.clone(),
             );
             snapshot.public_addr = Some(addr_string);
         }
         ListenAddrClass::Relayed => {
-            push_unique(&mut snapshot.relayed_listen_addresses, addr_string.clone());
+            push_unique_recent(&mut snapshot.relayed_listen_addresses, addr_string.clone());
             snapshot.public_addr = Some(addr_string);
         }
         ListenAddrClass::LocalOnly if is_local_direct_addr(addr) => {
-            push_unique(&mut snapshot.local_listen_addresses, addr_string);
+            push_unique_recent(&mut snapshot.local_listen_addresses, addr_string);
         }
         ListenAddrClass::LocalOnly => {}
     }
@@ -76,9 +78,11 @@ pub(super) fn remove_listen_addr_snapshot(
         .or_else(|| snapshot.public_direct_listen_addresses.first().cloned());
 }
 
-fn push_unique(values: &mut Vec<String>, value: String) {
-    if !values.contains(&value) {
-        values.push(value);
+fn push_unique_recent(values: &mut Vec<String>, value: String) {
+    values.retain(|existing| existing != &value);
+    values.insert(0, value);
+    if values.len() > MAX_SNAPSHOT_ADDRS {
+        values.truncate(MAX_SNAPSHOT_ADDRS);
     }
 }
 
