@@ -2,6 +2,10 @@
 
 `p2p-net` is a Rust libp2p node core that gives applications a small, stable API for peer connectivity and messaging while the crate handles transport mechanics, discovery, relay fallback, DCUtR hole punching, native WebRTC-direct, telemetry, and platform storage/runtime details.
 
+<p align="center">
+  <img src="assets/p2p-net-logo.png" alt="p2p-net Logo" width="400">
+</p>
+
 ## Features
 
 - Native transports: TCP, QUIC, WebSocket, browser-compatible `/webrtc-direct`, DNS, Noise, Yamux
