@@ -90,10 +90,15 @@ fn dht_provider_discovery_is_wired_through_startup_and_events() {
 #[test]
 fn dht_provider_auto_connect_is_policy_gated_and_deduped() {
     let dht_rs = fs::read_to_string("crates/connectivity/dht.rs").expect("read dht module");
-    assert!(dht_rs.contains("auto_connect_attempted_peers"));
-    assert!(dht_rs.contains("auto_connect_waiting_for_addrs"));
-    assert!(dht_rs.contains("should_auto_connect_provider_result"));
-    assert!(dht_rs.contains("mark_auto_connect_failed"));
+    assert!(dht_rs.contains("mod state;"));
+    assert!(dht_rs.contains("pub use state::DhtProviderState;"));
+
+    let dht_state_rs =
+        fs::read_to_string("crates/connectivity/dht/state.rs").expect("read DHT state module");
+    assert!(dht_state_rs.contains("auto_connect_attempted_peers"));
+    assert!(dht_state_rs.contains("auto_connect_waiting_for_addrs"));
+    assert!(dht_state_rs.contains("should_auto_connect_provider_result"));
+    assert!(dht_state_rs.contains("mark_auto_connect_failed"));
 
     let kademlia_rs =
         fs::read_to_string("crates/node/events/kademlia.rs").expect("read Kademlia event module");
