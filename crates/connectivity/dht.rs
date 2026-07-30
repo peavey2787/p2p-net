@@ -124,23 +124,20 @@ fn dht_provider_keys(
     namespace: &str,
     discovery_cfg: &DiscoveryConfig,
 ) -> Vec<(String, kad::RecordKey)> {
-    let public_anchors = discovery_cfg
-        .public_bootstrap
-        .mode
-        .is_enabled()
-        .then(|| {
-            discovery_cfg
-                .public_bootstrap
-                .bootstrap_seed_peers
-                .iter()
-                .filter_map(|addr| {
-                    addr.rsplit_once("/p2p/")
-                        .and_then(|(_, peer)| peer.parse::<PeerId>().ok())
-                })
-                .take(usize::from(DHT_PROVIDER_KEY_REPLICAS))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+    let public_anchors = if discovery_cfg.public_bootstrap.mode.is_enabled() {
+        discovery_cfg
+            .public_bootstrap
+            .bootstrap_seed_peers
+            .iter()
+            .filter_map(|addr| {
+                addr.rsplit_once("/p2p/")
+                    .and_then(|(_, peer)| peer.parse::<PeerId>().ok())
+            })
+            .take(usize::from(DHT_PROVIDER_KEY_REPLICAS))
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
 
     if !public_anchors.is_empty() {
         return public_anchors
@@ -415,11 +412,7 @@ pub fn on_kademlia_event(
             }
             _ => None,
         },
-        kad::Event::RoutingUpdated {
-            peer: _,
-            addresses: _,
-            ..
-        } => None,
+        kad::Event::RoutingUpdated { .. } => None,
         kad::Event::RoutablePeer { peer, address }
         | kad::Event::PendingRoutablePeer { peer, address } => {
             add_peer_addr_to_kademlia(swarm, peer, address.clone());

@@ -281,8 +281,7 @@ async fn tick_runtime(
         cfg.discovery
             .dht
             .refresh_interval_secs
-            .max(1)
-            .min(DHT_STARTUP_REFRESH_INTERVAL_SECS)
+            .clamp(1, DHT_STARTUP_REFRESH_INTERVAL_SECS)
     } else {
         cfg.discovery.dht.refresh_interval_secs.max(1)
     };

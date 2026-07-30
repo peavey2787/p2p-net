@@ -27,6 +27,12 @@ enum ExternalAddressAction {
     Expire(Multiaddr),
 }
 
+impl Default for ExternalAddressCandidates {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ExternalAddressCandidates {
     pub fn new() -> Self {
         Self {

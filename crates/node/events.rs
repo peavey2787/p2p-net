@@ -150,12 +150,14 @@ pub(crate) async fn handle_swarm_event(
             let outgoing = endpoint.is_dialer();
             let endpoint_debug = format!("{endpoint:?}");
             connection::handle_connection_established(
-                peer_id,
-                connection_id,
-                remote_addr,
-                relayed_endpoint,
-                outgoing,
-                endpoint_debug,
+                connection::EstablishedConnection {
+                    peer_id,
+                    connection_id,
+                    remote_addr,
+                    relayed_endpoint,
+                    outgoing,
+                    endpoint_debug,
+                },
                 swarm,
                 ctx,
             )

@@ -200,7 +200,6 @@ impl PeerBook {
         self.peers.get(peer_id)
     }
 
-    #[must_use]
     pub fn records(&self) -> impl Iterator<Item = &PeerRecord> {
         self.peers.values()
     }

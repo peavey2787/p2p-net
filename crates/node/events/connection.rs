@@ -25,16 +25,28 @@ use self::listen_addr::{
 
 const MAX_UNVERIFIED_RELAYED_PEERS: usize = 8;
 
+pub(crate) struct EstablishedConnection {
+    pub(crate) peer_id: PeerId,
+    pub(crate) connection_id: ConnectionId,
+    pub(crate) remote_addr: Multiaddr,
+    pub(crate) relayed_endpoint: bool,
+    pub(crate) outgoing: bool,
+    pub(crate) endpoint_debug: String,
+}
+
 pub(crate) async fn handle_connection_established(
-    peer_id: PeerId,
-    connection_id: ConnectionId,
-    remote_addr: Multiaddr,
-    relayed_endpoint: bool,
-    outgoing: bool,
-    endpoint_debug: String,
+    connection: EstablishedConnection,
     swarm: &mut Swarm<MeshBehaviour>,
     ctx: &mut SwarmEventContext<'_>,
 ) {
+    let EstablishedConnection {
+        peer_id,
+        connection_id,
+        remote_addr,
+        relayed_endpoint,
+        outgoing,
+        endpoint_debug,
+    } = connection;
     if ctx.relay_cfg.enabled && !ctx.relay_cfg.schedule.is_open_now_utc() {
         let _ = swarm.close_connection(connection_id);
         ctx.relay_state.health = RelayServiceHealth::ClosedBySchedule;
@@ -169,9 +181,7 @@ pub(crate) async fn handle_connection_established(
                 .dcutr_last_attempt_by_peer
                 .get(&peer_id)
                 .and_then(|last| retry_interval.checked_sub(now.duration_since(*last)));
-            let attempt_budget = if *attempts >= max_attempts {
-                None
-            } else if cooldown_remaining.is_some() {
+            let attempt_budget = if *attempts >= max_attempts || cooldown_remaining.is_some() {
                 None
             } else {
                 *attempts = attempts.saturating_add(1);
