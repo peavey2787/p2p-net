@@ -158,25 +158,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn probe_config(label: &str, nonce: u128, transport_port: u16, websocket_port: u16) -> NodeConfig {
     let temp = std::env::temp_dir();
-    let mut cfg = NodeConfig::default();
-    cfg.profile = NodeProfile::Full;
-    cfg.heartbeat_interval_secs = 5;
-    cfg.identity_key_path = temp
-        .join(format!("p2p-net-live-{label}-{nonce}.identity"))
-        .to_string_lossy()
-        .to_string();
+    let webrtc_port = transport_port.saturating_add(50);
+    let mut cfg = NodeConfig {
+        profile: NodeProfile::Full,
+        heartbeat_interval_secs: 5,
+        identity_key_path: temp
+            .join(format!("p2p-net-live-{label}-{nonce}.identity"))
+            .to_string_lossy()
+            .to_string(),
+        listen_addresses: vec![
+            format!("/ip4/0.0.0.0/udp/{transport_port}/quic-v1"),
+            format!("/ip4/0.0.0.0/udp/{webrtc_port}/webrtc-direct"),
+            format!("/ip4/0.0.0.0/tcp/{transport_port}"),
+            format!("/ip4/0.0.0.0/tcp/{websocket_port}/ws"),
+        ],
+        ..NodeConfig::default()
+    };
     cfg.discovery.peer_cache_path = temp
         .join(format!("p2p-net-live-{label}-{nonce}.peers.json"))
         .to_string_lossy()
         .to_string();
     cfg.discovery.namespace.tags = vec![format!("live-dcutr-{nonce}")];
-    let webrtc_port = transport_port.saturating_add(50);
-    cfg.listen_addresses = vec![
-        format!("/ip4/0.0.0.0/udp/{transport_port}/quic-v1"),
-        format!("/ip4/0.0.0.0/udp/{webrtc_port}/webrtc-direct"),
-        format!("/ip4/0.0.0.0/tcp/{transport_port}"),
-        format!("/ip4/0.0.0.0/tcp/{websocket_port}/ws"),
-    ];
     cfg
 }
 
