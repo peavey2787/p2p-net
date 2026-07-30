@@ -120,5 +120,9 @@ fn dht_provider_auto_connect_is_policy_gated_and_deduped() {
 
     let connection_rs =
         fs::read_to_string("crates/node/events/connection.rs").expect("read connection events");
-    assert!(connection_rs.contains("dht provider auto-connect retry scheduled"));
+    assert!(connection_rs.contains("mod errors;"));
+
+    let connection_errors_rs = fs::read_to_string("crates/node/events/connection/errors.rs")
+        .expect("read connection error events");
+    assert!(connection_errors_rs.contains("dht provider auto-connect retry scheduled"));
 }

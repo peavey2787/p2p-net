@@ -6,6 +6,7 @@ fn swarm_event_handlers_are_split_by_responsibility() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     for relative in [
         "crates/node/events/connection.rs",
+        "crates/node/events/connection/errors.rs",
         "crates/node/events/relay_client.rs",
         "crates/node/events/relay_server.rs",
         "crates/node/events/dcutr.rs",
