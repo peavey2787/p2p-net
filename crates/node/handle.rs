@@ -130,18 +130,12 @@ impl NodeHandle {
 }
 
 impl P2PNode for NodeHandle {
-    fn connect_peer(
-        &self,
-        addr: Multiaddr,
-    ) -> impl std::future::Future<Output = Result<(), NetError>> + Send + '_ {
-        async move { NodeHandle::connect_peer(self, addr).await }
+    async fn connect_peer(&self, addr: Multiaddr) -> Result<(), NetError> {
+        NodeHandle::connect_peer(self, addr).await
     }
 
-    fn disconnect_peer(
-        &self,
-        peer_id: PeerId,
-    ) -> impl std::future::Future<Output = Result<(), NetError>> + Send + '_ {
-        async move { NodeHandle::disconnect_peer(self, peer_id).await }
+    async fn disconnect_peer(&self, peer_id: PeerId) -> Result<(), NetError> {
+        NodeHandle::disconnect_peer(self, peer_id).await
     }
 
     fn send_message<'a>(
@@ -171,17 +165,12 @@ impl P2PNode for NodeHandle {
         async move { NodeHandle::subscribe(self, topic).await }
     }
 
-    fn get_peers(
-        &self,
-    ) -> impl std::future::Future<Output = Result<Vec<PeerInfo>, NetError>> + Send + '_ {
-        async move { NodeHandle::get_peers(self).await }
+    async fn get_peers(&self) -> Result<Vec<PeerInfo>, NetError> {
+        NodeHandle::get_peers(self).await
     }
 
-    fn get_metrics(
-        &self,
-        peer_id: Option<PeerId>,
-    ) -> impl std::future::Future<Output = Result<NodeMetrics, NetError>> + Send + '_ {
-        async move { NodeHandle::get_metrics(self, peer_id).await }
+    async fn get_metrics(&self, peer_id: Option<PeerId>) -> Result<NodeMetrics, NetError> {
+        NodeHandle::get_metrics(self, peer_id).await
     }
 }
 
