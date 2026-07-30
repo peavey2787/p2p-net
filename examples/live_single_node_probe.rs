@@ -148,28 +148,30 @@ fn probe_config(role: &str, nonce: &str, network_id: u32) -> NodeConfig {
     let temp = std::env::temp_dir();
     let role_hash = stable_network_id(role);
     let transport_port = 47_000u16.saturating_add((role_hash % 500) as u16);
-    let mut cfg = NodeConfig::default();
-    cfg.profile = NodeProfile::Full;
-    cfg.network_id = network_id;
-    cfg.heartbeat_interval_secs = 5;
-    cfg.identity_key_path = temp
-        .join(format!("p2p-net-live-{role}-{nonce}.identity"))
-        .to_string_lossy()
-        .to_string();
+    let mut cfg = NodeConfig {
+        profile: NodeProfile::Full,
+        network_id,
+        heartbeat_interval_secs: 5,
+        identity_key_path: temp
+            .join(format!("p2p-net-live-{role}-{nonce}.identity"))
+            .to_string_lossy()
+            .to_string(),
+        listen_addresses: vec![
+            format!("/ip4/0.0.0.0/udp/{transport_port}/quic-v1"),
+            format!(
+                "/ip4/0.0.0.0/udp/{}/webrtc-direct",
+                transport_port.saturating_add(500)
+            ),
+            format!("/ip4/0.0.0.0/tcp/{transport_port}"),
+            format!("/ip4/0.0.0.0/tcp/{}/ws", transport_port.saturating_add(1)),
+        ],
+        ..NodeConfig::default()
+    };
     cfg.discovery.peer_cache_path = temp
         .join(format!("p2p-net-live-{role}-{nonce}.peers.json"))
         .to_string_lossy()
         .to_string();
     cfg.discovery.namespace.tags = vec![format!("live-cross-platform-{nonce}")];
-    cfg.listen_addresses = vec![
-        format!("/ip4/0.0.0.0/udp/{transport_port}/quic-v1"),
-        format!(
-            "/ip4/0.0.0.0/udp/{}/webrtc-direct",
-            transport_port.saturating_add(500)
-        ),
-        format!("/ip4/0.0.0.0/tcp/{transport_port}"),
-        format!("/ip4/0.0.0.0/tcp/{}/ws", transport_port.saturating_add(1)),
-    ];
     cfg
 }
 

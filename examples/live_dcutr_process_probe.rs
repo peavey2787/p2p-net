@@ -201,14 +201,16 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let own_status_path = session.join(format!("{role}.status.json"));
     let other_status_path = session.join(format!("{other_role}.status.json"));
 
-    let mut cfg = NodeConfig::default();
-    cfg.profile = NodeProfile::Lite;
-    cfg.network_id = network_id;
-    cfg.heartbeat_interval_secs = 5;
-    cfg.identity_key_path = session
-        .join(format!("{role}.identity"))
-        .to_string_lossy()
-        .to_string();
+    let mut cfg = NodeConfig {
+        profile: NodeProfile::Lite,
+        network_id,
+        heartbeat_interval_secs: 5,
+        identity_key_path: session
+            .join(format!("{role}.identity"))
+            .to_string_lossy()
+            .to_string(),
+        ..NodeConfig::default()
+    };
     cfg.discovery.peer_cache_path = session
         .join(format!("{role}.peers.json"))
         .to_string_lossy()
