@@ -107,9 +107,9 @@ fn supports_dcutr_port_reuse(address: &Multiaddr) -> bool {
         // Windows does not provide the required SO_REUSEPORT behavior, so
         // offering TCP/WS candidates only produces AddrInUse failures and can
         // evict viable QUIC candidates from DCUtR's bounded candidate cache.
-        return !address
+        !address
             .iter()
-            .any(|protocol| matches!(protocol, libp2p::multiaddr::Protocol::Tcp(_)));
+            .any(|protocol| matches!(protocol, libp2p::multiaddr::Protocol::Tcp(_)))
     }
 
     #[cfg(not(target_os = "windows"))]
