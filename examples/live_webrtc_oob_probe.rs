@@ -654,5 +654,5 @@ fn now_unix_ms() -> u128 {
 }
 
 fn err(message: impl Into<String>) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, message.into())
+    io::Error::other(message.into())
 }
