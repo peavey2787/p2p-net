@@ -150,7 +150,7 @@ run_step "Tests" bash -lc 'export CARGO_TARGET_DIR="$PWD/target/full-validation/
 run_step "Dashboard feature tests" bash -lc 'export CARGO_TARGET_DIR="$PWD/target/full-validation/dashboard"; cargo test --features dashboard --locked -j 1'
 run_step "Clippy" bash -lc 'export CARGO_TARGET_DIR="$PWD/target/full-validation/clippy"; cargo clippy --workspace --all-targets --all-features --locked -j 1 -- -D warnings'
 run_step "Security audit" run_cargo_audit_with_repo_config
-run_step "Dependency policy" cargo deny check --config qa/ci/deny.toml
+run_step "Dependency policy" cargo deny --config qa/ci/deny.toml check
 
 if [[ "$SKIP_IGNORED" != "1" ]]; then
   run_step "Ignored load/soak tests" bash -lc 'export CARGO_TARGET_DIR="$PWD/target/full-validation/ignored"; cargo test --test multi_node_hostile --locked -j 1 -- --ignored --nocapture'
