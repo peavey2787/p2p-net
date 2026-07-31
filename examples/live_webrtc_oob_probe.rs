@@ -26,9 +26,10 @@ use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Instant};
-use webrtc::api::APIBuilder;
+use webrtc::api::{setting_engine::SettingEngine, APIBuilder};
 use webrtc::data_channel::data_channel_message::DataChannelMessage;
 use webrtc::data_channel::RTCDataChannel;
+use webrtc::dtls::extension::extension_use_srtp::SrtpProtectionProfile;
 use webrtc::ice_transport::ice_connection_state::RTCIceConnectionState;
 use webrtc::ice_transport::ice_server::RTCIceServer;
 use webrtc::peer_connection::configuration::RTCConfiguration;
@@ -271,7 +272,15 @@ async fn build_peer_connection(cli: &Cli) -> AnyResult<webrtc::peer_connection::
         })
         .unwrap_or_default();
 
-    let api = APIBuilder::new().build();
+    let mut setting_engine = SettingEngine::default();
+    setting_engine.set_srtp_protection_profiles(vec![
+        SrtpProtectionProfile::Srtp_Aead_Aes_128_Gcm,
+        SrtpProtectionProfile::Srtp_Aes128_Cm_Hmac_Sha1_80,
+        SrtpProtectionProfile::Srtp_Aes128_Cm_Hmac_Sha1_32,
+    ]);
+    let api = APIBuilder::new()
+        .with_setting_engine(setting_engine)
+        .build();
     let config = RTCConfiguration {
         ice_servers,
         ..Default::default()

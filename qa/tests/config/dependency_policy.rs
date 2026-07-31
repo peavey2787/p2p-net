@@ -57,3 +57,35 @@ fn local_dns_patch_does_not_hide_doh_or_hickory() {
         "/dnsaddr must be handled by p2p-net's configured pre-resolver, not by the transport adapter"
     );
 }
+
+#[test]
+fn direct_webrtc_probe_stays_on_the_audited_dependency_generation() {
+    let manifest = include_str!("../../../Cargo.toml");
+    let lockfile = include_str!("../../../Cargo.lock");
+    let probe = include_str!("../../../examples/live_webrtc_oob_probe.rs");
+
+    assert!(
+        manifest.contains("webrtc = { version = \"0.12.0\", optional = true }"),
+        "the direct WebRTC probe must share the audited webrtc-rs generation used by libp2p-webrtc"
+    );
+    for vulnerable_package in [
+        "name = \"webrtc\"\nversion = \"0.8.0\"",
+        "name = \"curve25519-dalek\"\nversion = \"3.2.0\"",
+        "name = \"ring\"\nversion = \"0.16.20\"",
+        "name = \"rustls\"\nversion = \"0.19.1\"",
+        "name = \"webpki\"\nversion = \"0.21.4\"",
+    ] {
+        assert!(
+            !lockfile.contains(vulnerable_package),
+            "the obsolete WebRTC dependency chain must not return to Cargo.lock: {vulnerable_package}"
+        );
+    }
+    assert!(
+        probe.contains("set_srtp_protection_profiles"),
+        "the direct WebRTC probe must retain the same explicit SRTP profile policy as the transport"
+    );
+    assert!(
+        !probe.contains("Srtp_Aead_Aes_256_Gcm"),
+        "the direct WebRTC probe must not advertise the known-problematic AES-256 SRTP profile"
+    );
+}
