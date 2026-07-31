@@ -169,7 +169,7 @@ Run-Step "Security audit" {
 
 Run-Step "Dependency policy" {
     Clear-Validation-Target
-    cargo deny check --config qa/ci/deny.toml
+    cargo deny --config qa/ci/deny.toml check
 }
 
 if (-not $SkipIgnored) {
