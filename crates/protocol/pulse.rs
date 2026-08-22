@@ -16,6 +16,10 @@ pub const MAX_HEARTBEAT_AGE_SECS: u64 = 10 * 60;
 pub const MAX_HEARTBEAT_FUTURE_SKEW_SECS: u64 = 2 * 60;
 pub const DEFAULT_REPLAY_CACHE_CAPACITY: usize = 8192;
 pub const DEFAULT_REPLAY_CACHE_TTL_SECS: u64 = 15 * 60;
+pub const DEFAULT_MAX_APP_MESSAGE_AGE_SECS: u64 = 10 * 60;
+pub const DEFAULT_MAX_APP_MESSAGE_FUTURE_SKEW_SECS: u64 = 2 * 60;
+pub const DEFAULT_APP_REPLAY_CACHE_CAPACITY: usize = 8192;
+pub const DEFAULT_APP_REPLAY_CACHE_TTL_SECS: u64 = 15 * 60;
 
 const NS_PER_SEC: u64 = 1_000_000_000;
 const HEARTBEAT_WIRE_MAGIC: [u8; 4] = *b"P2PH";
@@ -202,6 +206,10 @@ pub struct MessageSecurityConfig {
     pub max_heartbeat_future_skew_secs: u64,
     pub replay_cache_capacity: usize,
     pub replay_cache_ttl_secs: u64,
+    pub max_app_message_age_secs: u64,
+    pub max_app_message_future_skew_secs: u64,
+    pub app_replay_cache_capacity: usize,
+    pub app_replay_cache_ttl_secs: u64,
     pub reputation: ReputationConfig,
 }
 
@@ -213,6 +221,10 @@ impl Default for MessageSecurityConfig {
             max_heartbeat_future_skew_secs: MAX_HEARTBEAT_FUTURE_SKEW_SECS,
             replay_cache_capacity: DEFAULT_REPLAY_CACHE_CAPACITY,
             replay_cache_ttl_secs: DEFAULT_REPLAY_CACHE_TTL_SECS,
+            max_app_message_age_secs: DEFAULT_MAX_APP_MESSAGE_AGE_SECS,
+            max_app_message_future_skew_secs: DEFAULT_MAX_APP_MESSAGE_FUTURE_SKEW_SECS,
+            app_replay_cache_capacity: DEFAULT_APP_REPLAY_CACHE_CAPACITY,
+            app_replay_cache_ttl_secs: DEFAULT_APP_REPLAY_CACHE_TTL_SECS,
             reputation: ReputationConfig::default(),
         }
     }
@@ -248,6 +260,44 @@ impl MessageSecurityConfig {
         if self.replay_cache_ttl_secs == 0 {
             return Err(config_error(
                 "message_security.replay_cache_ttl_secs must be at least 1",
+            ));
+        }
+        if self.replay_cache_ttl_secs
+            < self
+                .max_heartbeat_age_secs
+                .saturating_add(self.max_heartbeat_future_skew_secs)
+        {
+            return Err(config_error(
+                "message_security.replay_cache_ttl_secs must cover max_heartbeat_age_secs + max_heartbeat_future_skew_secs",
+            ));
+        }
+        if self.max_app_message_age_secs == 0 {
+            return Err(config_error(
+                "message_security.max_app_message_age_secs must be at least 1",
+            ));
+        }
+        if self.max_app_message_future_skew_secs > self.max_app_message_age_secs {
+            return Err(config_error(
+                "message_security.max_app_message_future_skew_secs must be <= max_app_message_age_secs",
+            ));
+        }
+        if self.app_replay_cache_capacity == 0 {
+            return Err(config_error(
+                "message_security.app_replay_cache_capacity must be at least 1",
+            ));
+        }
+        if self.app_replay_cache_ttl_secs == 0 {
+            return Err(config_error(
+                "message_security.app_replay_cache_ttl_secs must be at least 1",
+            ));
+        }
+        if self.app_replay_cache_ttl_secs
+            < self
+                .max_app_message_age_secs
+                .saturating_add(self.max_app_message_future_skew_secs)
+        {
+            return Err(config_error(
+                "message_security.app_replay_cache_ttl_secs must cover max_app_message_age_secs + max_app_message_future_skew_secs",
             ));
         }
         self.reputation.validate()

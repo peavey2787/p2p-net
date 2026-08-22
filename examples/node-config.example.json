@@ -121,6 +121,10 @@
     "max_heartbeat_future_skew_secs": 120,
     "replay_cache_capacity": 8192,
     "replay_cache_ttl_secs": 900,
+    "max_app_message_age_secs": 600,
+    "max_app_message_future_skew_secs": 120,
+    "app_replay_cache_capacity": 8192,
+    "app_replay_cache_ttl_secs": 900,
     "reputation": {
       "accept_reward": 1,
       "invalid_penalty": 5,

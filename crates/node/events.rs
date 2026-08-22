@@ -16,6 +16,7 @@ use crate::connectivity::peer_book::PeerBook;
 use crate::connectivity::peer_cache::PeerCacheWriteBatch;
 use crate::connectivity::relay::{RelayServiceConfig, RelayState};
 use crate::connectivity::rendezvous::RendezvousState;
+use crate::protocol::app_security::AppMessageReplayCache;
 use crate::protocol::pulse::{HeartbeatReplayCache, MessageSecurityConfig};
 use crate::protocol::reputation::ReputationStore;
 use crate::stack::{on_mesh_event, IdentifyAddressState, MeshBehaviour, MeshEvent};
@@ -172,6 +173,7 @@ pub(crate) struct SwarmEventContext<'a> {
     pub(crate) rendezvous_peers: &'a [Multiaddr],
     pub(crate) message_security: &'a MessageSecurityConfig,
     pub(crate) replay_cache: &'a mut HeartbeatReplayCache,
+    pub(crate) app_replay_cache: &'a mut AppMessageReplayCache,
     pub(crate) heartbeat_topic_hash: &'a TopicHash,
     pub(crate) app_topic_hashes: &'a [TopicHash],
     pub(crate) app_messages: &'a broadcast::Sender<AppMessage>,
@@ -360,6 +362,7 @@ pub(crate) async fn handle_swarm_event(
             gossip::handle_heartbeat_message(
                 swarm,
                 propagation_source,
+                message.source,
                 message_id,
                 message.data,
                 ctx,
@@ -368,13 +371,21 @@ pub(crate) async fn handle_swarm_event(
         SwarmEvent::Behaviour(MeshEvent::Gossipsub(libp2p::gossipsub::Event::Message {
             propagation_source,
             message,
-            ..
+            message_id,
         })) if ctx
             .app_topic_hashes
             .iter()
             .any(|topic| topic == &message.topic) =>
         {
-            app::handle_app_message(propagation_source, message.data, ctx);
+            app::handle_app_message(
+                swarm,
+                propagation_source,
+                message.source,
+                message_id,
+                message.topic,
+                message.data,
+                ctx,
+            );
         }
         SwarmEvent::Behaviour(MeshEvent::Gossipsub(libp2p::gossipsub::Event::Message {
             propagation_source,

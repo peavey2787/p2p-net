@@ -33,6 +33,15 @@ impl NodeStorage for MemoryNodeStorage {
         self.write_public(key, value)
     }
 
+    fn write_secret_if_absent(&self, key: &str, value: &[u8]) -> Result<bool, NetError> {
+        let mut entries = self.entries.lock().map_err(|_| storage_error(key))?;
+        if entries.contains_key(key) {
+            return Ok(false);
+        }
+        entries.insert(key.to_string(), value.to_vec());
+        Ok(true)
+    }
+
     fn write_public(&self, key: &str, value: &[u8]) -> Result<(), NetError> {
         let mut entries = self.entries.lock().map_err(|_| storage_error(key))?;
         entries.insert(key.to_string(), value.to_vec());

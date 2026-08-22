@@ -34,7 +34,9 @@ Publishes an addressed `AppMessage` envelope on an application topic. The envelo
 - nonce
 - raw payload bytes
 
-The current transport carrier is authenticated gossipsub. Receivers deliver addressed messages only when the target peer id matches the local node. This gives applications a stable unicast-style primitive while keeping the underlying transport replaceable.
+The current transport carrier is signed/authenticated gossipsub. Receivers bind the envelope's `source_peer_id` to the cryptographically authenticated gossipsub author and bind the envelope topic to the outer gossipsub topic before accepting it. Signed application envelopes are also freshness-checked and passed through a bounded nonce/timestamp replay cache. Addressed messages are delivered locally only when the target peer id matches the local node, while valid messages for other peers remain eligible for mesh forwarding.
+
+**Security boundary:** `send_message` is addressed delivery, not confidential point-to-point transport. Other subscribed gossipsub peers may receive/carry the payload while forwarding it. Applications that require confidentiality must encrypt the payload end-to-end or use/build a direct encrypted stream/request-response protocol.
 
 ### `broadcast(topic, payload)`
 
@@ -83,7 +85,7 @@ Applications can use these counters to build quota, billing, or settlement syste
 Application topics are normalized and namespaced as:
 
 ```text
-p2p-net/app/v1/net-<network_id>/<topic>
+p2p-net/app/v2/net-<network_id>/<topic>
 ```
 
 Topics must be non-empty, no more than 128 bytes, and contain only ASCII letters, numbers, `-`, `_`, `.`, or `/`.

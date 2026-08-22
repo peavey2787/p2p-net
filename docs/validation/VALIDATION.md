@@ -18,25 +18,26 @@ The script runs stable validation with DNS enabled by default through p2p-net's 
 
 The script remains the canonical one-command runner after the profile/environment refactor. Unit tests such as `environment_detection`, `capability_resolver`, `mediator_role`, `event_responsibility`, `behaviour_policy`, `relay_discovery`, `dcutr_policy`, `platform_runtime`, `bindings`, `codebase_hygiene`, and `codebase_architecture_hygiene` are picked up by `cargo test --workspace`, so you do not need separate commands.
 
-The script regenerates the dependency lockfile, auto-formats the tree, runs the dependency graph guard, then runs the stable checks with isolated target directories:
+The production validation path **does not modify dependency or source inputs**. It verifies the committed lockfile, checks formatting, runs the dependency graph guard, and then executes the stable checks in isolated target directories:
 
 ```text
-cargo generate-lockfile
-cargo fmt
+cargo metadata --locked --format-version 1 --no-deps
+cargo fmt --all -- --check
 cargo test --workspace --locked -j 1
 cargo test --features dashboard --locked -j 1
 cargo clippy --workspace --all-targets --all-features --locked -j 1 -- -D warnings
-cargo audit  # root launcher stages qa/ci/audit.toml to .cargo/audit.toml
-cargo deny --config qa/ci/deny.toml check
+cargo audit --file Cargo.lock  # root launcher stages qa/ci/audit.toml to .cargo/audit.toml
+cargo deny --config qa/ci/deny.toml check  # launcher probes equivalent check-level syntax when required
 cargo test --test multi_node_hostile --locked -j 1 -- --ignored --nocapture
 ```
 
 Defaults:
 
-- Missing `cargo-audit` and `cargo-deny` are installed automatically unless `--no-install-tools` is used.
-- `Cargo.lock` is regenerated first so stale lockfile entries, including old DNS resolver packages, are removed before audit.
-- `rust-toolchain.toml` pins the stable toolchain, and the script rejects nightly/beta/dev rustc builds before running validation.
-- Fuzz targets are included under `qa/fuzz/`, but they are not run by the stable one-file validation script.
+- Exact `cargo-audit 0.22.2` and `cargo-deny 0.20.2` releases are installed automatically unless `--no-install-tools` is used.
+- `Cargo.lock` is committed and must already match `Cargo.toml`; production validation fails rather than regenerating it.
+- `rust-toolchain.toml` pins Rust `1.98.0`, and the launchers fail closed if a different compiler is active.
+- Fuzz targets are included under `qa/fuzz/`. The scheduled security workflow uses pinned `nightly-2026-08-20` and `cargo-fuzz 0.13.2` to build and run all targets.
+- GitHub Actions checkout is pinned to an immutable commit SHA and uses read-only repository permissions with credential persistence disabled.
 
 Windows CMD options:
 
@@ -116,15 +117,36 @@ The test is registered in `Cargo.toml`, so `run-full-validation.cmd` and `run-fu
 
 `cargo-audit` reads repository audit configuration from `.cargo/audit.toml` in the installed version this project validates against. The canonical validation scripts keep `qa/ci/audit.toml` as the source file and stage it to `.cargo/audit.toml` only while `cargo audit` runs.
 
-The canonical launchers invoke `cargo-deny` directly with the repository configuration and adapt to the installed CLI option placement:
+The canonical launchers pin `cargo-deny 0.20.2` and retain a capability probe for the two CLI layouts seen across supported/local installations:
 
 ```text
+cargo deny check --config qa/ci/deny.toml
 cargo deny --config qa/ci/deny.toml check
 ```
 
-The root validation launchers detect older `cargo-deny` releases that instead require `cargo deny check --config qa/ci/deny.toml` and select the accepted form automatically.
+The launcher probes the check-level form with `--help` and falls back to the global-option form, so local and hosted validation evaluate the same `qa/ci/deny.toml` policy instead of failing on argument placement.
 
-This avoids Windows batch subroutine/label handling entirely while remaining compatible with both cargo-deny CLI layouts seen across local and hosted CI toolchains. Use `run-full-validation.cmd` or `run-full-validation.sh` for the exact flow.
+## Intentional dependency refresh
+
+Normal validation never edits `Cargo.lock`. Dependency upgrades are a deliberate maintenance operation:
+
+Windows:
+
+```cmd
+qa\tools\refresh-dependencies.cmd
+```
+
+Linux/macOS:
+
+```bash
+./qa/tools/refresh-dependencies.sh
+```
+
+Review the resulting `Cargo.lock` diff and RustSec/license/source changes, then run the full validation launcher before committing the refresh.
+
+## Scheduled security validation
+
+`.github/workflows/security-nightly.yml` runs the ignored hostile/load suite and bounded libFuzzer campaigns for heartbeat, config, peer cache, application-message, DNSADDR TXT, peer-multiaddr, and WebRTC STUN parsing. This complements the fast cross-platform push/PR matrix rather than weakening it.
 
 ## Public fallback checks
 

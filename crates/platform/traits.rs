@@ -21,7 +21,26 @@ pub trait NodeStorage: Send + Sync {
     }
 
     fn read(&self, key: &str) -> Result<Option<Vec<u8>>, NetError>;
+
+    /// Read secret material. Implementations may enforce stronger filesystem or
+    /// platform protections than ordinary public-state reads.
+    fn read_secret(&self, key: &str) -> Result<Option<Vec<u8>>, NetError> {
+        self.read(key)
+    }
+
     fn write_secret(&self, key: &str, value: &[u8]) -> Result<(), NetError>;
+
+    /// Atomically create secret material only when no value already exists.
+    /// Returns `true` for the writer that won creation and `false` when another
+    /// writer already created the key. Platform backends should override this
+    /// with a native create-if-absent primitive when available.
+    fn write_secret_if_absent(&self, key: &str, value: &[u8]) -> Result<bool, NetError> {
+        if self.read_secret(key)?.is_some() {
+            return Ok(false);
+        }
+        self.write_secret(key, value)?;
+        Ok(true)
+    }
     fn write_public(&self, key: &str, value: &[u8]) -> Result<(), NetError>;
     fn delete(&self, key: &str) -> Result<(), NetError>;
 }

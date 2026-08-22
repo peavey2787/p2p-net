@@ -15,7 +15,7 @@ default = ["dns"]
 # there is no hidden hard-coded third-party resolver.
 # LAN multicast discovery/mDNS is intentionally not included.
 dns = ["libp2p/dns"]
-dashboard = ["dep:crossterm", "dep:ratatui", "tokio/signal"]
+dashboard = ["dep:crossterm", "tokio/signal"]
 webrtc-oob-probe = ["dep:webrtc"]
 
 [profile.release]
@@ -212,7 +212,6 @@ libp2p = { version = "0.56", default-features = false, features = [
     "macros",
 ] }
 libp2p-rendezvous = "0.17.1"
-ratatui = { version = "0.29", optional = true }
 crossterm = { version = "0.28", optional = true, features = ["event-stream"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

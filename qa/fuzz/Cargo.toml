@@ -9,7 +9,9 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
+libp2p = { version = "0.56.0", default-features = false }
 p2p-net = { path = "../.." }
+libp2p-webrtc = { path = "../../external/libp2p-webrtc", features = ["fuzzing"] }
 serde_json = "1"
 
 [[bin]]
@@ -27,5 +29,29 @@ doc = false
 [[bin]]
 name = "peer_cache_json"
 path = "fuzz_targets/peer_cache_json.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "app_message"
+path = "fuzz_targets/app_message.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "dnsaddr_txt"
+path = "fuzz_targets/dnsaddr_txt.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "peer_multiaddr"
+path = "fuzz_targets/peer_multiaddr.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "webrtc_stun"
+path = "fuzz_targets/webrtc_stun.rs"
 test = false
 doc = false

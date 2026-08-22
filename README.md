@@ -46,7 +46,7 @@ Use the single full-validation launcher for your OS from the crate root. On Wind
 run-full-validation.cmd
 ```
 
-It cleans stale build artifacts, refreshes the dependency lockfile, auto-formats with `cargo fmt`, then runs tests, dashboard-feature tests, clippy, `cargo audit`, `cargo deny`, and ignored load/soak tests. It uses isolated validation target directories to avoid stale/incomplete `rlib` artifacts on Windows. It uses the stable Rust toolchain pinned by `rust-toolchain.toml`, rejects nightly/beta/dev rustc builds, and installs missing stable-compatible audit/deny tools unless `--no-install-tools` is used.
+It cleans stale build artifacts, verifies the committed dependency lockfile with `--locked`, checks formatting without mutating source, then runs tests, dashboard-feature tests, clippy, `cargo audit`, `cargo deny`, and ignored load/soak tests. It uses isolated validation target directories to avoid stale/incomplete `rlib` artifacts on Windows. Rust is pinned to 1.98.0, audit/deny tool releases are pinned, and missing exact tool versions are installed unless `--no-install-tools` is used.
 
 Useful options:
 
@@ -62,7 +62,7 @@ Linux equivalent:
 ./run-full-validation.sh
 ```
 
-Fuzz targets are included under `qa/fuzz/`, but they are not run by the stable one-file validation script. Additional validation and hostile-network notes are in `docs/validation/VALIDATION.md`.
+Fuzz targets are included under `qa/fuzz/`. They are not part of the cross-platform stable launcher, but the scheduled security workflow builds/runs every target and also runs the ignored hostile/load suite. Additional validation and hostile-network notes are in `docs/validation/VALIDATION.md`.
 
 
 ## The General-Purpose Application API
@@ -76,7 +76,8 @@ handle.connect_peer(addr).await?;
 // Drop connection to a peer
 handle.disconnect_peer(peer_id).await?;
 
-// Unicast-style message targeting a specific peer
+// Addressed delivery to a specific peer. The carrier is gossipsub, so encrypt
+// payloads end-to-end when confidentiality is required.
 handle.send_message(peer_id, "chat/general", payload).await?;
 
 // Gossip/PubSub broadcast to all subscribed peers on a topic
@@ -91,7 +92,7 @@ let peers = handle.get_peers().await?;
 
 This simple interface effectively decouples your business logic (chat, gaming, database sync) from transport mechanics (TCP, WebRTC, QUIC, NAT-punting).
 
-Application messages use `AppMessage` envelopes and app topics namespaced as `p2p-net/app/v1/net-<network_id>/<topic>`. See `docs/spec/API_PRIMITIVES.md` and `docs/impl/API_IMPLEMENTATION.md`.
+Application messages use `AppMessage` envelopes and app topics namespaced as `p2p-net/app/v2/net-<network_id>/<topic>`. See `docs/spec/API_PRIMITIVES.md` and `docs/impl/API_IMPLEMENTATION.md`.
 
 ### Telemetry without payment logic
 
@@ -211,7 +212,9 @@ Relay/mediator ACL note: current ACL enforcement is connection-level. A peer den
 
 ## Production-readiness status
 
-The crate is intended to be validation-clean under the stable validation script and suitable as a hardened standalone libp2p node foundation. Identity key backup/rotation and `/dnsaddr` DoH provider configuration are documented. Before treating a deployment as production service infrastructure, finish deployment-specific work outside this crate: persistent operational monitoring/alerting, externally reviewed relay abuse policy, real multi-host soak tests under representative NAT/firewall conditions, and an independent security review of the DNS resolution and relay policy.
+The shared core and full-node example are hardened for production use when the repository release gates are green: exact Rust/toolchain inputs, committed `Cargo.lock`, tests/clippy/audit/deny, hostile/soak coverage, and scheduled fuzzing. Network-facing state is bounded, identity persistence is fail-closed, application envelopes are authenticated against signed gossipsub authors/topics, and the full node keeps Kademlia/relay/WebRTC capabilities enabled by default.
+
+Production operators still own deployment concerns that no library can supply automatically: monitoring/alerting, identity backup/rotation, firewall/NAT policy, capacity planning, secure application payload design, and representative multi-host soak testing. External security review is strongly recommended for high-value deployments, but is not substituted by or falsely implied by the repository's automated gates.
 
 ## Manual checks
 

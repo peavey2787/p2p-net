@@ -34,3 +34,6 @@ pub use connection::Connection;
 pub use error::Error;
 pub use fingerprint::Fingerprint;
 pub use transport::Transport;
+#[cfg(feature = "fuzzing")]
+#[doc(hidden)]
+pub use udp_mux::fuzz_stun_ufrag;

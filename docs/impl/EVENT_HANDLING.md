@@ -20,10 +20,13 @@ The top-level dispatcher remains `crates/node/events.rs`; it should only route
   synchronization.
 - `crates/node/events/kademlia.rs` handles DHT provider-record announcements,
   provider lookups, routing updates, and provider-discovery metrics.
-- `crates/node/events/gossip.rs` handles heartbeat gossip validation, replay
-  decisions, reputation changes, and explicit gossipsub validation reporting.
-- `crates/node/events/app.rs` handles incoming application-message envelopes for
-  subscribed app topics and delivers them to local subscribers.
+- `crates/node/events/gossip.rs` handles heartbeat gossip validation against the signed
+  gossipsub author, replay decisions, reputation changes, and validation reporting
+  against the immediate propagation peer.
+- `crates/node/events/app.rs` binds application envelopes to the signed author and
+  outer topic, enforces timestamp/nonce replay protection, reports explicit manual
+  gossipsub validation decisions, and delivers accepted addressed/broadcast messages
+  to local subscribers when applicable.
 
 ## Design rules
 

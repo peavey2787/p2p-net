@@ -25,6 +25,7 @@ use crate::connectivity::relay::{RelayReservationPlan, RelayState};
 use crate::connectivity::relay_discovery::RelaySelectionPlan;
 use crate::connectivity::rendezvous::RendezvousState;
 use crate::platform::NodeStorage;
+use crate::protocol::app_security::AppMessageReplayCache;
 use crate::protocol::pulse::HeartbeatReplayCache;
 use crate::protocol::reputation::ReputationStore;
 use crate::stack::{IdentifyAddressState, MeshBehaviour};
@@ -241,6 +242,7 @@ async fn run_node_runtime(ctx: NodeRuntimeContext) {
                         rendezvous_peers: &rendezvous_peers,
                         message_security: &cfg.message_security,
                         replay_cache: &mut runtime_state.replay_cache,
+                        app_replay_cache: &mut runtime_state.app_replay_cache,
                         heartbeat_topic_hash: &heartbeat_topic_hash,
                         app_topic_hashes: &runtime_state.app_topic_hashes,
                         app_messages: &messages_tx,
@@ -276,6 +278,7 @@ async fn run_node_runtime(ctx: NodeRuntimeContext) {
 struct RuntimeState {
     rep: ReputationStore,
     replay_cache: HeartbeatReplayCache,
+    app_replay_cache: AppMessageReplayCache,
     relay_state: RelayState,
     rendezvous_state: RendezvousState,
     dht_state: DhtProviderState,

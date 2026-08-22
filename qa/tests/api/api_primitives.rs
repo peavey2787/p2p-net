@@ -3,7 +3,8 @@ use std::path::Path;
 
 use libp2p::PeerId;
 use p2p_net::{
-    app_topic_name, decode_app_message, encode_app_message, normalize_app_topic, AppMessage,
+    app_ident_topic, app_topic_name, decode_app_message, encode_app_message, normalize_app_topic,
+    validate_app_message_authentication, AppMessage,
     NodeMetrics, PeerInfo, PeerSource, MAX_APP_MESSAGE_BYTES,
 };
 
@@ -36,6 +37,21 @@ fn application_message_codec_round_trips_addressed_and_broadcast_messages() {
 }
 
 #[test]
+fn app_message_authentication_binds_signed_author_and_outer_topic() {
+    let author = PeerId::random();
+    let other = PeerId::random();
+    let message = AppMessage::broadcast(7, "chat/general", author, b"hello".to_vec())
+        .expect("message");
+    let topic = app_ident_topic(7, "chat/general").expect("topic").hash();
+
+    assert!(validate_app_message_authentication(&message, &author, &topic).is_ok());
+    assert!(validate_app_message_authentication(&message, &other, &topic).is_err());
+
+    let wrong_topic = app_ident_topic(7, "chat/other").expect("other topic").hash();
+    assert!(validate_app_message_authentication(&message, &author, &wrong_topic).is_err());
+}
+
+#[test]
 fn app_topics_are_namespaced_and_validated() {
     assert_eq!(
         normalize_app_topic(" chat/general ").unwrap(),
@@ -43,7 +59,7 @@ fn app_topics_are_namespaced_and_validated() {
     );
     assert_eq!(
         app_topic_name(42, "chat/general").unwrap(),
-        "p2p-net/app/v1/net-42/chat/general"
+        "p2p-net/app/v2/net-42/chat/general"
     );
     assert!(normalize_app_topic("").is_err());
     assert!(normalize_app_topic("bad topic with spaces").is_err());

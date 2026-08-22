@@ -1,0 +1,48 @@
+name: p2p-net-security-nightly
+
+on:
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hostile-soak:
+    name: hostile-load-soak
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.98.0 --profile minimal --component rustfmt --component clippy && rustup default 1.98.0
+      - name: Run ignored hostile/load tests
+        run: bash ./run-full-validation.sh --no-pause
+
+  fuzz:
+    name: bounded-libfuzzer-campaign
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned nightly and cargo-fuzz
+        run: |
+          rustup toolchain install nightly-2026-08-20 --profile minimal
+          cargo +nightly-2026-08-20 install cargo-fuzz --version 0.13.2 --locked
+      - name: Build fuzz targets
+        working-directory: qa/fuzz
+        run: cargo +nightly-2026-08-20 fuzz build
+      - name: Run bounded fuzz campaigns
+        working-directory: qa/fuzz
+        shell: bash
+        run: |
+          set -euo pipefail
+          for target in heartbeat_wire node_config_json peer_cache_json app_message dnsaddr_txt peer_multiaddr webrtc_stun; do
+            echo "==> fuzz ${target}"
+            cargo +nightly-2026-08-20 fuzz run "${target}" -- -max_total_time=60 -timeout=10
+          done

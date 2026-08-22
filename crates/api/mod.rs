@@ -9,7 +9,10 @@
 
 use std::future::Future;
 
-use libp2p::{gossipsub::IdentTopic, Multiaddr, PeerId};
+use libp2p::{
+    gossipsub::{IdentTopic, TopicHash},
+    Multiaddr, PeerId,
+};
 use rand::rngs::OsRng;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
@@ -25,7 +28,7 @@ pub use metrics::{
     BandwidthMetrics, ComputeMetrics, NodeMetrics, PeerBandwidth, StorageMetrics, TopicBandwidth,
 };
 
-pub const APP_MESSAGE_SCHEMA_VERSION: u16 = 1;
+pub const APP_MESSAGE_SCHEMA_VERSION: u16 = 2;
 pub const APP_TOPIC_PREFIX: &str = "p2p-net/app";
 pub const MAX_APP_TOPIC_LEN: usize = 128;
 pub const MAX_APP_MESSAGE_BYTES: usize = 1024 * 1024;
@@ -311,6 +314,42 @@ pub fn decode_app_message(raw: &[u8]) -> Result<AppMessage, NetError> {
     })?;
     validate_app_message(&message)?;
     Ok(message)
+}
+
+/// Validate that an application envelope is bound to the cryptographically
+/// authenticated Gossipsub author and the topic it was received on.
+///
+/// `MessageAuthenticity::Signed` makes `authenticated_source` authoritative; the
+/// self-declared `source_peer_id` inside the JSON envelope is never trusted on
+/// its own. Binding the outer topic also prevents cross-topic envelope injection.
+pub fn validate_app_message_authentication(
+    message: &AppMessage,
+    authenticated_source: &PeerId,
+    received_topic: &TopicHash,
+) -> Result<(), NetError> {
+    let claimed_source = message
+        .source_peer_id
+        .parse::<PeerId>()
+        .map_err(|err| NetError::AppMessage {
+            topic: message.topic.clone(),
+            reason: format!("invalid source peer id: {err}"),
+        })?;
+    if &claimed_source != authenticated_source {
+        return Err(NetError::AppMessage {
+            topic: message.topic.clone(),
+            reason: "source peer id does not match authenticated Gossipsub author".to_string(),
+        });
+    }
+
+    let expected_topic = app_ident_topic(message.network_id, &message.topic)?.hash();
+    if &expected_topic != received_topic {
+        return Err(NetError::AppMessage {
+            topic: message.topic.clone(),
+            reason: "application envelope does not match the authenticated Gossipsub topic"
+                .to_string(),
+        });
+    }
+    Ok(())
 }
 
 pub fn validate_app_message(message: &AppMessage) -> Result<(), NetError> {

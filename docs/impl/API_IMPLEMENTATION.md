@@ -22,7 +22,7 @@ get_metrics(peer_id)
 2. The swarm task processes commands on the same Tokio task that owns `Swarm<MeshBehaviour>`.
 3. App messages are encoded as `AppMessage` envelopes and published through app-topic gossipsub topics.
 4. Subscribed app topics are tracked by topic hash, separate from heartbeat gossip.
-5. Incoming app-topic messages are decoded by `node/events/app.rs` and sent through the local delivery bus only when they match the local network id and target peer id.
+5. Incoming app-topic messages are decoded by `node/events/app.rs`; the claimed source and topic are bound to the signed gossipsub author/outer topic, freshness and bounded replay checks are enforced, every message receives an explicit manual-validation decision, and local delivery occurs only when network/target policy matches.
 6. `get_peers()` reads the internal peer book, which merges connected, cached, configured, rendezvous, DHT-provider, and relay-discovery records.
 7. `get_metrics(peer_id)` returns a clone of the runtime-owned `NodeMetrics`; `Some(peer_id)` filters the per-peer bandwidth map for cheaper queries.
 8. `NodeSnapshot` exposes API/app/operator counters for observability.

@@ -142,7 +142,28 @@ pub fn build_behaviour(ctx: BehaviourBuildContext<'_>) -> MeshBehaviour {
         resolved_cfg,
     } = ctx;
     let message_id_fn = |msg: &gossipsub::Message| {
-        let hash = blake3::hash(&msg.data);
+        // Bind duplicate suppression to the signed author and outer topic as
+        // well as payload bytes. Hashing only `data` lets a different signer
+        // replay/copy bytes first and poison the legitimate author's message ID.
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(b"p2p-net/gossipsub-message-id/v2\0");
+        match &msg.source {
+            Some(source) => {
+                hasher.update(&[1]);
+                let source_bytes = source.to_bytes();
+                hasher.update(&(source_bytes.len() as u64).to_be_bytes());
+                hasher.update(&source_bytes);
+            }
+            None => {
+                hasher.update(&[0]);
+            }
+        }
+        let topic_bytes = msg.topic.as_str().as_bytes();
+        hasher.update(&(topic_bytes.len() as u64).to_be_bytes());
+        hasher.update(topic_bytes);
+        hasher.update(&(msg.data.len() as u64).to_be_bytes());
+        hasher.update(&msg.data);
+        let hash = hasher.finalize();
         gossipsub::MessageId::from(hash.as_bytes().to_vec())
     };
     let gossip_cfg = gossipsub::ConfigBuilder::default()

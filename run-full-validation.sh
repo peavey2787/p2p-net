@@ -60,31 +60,34 @@ run_step() {
   "$@"
 }
 
-assert_stable_rust() {
+assert_pinned_rust() {
   local version
   version="$(rustc --version)"
-  if [[ "$version" =~ nightly|beta|dev ]]; then
-    echo "p2p-net validation must run on stable Rust only. Active rustc: $version" >&2
+  if [[ "$version" != rustc\ 1.98.0\ * ]]; then
+    echo "p2p-net validation requires rustc 1.98.0 exactly. Active rustc: $version" >&2
     exit 1
   fi
-  echo "Stable Rust toolchain confirmed: $version"
+  echo "Pinned Rust toolchain confirmed: $version"
 }
 
-cargo_tool_installed() {
-  cargo install --list | grep -q "^$1 v"
+cargo_tool_version() {
+  cargo install --list | sed -n "s/^$1 v\([^:]*\):$/\1/p" | head -n 1
 }
 
 ensure_cargo_tool() {
   local name="$1"
-  if cargo_tool_installed "$name"; then
-    echo "$name already installed."
+  local expected="$2"
+  local installed
+  installed="$(cargo_tool_version "$name")"
+  if [[ "$installed" == "$expected" ]]; then
+    echo "$name v$expected already installed."
     return
   fi
   if [[ "$NO_INSTALL_TOOLS" == "1" ]]; then
-    echo "$name is missing. Re-run without --no-install-tools or install it manually." >&2
+    echo "$name v$expected is required (installed: ${installed:-missing}). Re-run without --no-install-tools or install that exact version manually." >&2
     exit 2
   fi
-  run_step "Install ${name}" cargo install "$name" --locked
+  run_step "Install ${name} v${expected}" cargo install "$name" --version "$expected" --locked --force
 }
 
 set_validation_target() {
@@ -98,7 +101,7 @@ clear_validation_target() {
 
 assert_no_rejected_dns_resolver() {
   if [[ ! -f Cargo.lock ]]; then
-    echo "Cargo.lock is missing after lockfile refresh." >&2
+    echo "Cargo.lock is missing; production validation requires the committed lockfile." >&2
     exit 1
   fi
 
@@ -122,7 +125,7 @@ run_cargo_audit_with_repo_config() {
   mkdir -p "$cargo_dir"
   cp "$ROOT/qa/ci/audit.toml" "$staged_audit_config"
   set +e
-  cargo audit
+  cargo audit --file "$ROOT/Cargo.lock"
   status=$?
   set -e
   rm -f "$staged_audit_config"
@@ -136,7 +139,7 @@ echo "SkipIgnored: $SKIP_IGNORED"
 echo "NoInstallTools: $NO_INSTALL_TOOLS"
 echo "NoClean: $NO_CLEAN"
 echo
-echo "This is the canonical Linux one-file validation runner. It auto-formats with cargo fmt and uses isolated target directories to avoid stale/incomplete build artifacts."
+echo "This is the canonical Linux one-file validation runner. It verifies the committed lockfile and formatting without mutating source, and uses isolated target directories to avoid stale/incomplete build artifacts."
 
 export CARGO_INCREMENTAL=0
 export CARGO_BUILD_PIPELINING=false
@@ -146,7 +149,7 @@ command -v cargo >/dev/null 2>&1 || { echo "cargo was not found on PATH." >&2; e
 
 run_step "Rust version" rustc --version
 cargo --version
-assert_stable_rust
+assert_pinned_rust
 
 if [[ "$NO_CLEAN" != "1" ]]; then
   echo
@@ -155,12 +158,12 @@ if [[ "$NO_CLEAN" != "1" ]]; then
   cargo clean
 fi
 
-run_step "Refresh dependency lockfile" bash -c 'rm -f Cargo.lock && cargo generate-lockfile'
+run_step "Verify committed dependency lockfile" cargo metadata --locked --format-version 1 --no-deps
 
-ensure_cargo_tool cargo-audit
-ensure_cargo_tool cargo-deny
+ensure_cargo_tool cargo-audit 0.22.2
+ensure_cargo_tool cargo-deny 0.20.2
 
-run_step "Format" cargo fmt
+run_step "Format check" cargo fmt --all -- --check
 run_step "Dependency graph guard" assert_no_rejected_dns_resolver
 
 set_validation_target tests
@@ -174,6 +177,10 @@ run_step "Clippy" cargo clippy --workspace --all-targets --all-features --locked
 
 clear_validation_target
 run_step "Security audit" run_cargo_audit_with_repo_config
+
+# cargo-deny changed where --config is accepted across releases. Probe the
+# exact check-level form first and fall back to the global option form so the
+# pinned release and developer-installed compatible releases both work.
 if cargo deny check --config qa/ci/deny.toml --help >/dev/null 2>&1; then
   run_step "Dependency policy" cargo deny check --config qa/ci/deny.toml
 else

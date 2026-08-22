@@ -13,24 +13,23 @@ use std::io::{self, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
 
+use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::event::{Event, EventStream, KeyCode};
-use crossterm::execute;
+use crossterm::style::Print;
+use crossterm::{execute, queue};
 use crossterm::terminal::{
-    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+    disable_raw_mode, enable_raw_mode, size as terminal_size, Clear, ClearType,
+    EnterAlternateScreen, LeaveAlternateScreen,
 };
 use futures::StreamExt;
 use p2p_net::{start_node, NodeConfig, NodeProfile, NodeSnapshot};
-use ratatui::backend::CrosstermBackend;
-use ratatui::layout::{Constraint, Direction, Layout};
-use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
-use ratatui::Terminal;
 use tokio::time::MissedTickBehavior;
 
 static BACKGROUND_WORKER_PANICKED: AtomicBool = AtomicBool::new(false);
 const PANIC_LOG_PATH: &str = "p2p-node-panic.log";
 const DASHBOARD_SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 
-type DashboardTerminal = Terminal<CrosstermBackend<std::io::Stdout>>;
+type DashboardTerminal = std::io::Stdout;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -157,36 +156,25 @@ async fn render_if_changed(
     }
     let snapshot = handle.snapshot.lock().await.clone();
     *last_revision = Some(revision);
-    terminal.draw(|frame| draw_dashboard(frame, &snapshot))?;
+    draw_dashboard(terminal, &snapshot)?;
     Ok(())
 }
 
 fn setup_terminal() -> io::Result<DashboardTerminal> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    if let Err(err) = execute!(stdout, EnterAlternateScreen) {
+    if let Err(err) = execute!(stdout, EnterAlternateScreen, Hide, Clear(ClearType::All)) {
         let _ = disable_raw_mode();
         return Err(err);
     }
-    let backend = CrosstermBackend::new(stdout);
-    match Terminal::new(backend) {
-        Ok(terminal) => Ok(terminal),
-        Err(err) => {
-            let _ = disable_raw_mode();
-            let mut stderr = io::stderr();
-            let _ = execute!(stderr, LeaveAlternateScreen);
-            Err(err)
-        }
-    }
+    Ok(stdout)
 }
 
 fn restore_terminal(terminal: &mut DashboardTerminal) -> io::Result<()> {
     let raw_result = disable_raw_mode();
-    let screen_result = execute!(terminal.backend_mut(), LeaveAlternateScreen);
-    let cursor_result = terminal.show_cursor();
+    let screen_result = execute!(terminal, Show, LeaveAlternateScreen);
     raw_result?;
-    screen_result?;
-    cursor_result
+    screen_result
 }
 
 #[cfg(windows)]
@@ -265,98 +253,112 @@ fn local_listen_display(snap: &NodeSnapshot) -> String {
     }
 }
 
-fn draw_dashboard(frame: &mut ratatui::Frame<'_>, snap: &NodeSnapshot) {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(7),
-            Constraint::Length(4),
-            Constraint::Length(12),
-            Constraint::Min(6),
-        ])
-        .split(frame.area());
+fn draw_dashboard(terminal: &mut DashboardTerminal, snap: &NodeSnapshot) -> io::Result<()> {
+    let (_, rows) = terminal_size().unwrap_or((120, 40));
+    let text = dashboard_text(snap, usize::from(rows));
+    queue!(
+        terminal,
+        MoveTo(0, 0),
+        Clear(ClearType::All),
+        Print(text)
+    )?;
+    terminal.flush()
+}
 
-    let status = Paragraph::new(format!(
-        "Network: {}\nPeerID: {}\nNAT/Public: {} / {}\nPublic IP Probe: {}\nLocal Listen: {}\nPlatform: {} runtime={} storage={}",
-        snap.network_label,
-        snap.peer_id,
-        snap.nat_status,
-        public_addr_display(snap),
-        public_ip_probe_display(snap),
-        local_listen_display(snap),
-        snap.environment_platform,
-        snap.platform_runtime,
-        snap.platform_storage
-    ))
-    .block(Block::default().title("PeerID & Status").borders(Borders::ALL));
-    frame.render_widget(status, chunks[0]);
+fn dashboard_text(snap: &NodeSnapshot, rows: usize) -> String {
+    let mut lines = vec![
+        "p2p-net full node  |  q/Esc to quit".to_string(),
+        format!("Network: {}", snap.network_label),
+        format!("PeerID: {}", snap.peer_id),
+        format!(
+            "NAT/Public: {} / {}",
+            snap.nat_status,
+            public_addr_display(snap)
+        ),
+        format!("Public IP Probe: {}", public_ip_probe_display(snap)),
+        format!("Local Listen: {}", local_listen_display(snap)),
+        format!(
+            "Platform: {} runtime={} storage={}",
+            snap.environment_platform, snap.platform_runtime, snap.platform_storage
+        ),
+        format!("Transports: {}", snap.active_transports.join(", ")),
+        String::new(),
+        format!(
+            "Peers: app={} infra={} dht={} relay={} swarm={} | known={} discovered={}",
+            snap.application_peer_connections,
+            snap.infrastructure_peer_connections,
+            snap.dht_routing_peer_connections,
+            snap.relay_peer_connections,
+            snap.all_swarm_connections,
+            snap.peer_book_known_peers,
+            snap.peer_book_discovered_peers
+        ),
+        format!(
+            "Auto-connect: enabled={} attempts={} failures={} pending={} awaiting_addrs={}",
+            snap.auto_connect_enabled,
+            snap.auto_connect_dial_attempts,
+            snap.auto_connect_dial_failures,
+            snap.connection_plan_pending_peers,
+            snap.auto_connect_awaiting_address_peers
+        ),
+        format!(
+            "Fallback: mode={} bootstrap={} rendezvous={} relay={} rv_candidates={} reason={}",
+            snap.public_fallback_mode,
+            snap.public_bootstrap_used,
+            snap.public_rendezvous_used,
+            snap.public_relay_used,
+            snap.public_rendezvous_candidate_count,
+            snap.public_fallback_reason
+        ),
+        format!(
+            "Relay: server={} health={} mediator={} server_res={} client_res={} attempts={} failures={}",
+            snap.relay_server_enabled,
+            snap.relay_service_health.as_str(),
+            snap.mediator_enabled,
+            snap.relay_reservations_accepted,
+            snap.relay_client_reservations,
+            snap.relay_client_reservation_attempts,
+            snap.relay_client_reservation_failures
+        ),
+        format!(
+            "Relay discovery: selected={} candidates={} failures={}",
+            snap.relay_discovery_selected_relays.len(),
+            snap.relay_discovery_candidate_count,
+            snap.relay_discovery_failures
+        ),
+        format!(
+            "DHT provider: enabled={} announced={} queries={} found={} peers={}",
+            snap.dht_provider_enabled,
+            snap.dht_provider_namespaces_announced,
+            snap.dht_provider_queries,
+            snap.dht_provider_records_found,
+            snap.dht_provider_peers_discovered
+        ),
+        format!(
+            "Circuits: active={} denied={} bytes_fwd={} | DCUtR: enabled={} attempts={} ok={} failures={} fallback={} suppressed={}",
+            snap.relay_active_circuits,
+            snap.relay_denied_requests,
+            snap.relay_bytes_forwarded,
+            snap.dcutr_enabled,
+            snap.dcutr_attempts,
+            snap.dcutr_successes,
+            snap.dcutr_failures,
+            snap.dcutr_relay_fallbacks,
+            snap.dcutr_retry_suppressed
+        ),
+        String::new(),
+        "Heartbeat / event pulse:".to_string(),
+    ];
 
-    let transports = Paragraph::new(snap.active_transports.join(", ")).block(
-        Block::default()
-            .title("Transports Active")
-            .borders(Borders::ALL),
+    let available_pulses = rows.saturating_sub(lines.len().saturating_add(1));
+    lines.extend(
+        snap.pulses
+            .iter()
+            .take(available_pulses.max(1))
+            .map(|line| format!("  {line}")),
     );
-    frame.render_widget(transports, chunks[1]);
-
-    let mesh = Paragraph::new(format!(
-        "Application Peers: {} | Infrastructure Peers: {} | DHT Routing Peers: {} | Relay Peers: {} | All Swarm Connections: {}\nPeerBook: known {} discovered {}\nAuto-Connect: enabled={} dial_attempts={} failures={} pending_plans={} awaiting_addrs={}\nPublic Fallback: mode={} bootstrap={} rendezvous={} relay={} public_rv_candidates={} reason={}\nRelay Server: {} ({}) | Mediator: {}\nServer Reservations: {} | Client Reservations: {} / attempts {} failures {}\nRelay Discovery: selected {} / candidates {} failures={}\nDHT Provider: enabled={} announced={} queries={} found={} peers={}\nActive Circuits: {} | Denied Requests: {} | Bytes Fwd: {} | DCUtR: enabled={} attempts={} successes={} failures={} fallback={} suppressed={}",
-        snap.application_peer_connections,
-        snap.infrastructure_peer_connections,
-        snap.dht_routing_peer_connections,
-        snap.relay_peer_connections,
-        snap.all_swarm_connections,
-        snap.peer_book_known_peers,
-        snap.peer_book_discovered_peers,
-        snap.auto_connect_enabled,
-        snap.auto_connect_dial_attempts,
-        snap.auto_connect_dial_failures,
-        snap.connection_plan_pending_peers,
-        snap.auto_connect_awaiting_address_peers,
-        snap.public_fallback_mode,
-        snap.public_bootstrap_used,
-        snap.public_rendezvous_used,
-        snap.public_relay_used,
-        snap.public_rendezvous_candidate_count,
-        snap.public_fallback_reason,
-        snap.relay_server_enabled,
-        snap.relay_service_health.as_str(),
-        snap.mediator_enabled,
-        snap.relay_reservations_accepted,
-        snap.relay_client_reservations,
-        snap.relay_client_reservation_attempts,
-        snap.relay_client_reservation_failures,
-        snap.relay_discovery_selected_relays.len(),
-        snap.relay_discovery_candidate_count,
-        snap.relay_discovery_failures,
-        snap.dht_provider_enabled,
-        snap.dht_provider_namespaces_announced,
-        snap.dht_provider_queries,
-        snap.dht_provider_records_found,
-        snap.dht_provider_peers_discovered,
-        snap.relay_active_circuits,
-        snap.relay_denied_requests,
-        snap.relay_bytes_forwarded,
-        snap.dcutr_enabled,
-        snap.dcutr_attempts,
-        snap.dcutr_successes,
-        snap.dcutr_failures,
-        snap.dcutr_relay_fallbacks,
-        snap.dcutr_retry_suppressed
-    ))
-    .block(Block::default().title("Mesh / Relay").borders(Borders::ALL));
-    frame.render_widget(mesh, chunks[2]);
-
-    let pulse_items: Vec<ListItem<'_>> = snap
-        .pulses
-        .iter()
-        .map(|line| ListItem::new(line.as_str()))
-        .collect();
-    let pulse = List::new(pulse_items).block(
-        Block::default()
-            .title("Heartbeat Gossip")
-            .borders(Borders::ALL),
-    );
-    frame.render_widget(pulse, chunks[3]);
+    lines.push(String::new());
+    lines.join("\r\n")
 }
 
 fn arg_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
@@ -364,7 +366,6 @@ fn arg_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
         .find(|pair| pair[0] == flag)
         .map(|pair| pair[1].as_str())
 }
-
 
 fn install_dashboard_panic_hook() {
     let default_hook = std::panic::take_hook();

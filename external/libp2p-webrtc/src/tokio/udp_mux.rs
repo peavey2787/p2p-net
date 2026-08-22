@@ -611,6 +611,12 @@ impl UDPMuxWriter for UdpMuxWriterHandle {
 
 /// Gets the ufrag from the given STUN message or returns an error, if failed to decode or the
 /// username attribute is not present.
+#[cfg(feature = "fuzzing")]
+#[doc(hidden)]
+pub fn fuzz_stun_ufrag(buffer: &[u8], local_ufrag: bool) -> bool {
+    ufrag_from_stun_message(buffer, local_ufrag).is_ok()
+}
+
 fn ufrag_from_stun_message(buffer: &[u8], local_ufrag: bool) -> Result<String, Error> {
     let (result, message) = {
         let mut m = STUNMessage::new();

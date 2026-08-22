@@ -130,3 +130,34 @@ fn invalid_message_security_config_fails_validation() {
     };
     assert!(bad_reputation.validate().is_err());
 }
+
+#[test]
+fn invalid_application_message_security_config_fails_validation() {
+    let bad_age = p2p_net::NodeConfig {
+        message_security: MessageSecurityConfig {
+            max_app_message_age_secs: 0,
+            ..MessageSecurityConfig::default()
+        },
+        ..p2p_net::NodeConfig::default()
+    };
+    assert!(bad_age.validate().is_err());
+
+    let bad_skew = p2p_net::NodeConfig {
+        message_security: MessageSecurityConfig {
+            max_app_message_age_secs: 60,
+            max_app_message_future_skew_secs: 61,
+            ..MessageSecurityConfig::default()
+        },
+        ..p2p_net::NodeConfig::default()
+    };
+    assert!(bad_skew.validate().is_err());
+
+    let bad_cache = p2p_net::NodeConfig {
+        message_security: MessageSecurityConfig {
+            app_replay_cache_capacity: 0,
+            ..MessageSecurityConfig::default()
+        },
+        ..p2p_net::NodeConfig::default()
+    };
+    assert!(bad_cache.validate().is_err());
+}

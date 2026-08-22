@@ -318,7 +318,7 @@ async fn lookup_dnsaddr_txt(
                 "TXT record exceeded {MAX_DNSADDR_TXT_BYTES} bytes for {query_name}"
             ));
         }
-        let text = decode_dns_json_txt(&answer.data)?;
+        let text = decode_dnsaddr_txt_value(&answer.data)?;
         if text.starts_with(DNSADDR_PREFIX) {
             out.push(text);
         }
@@ -339,7 +339,11 @@ struct DnsJsonAnswer {
     data: String,
 }
 
-fn decode_dns_json_txt(data: &str) -> Result<String, String> {
+/// Decode the textual representation returned by DNS-over-HTTPS JSON APIs for
+/// one TXT record. This parser is intentionally pure so untrusted TXT syntax can
+/// be fuzzed independently from network I/O.
+#[doc(hidden)]
+pub fn decode_dnsaddr_txt_value(data: &str) -> Result<String, String> {
     let trimmed = data.trim();
     if trimmed.len() > MAX_DNSADDR_TXT_BYTES {
         return Err(format!("TXT record exceeded {MAX_DNSADDR_TXT_BYTES} bytes"));

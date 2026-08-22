@@ -6,8 +6,8 @@ use p2p_net::connectivity::peer_cache::{
     load_entries_with_storage, record_seen_peer_addr_with_storage,
 };
 use p2p_net::{
-    DiscoveryConfig, MemoryNodeStorage, MobilePlatformRuntime, NetworkReachability, NodeConfig,
-    NodeRole, NodeStorage, PlatformKind, PlatformRuntime,
+    DesktopPlatformRuntime, DiscoveryConfig, MemoryNodeStorage, MobilePlatformRuntime,
+    NetworkReachability, NodeConfig, NodeRole, NodeStorage, PlatformKind, PlatformRuntime,
 };
 
 #[test]
@@ -93,4 +93,33 @@ fn platform_runtime_exposes_storage_and_lifecycle_boundaries() {
     assert!(runtime.can_listen_quic());
     assert_eq!(runtime.can_accept_inbound(), Some(false));
     assert!(runtime.is_background_restricted());
+}
+
+#[cfg(unix)]
+#[test]
+fn desktop_secret_storage_is_create_only_and_private() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = std::env::temp_dir().join(format!(
+        "p2p-net-secret-test-{}",
+        PeerId::random()
+    ));
+    std::fs::create_dir_all(&root).expect("create temp secret directory");
+    let runtime = DesktopPlatformRuntime::with_data_dir(&root);
+
+    assert!(runtime
+        .write_secret_if_absent("identity.key", b"secret")
+        .expect("create secret"));
+    assert!(!runtime
+        .write_secret_if_absent("identity.key", b"replacement")
+        .expect("refuse replacement"));
+
+    let metadata = std::fs::metadata(root.join("identity.key")).expect("secret metadata");
+    assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+    assert_eq!(
+        runtime.read_secret("identity.key").expect("read secret"),
+        Some(b"secret".to_vec())
+    );
+
+    std::fs::remove_dir_all(root).expect("remove temp secret directory");
 }

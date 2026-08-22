@@ -23,8 +23,9 @@ mod node;
 
 pub use api::{
     app_ident_topic, app_topic_name, decode_app_message, encode_app_message, normalize_app_topic,
-    validate_app_message, AppMessage, AppSubscription, BandwidthMetrics, ComputeMetrics,
-    NodeMetrics, P2PNode, PeerBandwidth, PeerInfo, PeerSource, StorageMetrics, TopicBandwidth,
+    validate_app_message, validate_app_message_authentication, AppMessage, AppSubscription,
+    BandwidthMetrics, ComputeMetrics, NodeMetrics, P2PNode, PeerBandwidth, PeerInfo, PeerSource,
+    StorageMetrics, TopicBandwidth,
     APP_MESSAGE_SCHEMA_VERSION, APP_TOPIC_PREFIX, MAX_APP_MESSAGE_BYTES, MAX_APP_TOPIC_LEN,
 };
 pub use bindings::{

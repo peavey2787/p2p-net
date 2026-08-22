@@ -109,18 +109,25 @@ fn repository_layout_matches_modular_baseline() {
     for launcher in ["run-full-validation.cmd", "run-full-validation.sh"] {
         let contents = fs::read_to_string(root.join(launcher)).expect("validation launcher");
         assert!(
-            contents.contains("cargo deny check --config qa/ci/deny.toml --help"),
-            "{launcher} must probe whether the installed cargo-deny accepts check-level config"
+            contents.contains("cargo metadata --locked --format-version 1 --no-deps"),
+            "{launcher} must verify the committed Cargo.lock without regenerating it"
         );
         assert!(
-            contents.contains("cargo deny check --config qa/ci/deny.toml")
+            !contents.contains("cargo generate-lockfile") && !contents.contains("rm -f Cargo.lock"),
+            "{launcher} must never rewrite the dependency graph during production validation"
+        );
+        assert!(
+            contents.contains("cargo-audit")
+                && contents.contains("0.22.2")
+                && contents.contains("cargo-deny")
+                && contents.contains("0.20.2"),
+            "{launcher} must pin the validated audit/deny tool versions"
+        );
+        assert!(
+            contents.contains("cargo deny check --config qa/ci/deny.toml --help")
+                && contents.contains("cargo deny check --config qa/ci/deny.toml")
                 && contents.contains("cargo deny --config qa/ci/deny.toml check"),
             "{launcher} must support both cargo-deny config-option placements"
-        );
-        assert!(
-            !contents.contains("run_cargo_deny_with_repo_config")
-                && !contents.contains("call :run_cargo_deny_with_repo_config"),
-            "{launcher} must keep cargo-deny dispatch inline rather than relying on a batch/shell subroutine"
         );
     }
 
@@ -147,8 +154,49 @@ fn repository_layout_matches_modular_baseline() {
         "GitHub Actions must not reference removed qa/ci validation launchers"
     );
     assert!(
-        workflow.contains("actions/checkout@v7") && !workflow.contains("actions/checkout@v4"),
-        "GitHub Actions checkout must use the Node 24-compatible action runtime"
+        workflow.contains("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1")
+            && !workflow.contains("actions/checkout@v"),
+        "GitHub Actions checkout must be pinned to the immutable v7.0.1 commit"
+    );
+    assert!(
+        workflow.contains("rustup toolchain install 1.98.0")
+            && !workflow.contains("dtolnay/rust-toolchain")
+            && !workflow.contains("Swatinem/rust-cache"),
+        "GitHub Actions must use the exact Rust release without floating third-party setup/cache actions"
+    );
+    assert!(
+        workflow.contains("persist-credentials: false") && workflow.contains("contents: read"),
+        "GitHub Actions must use least-privilege checkout credentials"
+    );
+
+    let toolchain = fs::read_to_string(root.join("rust-toolchain.toml")).expect("toolchain pin");
+    assert!(
+        toolchain.contains("channel = \"1.98.0\""),
+        "rust-toolchain.toml must pin the exact production Rust release"
+    );
+    let manifest = fs::read_to_string(root.join("Cargo.toml")).expect("root Cargo.toml");
+    let lock = fs::read_to_string(root.join("Cargo.lock")).expect("committed Cargo.lock");
+    assert!(
+        !manifest.contains("ratatui") && !lock.contains("name = \"ratatui\"") && !lock.contains("name = \"lru\""),
+        "the dashboard must not reintroduce the known-unsound lru dependency through ratatui"
+    );
+
+    let nightly = fs::read_to_string(root.join(".github/workflows/security-nightly.yml"))
+        .expect("nightly security workflow");
+    for target in [
+        "heartbeat_wire",
+        "node_config_json",
+        "peer_cache_json",
+        "app_message",
+        "dnsaddr_txt",
+        "peer_multiaddr",
+        "webrtc_stun",
+    ] {
+        assert!(nightly.contains(target), "nightly fuzz workflow must run {target}");
+    }
+    assert!(
+        nightly.contains("nightly-2026-08-20") && nightly.contains("cargo-fuzz --version 0.13.2"),
+        "nightly fuzzing must use pinned toolchain/tool versions"
     );
 }
 
@@ -266,7 +314,6 @@ fn node_config_snapshot_and_validation_live_in_focused_modules() {
         "config validation and parsing helpers belong in config_validation.rs"
     );
 }
-
 
 fn text_files_under(root: &Path, entries: &[&str]) -> Vec<PathBuf> {
     let mut out = Vec::new();

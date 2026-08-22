@@ -43,7 +43,7 @@ echo SkipIgnored: %SKIP_IGNORED%
 echo NoInstallTools: %NO_INSTALL_TOOLS%
 echo NoClean: %NO_CLEAN%
 echo.
-echo This is the canonical Windows one-file validation runner. It auto-formats with cargo fmt and uses isolated target directories to avoid stale/incomplete build artifacts.
+echo This is the canonical Windows one-file validation runner. It verifies the committed lockfile and formatting without mutating source, and uses isolated target directories to avoid stale/incomplete build artifacts.
 
 set "CARGO_INCREMENTAL=0"
 set "CARGO_BUILD_PIPELINING=false"
@@ -75,13 +75,13 @@ if errorlevel 1 (
   set "FAILED_STEP=Cargo version"
   goto failed
 )
-echo !RUST_VERSION! | findstr /I /C:"nightly" /C:"beta" /C:"dev" >nul
-if not errorlevel 1 (
-  echo p2p-net validation must run on stable Rust only. Active rustc: !RUST_VERSION!
-  set "FAILED_STEP=Stable Rust check"
+echo !RUST_VERSION! | findstr /B /C:"rustc 1.98.0 " >nul
+if errorlevel 1 (
+  echo p2p-net validation requires rustc 1.98.0 exactly. Active rustc: !RUST_VERSION!
+  set "FAILED_STEP=Pinned Rust check"
   goto failed
 )
-echo Stable Rust toolchain confirmed: !RUST_VERSION!
+echo Pinned Rust toolchain confirmed: !RUST_VERSION!
 
 if "%NO_CLEAN%"=="0" (
   echo.
@@ -95,53 +95,40 @@ if "%NO_CLEAN%"=="0" (
 )
 
 echo.
-echo ==^> Refresh dependency lockfile
-if exist Cargo.lock del /Q Cargo.lock
-cargo generate-lockfile
+echo ==^> Verify committed dependency lockfile
+cargo metadata --locked --format-version 1 --no-deps >nul
 if errorlevel 1 (
-  set "FAILED_STEP=Refresh dependency lockfile"
+  set "FAILED_STEP=Verify committed dependency lockfile"
   goto failed
 )
 
-cargo install --list | findstr /B /C:"cargo-audit v" >nul
-if errorlevel 1 (
-  if "%NO_INSTALL_TOOLS%"=="1" (
-    echo cargo-audit is missing. Re-run without --no-install-tools or install it manually.
-    set "FAILED_STEP=Install cargo-audit"
-    goto failed
+for %%T in (cargo-audit:0.22.2 cargo-deny:0.20.2) do (
+  for /f "tokens=1,2 delims=:" %%A in ("%%T") do (
+    set "TOOL_NAME=%%A"
+    set "TOOL_VERSION=%%B"
+    cargo install --list | findstr /B /C:"!TOOL_NAME! v!TOOL_VERSION!:" >nul
+    if errorlevel 1 (
+      if "%NO_INSTALL_TOOLS%"=="1" (
+        echo !TOOL_NAME! v!TOOL_VERSION! is required. Re-run without --no-install-tools or install that exact version manually.
+        set "FAILED_STEP=Install !TOOL_NAME!"
+        goto failed
+      )
+      echo.
+      echo ==^> Install !TOOL_NAME! v!TOOL_VERSION!
+      cargo install !TOOL_NAME! --version !TOOL_VERSION! --locked --force
+      if errorlevel 1 (
+        set "FAILED_STEP=Install !TOOL_NAME!"
+        goto failed
+      )
+    ) else (
+      echo !TOOL_NAME! v!TOOL_VERSION! already installed.
+    )
   )
-  echo.
-  echo ==^> Install cargo-audit
-  cargo install cargo-audit --locked
-  if errorlevel 1 (
-    set "FAILED_STEP=Install cargo-audit"
-    goto failed
-  )
-) else (
-  echo cargo-audit already installed.
-)
-
-cargo install --list | findstr /B /C:"cargo-deny v" >nul
-if errorlevel 1 (
-  if "%NO_INSTALL_TOOLS%"=="1" (
-    echo cargo-deny is missing. Re-run without --no-install-tools or install it manually.
-    set "FAILED_STEP=Install cargo-deny"
-    goto failed
-  )
-  echo.
-  echo ==^> Install cargo-deny
-  cargo install cargo-deny --locked
-  if errorlevel 1 (
-    set "FAILED_STEP=Install cargo-deny"
-    goto failed
-  )
-) else (
-  echo cargo-deny already installed.
 )
 
 echo.
-echo ==^> Format
-cargo fmt
+echo ==^> Format check
+cargo fmt --all -- --check
 if errorlevel 1 (
   set "FAILED_STEP=Format"
   goto failed
@@ -150,7 +137,7 @@ if errorlevel 1 (
 echo.
 echo ==^> Dependency graph guard
 if not exist Cargo.lock (
-  echo Cargo.lock is missing after lockfile refresh.
+  echo Cargo.lock is missing; production validation requires the committed lockfile.
   set "FAILED_STEP=Dependency graph guard"
   goto failed
 )
@@ -209,7 +196,7 @@ if errorlevel 1 (
   set "FAILED_STEP=Security audit config staging"
   goto failed
 )
-cargo audit
+cargo audit --file Cargo.lock
 set "AUDIT_STATUS=!ERRORLEVEL!"
 if exist ".cargo\audit.toml" del /Q ".cargo\audit.toml"
 rmdir ".cargo" >nul 2>&1
@@ -221,10 +208,10 @@ if not "!AUDIT_STATUS!"=="0" (
 echo.
 echo ==^> Dependency policy
 cargo deny check --config qa/ci/deny.toml --help >nul 2>&1
-if not errorlevel 1 (
-  cargo deny check --config qa/ci/deny.toml
-) else (
+if errorlevel 1 (
   cargo deny --config qa/ci/deny.toml check
+) else (
+  cargo deny check --config qa/ci/deny.toml
 )
 if errorlevel 1 (
   set "FAILED_STEP=Dependency policy"

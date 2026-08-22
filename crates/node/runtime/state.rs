@@ -6,6 +6,7 @@ use crate::connectivity::peer_cache::PeerCacheWriteBatch;
 use crate::connectivity::relay::RelayReservationPlan;
 use crate::connectivity::relay_discovery::RelaySelectionPlan;
 use crate::connectivity::rendezvous::RendezvousState;
+use crate::protocol::app_security::AppMessageReplayCache;
 use crate::protocol::pulse::HeartbeatReplayCache;
 use crate::protocol::reputation::ReputationStore;
 use crate::stack::IdentifyAddressState;
@@ -30,6 +31,7 @@ impl RuntimeState {
         Self {
             rep: ReputationStore::new(cfg.message_security.reputation.clone()),
             replay_cache: HeartbeatReplayCache::new(&cfg.message_security),
+            app_replay_cache: AppMessageReplayCache::new(&cfg.message_security),
             relay_state: runtime_maintenance::initial_relay_state(
                 cfg,
                 resolved_config,
