@@ -216,15 +216,12 @@ impl PeerBook {
     }
 
     #[must_use]
-    pub fn has_application_namespace(
-        &self,
-        peer_id: &PeerId,
-        namespaces: &[String],
-    ) -> bool {
+    pub fn has_application_namespace(&self, peer_id: &PeerId, namespaces: &[String]) -> bool {
         self.record(peer_id).is_some_and(|record| {
-            record.namespaces.iter().any(|namespace| {
-                namespaces.iter().any(|candidate| candidate == namespace)
-            })
+            record
+                .namespaces
+                .iter()
+                .any(|namespace| namespaces.iter().any(|candidate| candidate == namespace))
         })
     }
 
@@ -267,7 +264,10 @@ impl PeerBook {
             mutate(record);
             record.mark_seen();
         }
-        self.sync_indexes(peer_id, previous.map(|(connected, _)| connected).unwrap_or(false));
+        self.sync_indexes(
+            peer_id,
+            previous.map(|(connected, _)| connected).unwrap_or(false),
+        );
         self.enforce_record_bound();
     }
 
@@ -289,23 +289,21 @@ impl PeerBook {
         }
         if !record.connected {
             if let Some(last_seen) = record.last_seen_unix_secs {
-                self.disconnected_eviction_order.insert((last_seen, peer_id));
+                self.disconnected_eviction_order
+                    .insert((last_seen, peer_id));
             }
         }
     }
 
     fn enforce_record_bound(&mut self) {
         while self.peers.len() > self.max_records {
-            let victim = self
-                .disconnected_eviction_order
-                .iter()
-                .next()
-                .copied();
+            let victim = self.disconnected_eviction_order.iter().next().copied();
             let Some((last_seen, victim)) = victim else {
                 // Connected records are protected; connection limits are their bound.
                 break;
             };
-            self.disconnected_eviction_order.remove(&(last_seen, victim));
+            self.disconnected_eviction_order
+                .remove(&(last_seen, victim));
             self.peers.remove(&victim);
             self.disconnected_namespace_peers.remove(&victim);
         }

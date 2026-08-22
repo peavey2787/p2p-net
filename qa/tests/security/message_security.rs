@@ -1,6 +1,6 @@
 use p2p_net::{
-    encode_heartbeat_wire, validate_heartbeat_wire, verify_heartbeat_with_config, HeartbeatEnvelope,
-    HeartbeatReplayCache, HeartbeatValidationDecision, MessageSecurityConfig,
+    encode_heartbeat_wire, validate_heartbeat_wire, verify_heartbeat_with_config,
+    HeartbeatEnvelope, HeartbeatReplayCache, HeartbeatValidationDecision, MessageSecurityConfig,
 };
 
 const NS_PER_SEC: u64 = 1_000_000_000;

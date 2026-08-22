@@ -222,7 +222,12 @@ fn harden_secret_permissions(path: &Path, _metadata: &fs::Metadata) -> Result<()
     let output = Command::new("whoami")
         .args(["/user", "/fo", "csv", "/nh"])
         .output()
-        .map_err(|err| storage_error(path, format!("failed to resolve Windows account SID: {err}")))?;
+        .map_err(|err| {
+            storage_error(
+                path,
+                format!("failed to resolve Windows account SID: {err}"),
+            )
+        })?;
     if !output.status.success() {
         return Err(storage_error(
             path,

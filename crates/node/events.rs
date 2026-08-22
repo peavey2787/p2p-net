@@ -195,7 +195,9 @@ pub(crate) fn sync_peer_connectivity_snapshot(
         ctx.peer_book,
         ctx.auto_dial_stats,
         ctx.pending_connections,
-        ctx.discovery_cfg.public_bootstrap.auto_connect_discovered_peers,
+        ctx.discovery_cfg
+            .public_bootstrap
+            .auto_connect_discovered_peers,
     );
 }
 
@@ -392,12 +394,7 @@ pub(crate) async fn handle_swarm_event(
             message_id,
             ..
         })) => {
-            gossip::handle_unexpected_topic_message(
-                swarm,
-                propagation_source,
-                message_id,
-                ctx,
-            );
+            gossip::handle_unexpected_topic_message(swarm, propagation_source, message_id, ctx);
         }
         SwarmEvent::Behaviour(MeshEvent::Identify(ev)) => {
             connection::handle_identify_observed_addr(swarm, &ev, ctx).await;

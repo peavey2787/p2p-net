@@ -138,8 +138,8 @@ fn repository_layout_matches_modular_baseline() {
         "Windows validation must not rely on CALL :label subroutines"
     );
 
-    let workflow = fs::read_to_string(root.join(".github/workflows/ci.yml"))
-        .expect("GitHub Actions workflow");
+    let workflow =
+        fs::read_to_string(root.join(".github/workflows/ci.yml")).expect("GitHub Actions workflow");
     assert!(
         workflow.contains("bash ./run-full-validation.sh --skip-ignored --no-pause"),
         "GitHub Actions Unix validation must invoke the root launcher"
@@ -177,7 +177,9 @@ fn repository_layout_matches_modular_baseline() {
     let manifest = fs::read_to_string(root.join("Cargo.toml")).expect("root Cargo.toml");
     let lock = fs::read_to_string(root.join("Cargo.lock")).expect("committed Cargo.lock");
     assert!(
-        !manifest.contains("ratatui") && !lock.contains("name = \"ratatui\"") && !lock.contains("name = \"lru\""),
+        !manifest.contains("ratatui")
+            && !lock.contains("name = \"ratatui\"")
+            && !lock.contains("name = \"lru\""),
         "the dashboard must not reintroduce the known-unsound lru dependency through ratatui"
     );
     assert!(
@@ -196,7 +198,10 @@ fn repository_layout_matches_modular_baseline() {
         "peer_multiaddr",
         "webrtc_stun",
     ] {
-        assert!(nightly.contains(target), "nightly fuzz workflow must run {target}");
+        assert!(
+            nightly.contains(target),
+            "nightly fuzz workflow must run {target}"
+        );
     }
     assert!(
         nightly.contains("nightly-2026-08-20") && nightly.contains("cargo-fuzz --version 0.13.2"),

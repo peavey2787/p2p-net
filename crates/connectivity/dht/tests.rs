@@ -1,8 +1,8 @@
-use super::*;
 use super::keys::{
     dht_record_replica_key, DHT_PROVIDER_ANCHOR_PREFIX_BYTES, MULTIHASH_SHA2_256_CODE,
     SHA2_256_DIGEST_BYTES,
 };
+use super::*;
 use sha2::{Digest, Sha256};
 
 #[test]

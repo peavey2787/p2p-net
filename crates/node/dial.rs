@@ -294,7 +294,6 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod memory_bound_tests {
     use super::*;

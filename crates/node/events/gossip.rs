@@ -47,11 +47,14 @@ pub(crate) fn handle_heartbeat_message(
     match validation.decision {
         HeartbeatValidationDecision::Accept => {
             ctx.rep.accept(author);
-            swarm.behaviour_mut().gossipsub.report_message_validation_result(
-                &msg_id,
-                &propagation_source,
-                MessageAcceptance::Accept,
-            );
+            swarm
+                .behaviour_mut()
+                .gossipsub
+                .report_message_validation_result(
+                    &msg_id,
+                    &propagation_source,
+                    MessageAcceptance::Accept,
+                );
             let peer_dirty = validation.envelope.is_some();
             if peer_dirty {
                 record_heartbeat_peer(author, ctx);
@@ -64,11 +67,14 @@ pub(crate) fn handle_heartbeat_message(
         }
         HeartbeatValidationDecision::IgnoreDuplicate => {
             ctx.rep.ignore_duplicate(author);
-            swarm.behaviour_mut().gossipsub.report_message_validation_result(
-                &msg_id,
-                &propagation_source,
-                MessageAcceptance::Ignore,
-            );
+            swarm
+                .behaviour_mut()
+                .gossipsub
+                .report_message_validation_result(
+                    &msg_id,
+                    &propagation_source,
+                    MessageAcceptance::Ignore,
+                );
             ctx.observability.gossip_ignored();
             ctx.observability
                 .pulse(format!("peer {author} ignored_duplicate_heartbeat"));
@@ -129,12 +135,10 @@ fn reject_heartbeat(
     reason: &str,
 ) {
     ctx.rep.penalize_invalid(offender);
-    swarm.behaviour_mut().gossipsub.report_message_validation_result(
-        msg_id,
-        &propagation_source,
-        MessageAcceptance::Reject,
-    );
+    swarm
+        .behaviour_mut()
+        .gossipsub
+        .report_message_validation_result(msg_id, &propagation_source, MessageAcceptance::Reject);
     ctx.observability.gossip_rejected();
-    ctx.observability
-        .pulse(format!("peer {offender} {reason}"));
+    ctx.observability.pulse(format!("peer {offender} {reason}"));
 }

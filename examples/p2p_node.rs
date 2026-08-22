@@ -16,11 +16,11 @@ use std::time::{Duration, SystemTime};
 use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::event::{Event, EventStream, KeyCode};
 use crossterm::style::{Attribute, Color, Print, ResetColor, SetAttribute, SetForegroundColor};
-use crossterm::{execute, queue};
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, size as terminal_size, Clear, ClearType,
     EnterAlternateScreen, LeaveAlternateScreen,
 };
+use crossterm::{execute, queue};
 use futures::StreamExt;
 use p2p_net::{start_node, NodeConfig, NodeProfile, NodeSnapshot};
 use tokio::time::MissedTickBehavior;

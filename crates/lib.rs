@@ -25,8 +25,8 @@ pub use api::{
     app_ident_topic, app_topic_name, decode_app_message, encode_app_message, normalize_app_topic,
     validate_app_message, validate_app_message_authentication, AppMessage, AppSubscription,
     BandwidthMetrics, ComputeMetrics, NodeMetrics, P2PNode, PeerBandwidth, PeerInfo, PeerSource,
-    StorageMetrics, TopicBandwidth,
-    APP_MESSAGE_SCHEMA_VERSION, APP_TOPIC_PREFIX, MAX_APP_MESSAGE_BYTES, MAX_APP_TOPIC_LEN,
+    StorageMetrics, TopicBandwidth, APP_MESSAGE_SCHEMA_VERSION, APP_TOPIC_PREFIX,
+    MAX_APP_MESSAGE_BYTES, MAX_APP_TOPIC_LEN,
 };
 pub use bindings::{
     binding_support_matrix, node_config_from_json, node_config_to_json,
@@ -78,15 +78,15 @@ pub use node::{
     apply_resolved_capabilities, resolve_node_config, snapshot_to_json,
     snapshot_to_prometheus_metrics, start_node, start_node_with_platform, BehaviourSet,
     EnvironmentConfig, EnvironmentReport, ListenerConfig, NatKind, NetworkReachability, NodeConfig,
-    NodeHandle,
-    NodeProfile, NodeRole, NodeSnapshot, PlatformKind, PublicIpProbeConfig, ResolvedNodeConfig,
+    NodeHandle, NodeProfile, NodeRole, NodeSnapshot, PlatformKind, PublicIpProbeConfig,
+    ResolvedNodeConfig,
 };
 pub use platform::{
     DesktopPlatformRuntime, MemoryNodeStorage, MobilePlatformRuntime, NodeStorage, PlatformRuntime,
 };
 pub use protocol::pulse::{
     encode_heartbeat_wire, heartbeat_topic, validate_heartbeat_wire, verify_heartbeat,
-    verify_heartbeat_with_config,
-    HeartbeatEnvelope, HeartbeatReplayCache, HeartbeatValidationDecision,
-    HeartbeatValidationResult, MessageSecurityConfig, ReputationConfig,
+    verify_heartbeat_with_config, HeartbeatEnvelope, HeartbeatReplayCache,
+    HeartbeatValidationDecision, HeartbeatValidationResult, MessageSecurityConfig,
+    ReputationConfig,
 };

@@ -117,7 +117,12 @@ pub(super) fn append_peer_mesh(lines: &mut Vec<Line>, snap: &NodeSnapshot, width
     lines.push(panel_content(width, peers));
 
     let mut discovery = Line::default();
-    push_metric(&mut discovery, "KNOWN", snap.peer_book_known_peers, Tone::Text);
+    push_metric(
+        &mut discovery,
+        "KNOWN",
+        snap.peer_book_known_peers,
+        Tone::Text,
+    );
     push_metric(
         &mut discovery,
         "DISCOVERED",
@@ -170,10 +175,7 @@ pub(super) fn append_peer_mesh(lines: &mut Vec<Line>, snap: &NodeSnapshot, width
     );
     traffic.push("   ", Tone::Text);
     traffic.push_bold("GOSSIP  ", Tone::Muted);
-    traffic.push(
-        format!("ok={}", snap.gossip_messages_accepted),
-        Tone::Text,
-    );
+    traffic.push(format!("ok={}", snap.gossip_messages_accepted), Tone::Text);
     traffic.push(" rejected=", Tone::Muted);
     traffic.push(
         snap.gossip_messages_rejected.to_string(),
@@ -244,12 +246,7 @@ pub(super) fn append_compact_summary(lines: &mut Vec<Line>, snap: &NodeSnapshot,
     lines.push(panel_footer(width));
 }
 
-pub(super) fn append_events(
-    lines: &mut Vec<Line>,
-    snap: &NodeSnapshot,
-    width: usize,
-    rows: usize,
-) {
+pub(super) fn append_events(lines: &mut Vec<Line>, snap: &NodeSnapshot, width: usize, rows: usize) {
     if lines.len() >= rows {
         return;
     }

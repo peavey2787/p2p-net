@@ -33,7 +33,10 @@ fn public_fallback_is_enabled_by_default_for_normal_app_mode() {
     assert!(!cfg.discovery.rendezvous.server_enabled);
     assert!(cfg.discovery.dht.discover_with_rendezvous_peers);
     assert_eq!(cfg.discovery.dht.refresh_interval_secs, 300);
-    assert_eq!(cfg.discovery.dht.periodic_bootstrap_interval_secs, Some(300));
+    assert_eq!(
+        cfg.discovery.dht.periodic_bootstrap_interval_secs,
+        Some(300)
+    );
     assert_eq!(cfg.discovery.dht.query_parallelism, 3);
     assert_eq!(cfg.discovery.dht.provider_key_replicas, 3);
     assert!(cfg.discovery.public_bootstrap.bootstrap_decision(0).used);
@@ -206,8 +209,12 @@ fn listener_switches_filter_expensive_inbound_transports() {
     };
 
     let enabled = cfg.enabled_listen_addresses().expect("listen addresses");
-    assert!(enabled.iter().any(|addr| addr.to_string().contains("/quic-v1")));
-    assert!(enabled.iter().any(|addr| addr.to_string().contains("/tcp/4001")));
+    assert!(enabled
+        .iter()
+        .any(|addr| addr.to_string().contains("/quic-v1")));
+    assert!(enabled
+        .iter()
+        .any(|addr| addr.to_string().contains("/tcp/4001")));
     assert!(!enabled.iter().any(|addr| addr.to_string().contains("/ws")));
     assert!(!enabled
         .iter()

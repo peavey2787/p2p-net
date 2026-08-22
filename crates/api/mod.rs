@@ -327,13 +327,14 @@ pub fn validate_app_message_authentication(
     authenticated_source: &PeerId,
     received_topic: &TopicHash,
 ) -> Result<(), NetError> {
-    let claimed_source = message
-        .source_peer_id
-        .parse::<PeerId>()
-        .map_err(|err| NetError::AppMessage {
-            topic: message.topic.clone(),
-            reason: format!("invalid source peer id: {err}"),
-        })?;
+    let claimed_source =
+        message
+            .source_peer_id
+            .parse::<PeerId>()
+            .map_err(|err| NetError::AppMessage {
+                topic: message.topic.clone(),
+                reason: format!("invalid source peer id: {err}"),
+            })?;
     if &claimed_source != authenticated_source {
         return Err(NetError::AppMessage {
             topic: message.topic.clone(),

@@ -4,9 +4,7 @@ use libp2p::{PeerId, Swarm};
 use crate::api::{
     accounted_transport_bytes, decode_app_message, validate_app_message_authentication,
 };
-use crate::protocol::app_security::{
-    validate_app_message_security, AppMessageSecurityDecision,
-};
+use crate::protocol::app_security::{validate_app_message_security, AppMessageSecurityDecision};
 use crate::stack::MeshBehaviour;
 
 use super::SwarmEventContext;
@@ -75,11 +73,14 @@ pub(crate) fn handle_app_message(
         AppMessageSecurityDecision::Accept => {}
         AppMessageSecurityDecision::IgnoreDuplicate => {
             ctx.rep.ignore_duplicate(author);
-            swarm.behaviour_mut().gossipsub.report_message_validation_result(
-                &message_id,
-                &propagation_source,
-                MessageAcceptance::Ignore,
-            );
+            swarm
+                .behaviour_mut()
+                .gossipsub
+                .report_message_validation_result(
+                    &message_id,
+                    &propagation_source,
+                    MessageAcceptance::Ignore,
+                );
             ctx.metrics.bandwidth.record_received(
                 Some(propagation_source),
                 Some(&message.topic),
@@ -107,11 +108,14 @@ pub(crate) fn handle_app_message(
     // Manual validation is enabled globally for Gossipsub. Every valid application
     // message must be accepted even when it is addressed to another peer so that
     // the mesh can continue forwarding it toward its intended recipient.
-    swarm.behaviour_mut().gossipsub.report_message_validation_result(
-        &message_id,
-        &propagation_source,
-        MessageAcceptance::Accept,
-    );
+    swarm
+        .behaviour_mut()
+        .gossipsub
+        .report_message_validation_result(
+            &message_id,
+            &propagation_source,
+            MessageAcceptance::Accept,
+        );
     ctx.rep.accept(author);
     ctx.metrics.bandwidth.record_received(
         Some(propagation_source),
@@ -139,15 +143,19 @@ fn reject_app_message(
     if let Some(author) = authenticated_source {
         ctx.rep.penalize_invalid(author);
     }
-    swarm.behaviour_mut().gossipsub.report_message_validation_result(
-        message_id,
-        &propagation_source,
-        MessageAcceptance::Reject,
-    );
+    swarm
+        .behaviour_mut()
+        .gossipsub
+        .report_message_validation_result(
+            message_id,
+            &propagation_source,
+            MessageAcceptance::Reject,
+        );
     ctx.metrics
         .bandwidth
         .record_received(Some(propagation_source), None, accounted_bytes);
     ctx.observability.app_rejected();
-    ctx.observability
-        .pulse(format!("peer {propagation_source} rejected_app_message {reason}"));
+    ctx.observability.pulse(format!(
+        "peer {propagation_source} rejected_app_message {reason}"
+    ));
 }

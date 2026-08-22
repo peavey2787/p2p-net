@@ -100,10 +100,7 @@ fn platform_runtime_exposes_storage_and_lifecycle_boundaries() {
 fn desktop_secret_storage_is_create_only_and_private() {
     use std::os::unix::fs::PermissionsExt;
 
-    let root = std::env::temp_dir().join(format!(
-        "p2p-net-secret-test-{}",
-        PeerId::random()
-    ));
+    let root = std::env::temp_dir().join(format!("p2p-net-secret-test-{}", PeerId::random()));
     std::fs::create_dir_all(&root).expect("create temp secret directory");
     let runtime = DesktopPlatformRuntime::with_data_dir(&root);
 

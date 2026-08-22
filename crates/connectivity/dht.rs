@@ -24,8 +24,8 @@ const MAX_AUTO_CONNECT_ATTEMPTS_PER_WINDOW: u32 = 8;
 
 mod keys;
 mod state;
-pub use keys::dht_record_key;
 use keys::dht_provider_keys;
+pub use keys::dht_record_key;
 pub use state::DhtProviderState;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

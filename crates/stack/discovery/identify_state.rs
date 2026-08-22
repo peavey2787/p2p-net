@@ -19,7 +19,11 @@ pub struct IdentifyAddressState {
 
 impl IdentifyAddressState {
     pub(crate) fn record_observed_local_addr(&mut self, address: &Multiaddr) -> bool {
-        if self.observed_local_addrs.iter().any(|known| known == address) {
+        if self
+            .observed_local_addrs
+            .iter()
+            .any(|known| known == address)
+        {
             return false;
         }
         if self.observed_local_addrs.len() >= MAX_OBSERVED_LOCAL_ADDRS {

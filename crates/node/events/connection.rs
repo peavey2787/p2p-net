@@ -17,9 +17,7 @@ mod errors;
 mod identify;
 mod listen_addr;
 
-pub(crate) use self::errors::{
-    handle_incoming_connection_error, handle_outgoing_connection_error,
-};
+pub(crate) use self::errors::{handle_incoming_connection_error, handle_outgoing_connection_error};
 pub(crate) use self::identify::handle_identify_observed_addr;
 use self::listen_addr::{
     autonat_status_label, classify_listen_addr, record_listen_addr_snapshot,

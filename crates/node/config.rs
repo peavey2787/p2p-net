@@ -21,8 +21,8 @@ use super::public_ip::PublicIpProbeConfig;
 
 mod listeners;
 
-pub use listeners::ListenerConfig;
 use listeners::default_listen_addresses;
+pub use listeners::ListenerConfig;
 
 /// Swarm + heartbeat configuration for a standalone P2P network instance.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

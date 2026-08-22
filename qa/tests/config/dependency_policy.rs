@@ -129,7 +129,10 @@ fn local_webrtc_patch_bounds_half_open_udp_state_and_cleans_failed_mux_connectio
         "WebRTC connections must retain fail-safe close-on-drop cleanup"
     );
     assert!(
-        connection_source.matches("Arc::downgrade(&data_channel)").count() >= 2,
+        connection_source
+            .matches("Arc::downgrade(&data_channel)")
+            .count()
+            >= 2,
         "WebRTC data-channel callbacks must not strongly capture the channel that owns them"
     );
     assert!(

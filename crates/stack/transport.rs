@@ -149,9 +149,8 @@ pub async fn build_swarm(
         })
         .map_err(|e| NetError::Build(e.to_string()))?
         .with_swarm_config(|swarm_cfg| {
-            swarm_cfg.with_idle_connection_timeout(swarm_idle_connection_timeout(
-                cfg.ping_interval_secs,
-            ))
+            swarm_cfg
+                .with_idle_connection_timeout(swarm_idle_connection_timeout(cfg.ping_interval_secs))
         })
         .build();
 

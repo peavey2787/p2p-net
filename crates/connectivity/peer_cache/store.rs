@@ -21,7 +21,9 @@ enum PeerCacheMutation {
         addr: Multiaddr,
         expires_unix_secs: Option<u64>,
     },
-    Failure { peer: PeerId },
+    Failure {
+        peer: PeerId,
+    },
 }
 
 /// Runtime-owned, best-effort peer-cache write coalescer. Hot discovery/event
@@ -208,7 +210,11 @@ fn apply_mutations_with_storage(
 
     for mutation in mutations {
         match mutation {
-            PeerCacheMutation::Seen { peer, addr, expires_unix_secs } => {
+            PeerCacheMutation::Seen {
+                peer,
+                addr,
+                expires_unix_secs,
+            } => {
                 upsert_identity(&mut identities, &peer, now);
                 let Some(cache_addr) = normalize_peer_addr(&peer, &addr) else {
                     continue;
@@ -244,8 +250,7 @@ fn apply_mutations_with_storage(
                     }
                 }
                 entries.retain(|entry| {
-                    cfg.peer_cache_max_failures == 0
-                        || entry.failures < cfg.peer_cache_max_failures
+                    cfg.peer_cache_max_failures == 0 || entry.failures < cfg.peer_cache_max_failures
                 });
             }
         }

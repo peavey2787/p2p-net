@@ -29,10 +29,13 @@ pub fn load_or_create_identity_key_with_storage(
 
             // Another process won the create-new race. Load that durable identity
             // instead of overwriting it or returning an ephemeral competing key.
-            let raw = storage.read_secret(key)?.ok_or_else(|| NetError::Identity {
-                path: key.to_string(),
-                reason: "identity creation raced but the winning key is unavailable".to_string(),
-            })?;
+            let raw = storage
+                .read_secret(key)?
+                .ok_or_else(|| NetError::Identity {
+                    path: key.to_string(),
+                    reason: "identity creation raced but the winning key is unavailable"
+                        .to_string(),
+                })?;
             decode_identity_key(key, decode_utf8(key, raw)?.trim())
         }
     }

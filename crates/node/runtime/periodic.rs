@@ -30,10 +30,9 @@ pub(super) async fn tick_runtime(
     runtime_state.rep.tick_decay();
 
     let mut pulses = Vec::new();
-    if let Some(pulse) = runtime_maintenance::close_expired_unverified_relayed(
-        swarm,
-        &mut runtime_state.relay_state,
-    ) {
+    if let Some(pulse) =
+        runtime_maintenance::close_expired_unverified_relayed(swarm, &mut runtime_state.relay_state)
+    {
         pulses.push(pulse);
     }
     pulses.extend(runtime_maintenance::maintain_application_connections(

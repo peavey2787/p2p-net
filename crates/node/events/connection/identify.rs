@@ -32,11 +32,8 @@ pub(crate) async fn handle_identify_observed_addr(
         .contains_key(peer_id);
     if application_compatible {
         for namespace in ctx.application_namespaces {
-            ctx.peer_book.record_namespace(
-                *peer_id,
-                namespace.clone(),
-                PeerSource::Connected,
-            );
+            ctx.peer_book
+                .record_namespace(*peer_id, namespace.clone(), PeerSource::Connected);
         }
         ctx.peer_book.record_connected(*peer_id, None);
         ctx.relay_state.unverified_relayed_peers.remove(peer_id);

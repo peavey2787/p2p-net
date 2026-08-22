@@ -324,8 +324,8 @@ fn prometheus_metrics_exports_operator_counters() {
 #[test]
 fn dashboard_distinguishes_discovered_pending_and_connected_peers() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let dashboard = fs::read_to_string(root.join("examples/p2p_node.rs"))
-        .expect("dashboard example");
+    let dashboard =
+        fs::read_to_string(root.join("examples/p2p_node.rs")).expect("dashboard example");
     let view = fs::read_to_string(root.join("examples/p2p_node/view/sections.rs"))
         .expect("dashboard view");
 

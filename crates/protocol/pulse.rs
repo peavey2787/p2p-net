@@ -96,10 +96,14 @@ pub fn encode_heartbeat_wire(env: &HeartbeatEnvelope) -> Result<Vec<u8>, NetErro
 
 fn decode_heartbeat_wire(data: &[u8]) -> Result<HeartbeatEnvelope, NetError> {
     if data.len() < FIXED_WIRE_BYTES {
-        return Err(NetError::GossipCodec("heartbeat frame is truncated".to_string()));
+        return Err(NetError::GossipCodec(
+            "heartbeat frame is truncated".to_string(),
+        ));
     }
     if data[..HEARTBEAT_WIRE_MAGIC.len()] != HEARTBEAT_WIRE_MAGIC {
-        return Err(NetError::GossipCodec("heartbeat frame magic mismatch".to_string()));
+        return Err(NetError::GossipCodec(
+            "heartbeat frame magic mismatch".to_string(),
+        ));
     }
 
     let mut cursor = HEARTBEAT_WIRE_MAGIC.len();
@@ -109,7 +113,9 @@ fn decode_heartbeat_wire(data: &[u8]) -> Result<HeartbeatEnvelope, NetError> {
         .checked_add(peer_len)
         .ok_or_else(|| NetError::GossipCodec("heartbeat frame length overflow".to_string()))?;
     if data.len() != expected_len {
-        return Err(NetError::GossipCodec("heartbeat frame length mismatch".to_string()));
+        return Err(NetError::GossipCodec(
+            "heartbeat frame length mismatch".to_string(),
+        ));
     }
 
     let peer_end = cursor + peer_len;

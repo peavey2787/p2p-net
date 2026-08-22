@@ -239,13 +239,7 @@ pub fn on_mesh_event(
     identify_addresses: &mut IdentifyAddressState,
 ) {
     if let MeshEvent::Identify(ev) = event {
-        on_identify_event(
-            swarm,
-            ev,
-            peer_cache_writes,
-            peer_book,
-            identify_addresses,
-        );
+        on_identify_event(swarm, ev, peer_cache_writes, peer_book, identify_addresses);
     }
 }
 

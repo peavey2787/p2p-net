@@ -46,9 +46,8 @@ fn dashboard_neutralizes_terminal_escape_and_bidi_controls() {
         public_addr: Some("/ip4/1.2.3.4/tcp/4001\r\x1b]0;owned\x07".to_string()),
         ..NodeSnapshot::default()
     };
-    snapshot.pulses = VecDeque::from([
-        "incoming error peer=evil\x1b[2J\x1b[H\u{200b}masked".to_string(),
-    ]);
+    snapshot.pulses =
+        VecDeque::from(["incoming error peer=evil\x1b[2J\x1b[H\u{200b}masked".to_string()]);
 
     let text = dashboard_view::dashboard_lines(&snapshot, 120, 40)
         .into_iter()
@@ -118,6 +117,9 @@ fn dashboard_keeps_distinct_peer_and_discovery_counters_visible() {
         "PENDING 2",
         "AWAITING ADDRS 5",
     ] {
-        assert!(text.contains(expected), "missing dashboard counter: {expected}");
+        assert!(
+            text.contains(expected),
+            "missing dashboard counter: {expected}"
+        );
     }
 }

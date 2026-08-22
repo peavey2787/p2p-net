@@ -323,7 +323,6 @@ mod tests {
         assert!(bad_regs.validate().is_err());
     }
 
-
     #[test]
     fn discovered_peer_history_is_bounded() {
         let mut state = RendezvousState::default();

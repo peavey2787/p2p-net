@@ -4,8 +4,8 @@ use std::path::Path;
 use libp2p::PeerId;
 use p2p_net::{
     app_ident_topic, app_topic_name, decode_app_message, encode_app_message, normalize_app_topic,
-    validate_app_message_authentication, AppMessage,
-    NodeMetrics, PeerInfo, PeerSource, MAX_APP_MESSAGE_BYTES,
+    validate_app_message_authentication, AppMessage, NodeMetrics, PeerInfo, PeerSource,
+    MAX_APP_MESSAGE_BYTES,
 };
 
 #[test]
@@ -40,14 +40,16 @@ fn application_message_codec_round_trips_addressed_and_broadcast_messages() {
 fn app_message_authentication_binds_signed_author_and_outer_topic() {
     let author = PeerId::random();
     let other = PeerId::random();
-    let message = AppMessage::broadcast(7, "chat/general", author, b"hello".to_vec())
-        .expect("message");
+    let message =
+        AppMessage::broadcast(7, "chat/general", author, b"hello".to_vec()).expect("message");
     let topic = app_ident_topic(7, "chat/general").expect("topic").hash();
 
     assert!(validate_app_message_authentication(&message, &author, &topic).is_ok());
     assert!(validate_app_message_authentication(&message, &other, &topic).is_err());
 
-    let wrong_topic = app_ident_topic(7, "chat/other").expect("other topic").hash();
+    let wrong_topic = app_ident_topic(7, "chat/other")
+        .expect("other topic")
+        .hash();
     assert!(validate_app_message_authentication(&message, &author, &wrong_topic).is_err());
 }
 

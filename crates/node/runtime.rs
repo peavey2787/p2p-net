@@ -12,8 +12,8 @@ use libp2p::gossipsub::{IdentTopic, TopicHash};
 use libp2p::swarm::SwarmEvent;
 use libp2p::{Multiaddr, PeerId, Swarm};
 use tokio::sync::{broadcast, mpsc, Mutex};
-use tokio::time::MissedTickBehavior;
 use tokio::task::JoinHandle;
+use tokio::time::MissedTickBehavior;
 
 use crate::api::{AppMessage, NodeMetrics};
 use crate::connectivity::connection_strategy::PendingConnectionPlans;

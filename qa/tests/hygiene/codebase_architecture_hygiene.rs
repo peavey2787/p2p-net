@@ -222,7 +222,6 @@ fn cargo_test_registrations_are_unique_and_complete() {
     }
 }
 
-
 fn collect_rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in fs::read_dir(dir).expect("read dir") {
         let entry = entry.expect("dir entry");
@@ -234,7 +233,6 @@ fn collect_rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
         }
     }
 }
-
 
 fn extract_toml_string(block: &str, key: &str) -> Option<String> {
     block.lines().find_map(|line| {
