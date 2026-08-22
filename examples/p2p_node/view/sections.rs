@@ -5,7 +5,7 @@ use super::text::{
 };
 use super::widgets::{
     join_or_dash, local_listen_display, panel_content, panel_footer, panel_header,
-    public_addr_display, push_bool, push_metric, push_switch,
+    public_addr_display, push_metric, push_switch,
 };
 use super::{Line, Tone};
 
