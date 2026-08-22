@@ -2,7 +2,14 @@ use std::fs;
 use std::time::Duration;
 
 use libp2p::PeerId;
-use p2p_net::{start_node, DiscoveryConfig, NodeConfig, RelayServiceConfig};
+use p2p_net::{
+    start_node, DhtDiscoveryConfig, DiscoveryConfig, NodeConfig, NodeHandle, NodeProfile,
+    PublicBootstrapConfig, PublicIpProbeConfig, RelayServiceConfig, RendezvousConfig,
+};
+
+const LISTEN_TIMEOUT: Duration = Duration::from_secs(15);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+const RELAY_ACTIVITY_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[tokio::test]
 async fn rapid_connect_disconnect_loop_does_not_hang_shutdown() {
@@ -14,37 +21,19 @@ async fn rapid_connect_disconnect_loop_does_not_hang_shutdown() {
         tokio::time::timeout(Duration::from_secs(2), handle.shutdown())
             .await
             .expect("shutdown should not hang");
-        let _ = fs::remove_file(key_path);
-        let _ = fs::remove_file(cache_path);
+        cleanup_files(&key_path, &cache_path);
     }
 }
 
 #[tokio::test]
 async fn public_relay_node_starts_with_abuse_limits_enabled() {
-    let cfg = NodeConfig {
-        relay: RelayServiceConfig {
-            enabled: true,
-            max_reservations: 8,
-            max_reservations_per_peer: 1,
-            max_circuits: 16,
-            max_circuits_per_peer: 2,
-            max_circuit_bytes: 1024 * 1024,
-            max_circuit_duration_secs: 30,
-            reservation_rate_per_peer_per_min: 2,
-            reservation_rate_per_ip_per_min: 8,
-            circuit_rate_per_peer_per_min: 4,
-            circuit_rate_per_ip_per_min: 16,
-            ..RelayServiceConfig::default()
-        },
-        ..test_config("public-relay")
-    };
+    let cfg = relay_server_config("public-relay");
     let key_path = cfg.identity_key_path.clone();
     let cache_path = cfg.discovery.peer_cache_path.clone();
     let handle = start_node(cfg).await.expect("start relay node");
     let snap = handle.snapshot.lock().await.clone();
     handle.shutdown().await;
-    let _ = fs::remove_file(key_path);
-    let _ = fs::remove_file(cache_path);
+    cleanup_files(&key_path, &cache_path);
 
     assert!(snap.relay_server_enabled);
     assert_eq!(snap.relay_acl_scope, "connection_level");
@@ -56,12 +45,13 @@ async fn public_relay_node_starts_with_abuse_limits_enabled() {
 }
 
 #[tokio::test]
-#[ignore = "hostile load test: set P2P_NET_TEST_RELAY_ADDR=/ip4/.../tcp/.../p2p/<relay> and run cargo test --test multi_node_hostile -- --ignored relay_reservation_spam_does_not_panic"]
+#[ignore = "deferred hostile relay-load test; run-full-validation always executes it in the final long-test phase"]
 async fn relay_reservation_spam_does_not_panic() {
-    let Ok(relay_addr) = std::env::var("P2P_NET_TEST_RELAY_ADDR") else {
-        eprintln!("skipping external relay spam test: P2P_NET_TEST_RELAY_ADDR is not set");
-        return;
-    };
+    let relay_cfg = relay_server_config("relay-spam-server");
+    let relay_key_path = relay_cfg.identity_key_path.clone();
+    let relay_cache_path = relay_cfg.discovery.peer_cache_path.clone();
+    let relay = start_node(relay_cfg).await.expect("start local relay server");
+    let (relay_addr, _) = wait_for_tcp_dial_addr(&relay).await;
 
     let mut clients = Vec::new();
     for i in 0..16u32 {
@@ -76,23 +66,31 @@ async fn relay_reservation_spam_does_not_panic() {
         clients.push((handle, key_path, cache_path));
     }
 
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    let saw_relay_activity = wait_for_relay_activity(&relay).await;
 
     for (handle, key_path, cache_path) in clients {
         handle.shutdown().await;
-        let _ = fs::remove_file(key_path);
-        let _ = fs::remove_file(cache_path);
+        cleanup_files(&key_path, &cache_path);
     }
+    relay.shutdown().await;
+    cleanup_files(&relay_key_path, &relay_cache_path);
+
+    assert!(
+        saw_relay_activity,
+        "local relay never observed reservation activity from the hostile client burst"
+    );
 }
 
 #[tokio::test]
-#[ignore = "hostile load test: set P2P_NET_TEST_TARGET_ADDR=/ip4/.../tcp/.../p2p/<peer> and run cargo test --test multi_node_hostile -- --ignored circuit_open_close_spam_does_not_hang"]
+#[ignore = "deferred hostile connection-churn test; run-full-validation always executes it after normal checks"]
 async fn circuit_open_close_spam_does_not_hang() {
-    let Ok(target_addr) = std::env::var("P2P_NET_TEST_TARGET_ADDR") else {
-        eprintln!("skipping circuit/open-close spam test: P2P_NET_TEST_TARGET_ADDR is not set");
-        return;
-    };
+    let target_cfg = test_config("open-close-target");
+    let target_key_path = target_cfg.identity_key_path.clone();
+    let target_cache_path = target_cfg.discovery.peer_cache_path.clone();
+    let target = start_node(target_cfg).await.expect("start local churn target");
+    let (target_addr, target_peer_id) = wait_for_tcp_dial_addr(&target).await;
 
+    let mut failed_iteration = None;
     for i in 0..16u32 {
         let cfg = NodeConfig {
             bootstrap_peers: vec![target_addr.clone()],
@@ -100,46 +98,170 @@ async fn circuit_open_close_spam_does_not_hang() {
         };
         let key_path = cfg.identity_key_path.clone();
         let cache_path = cfg.discovery.peer_cache_path.clone();
-        let handle = start_node(cfg).await.expect("start dialer");
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        let handle = start_node(cfg).await.expect("start churn dialer");
+        let connected = wait_for_peer_connection(&handle, &target_peer_id).await;
         handle.shutdown().await;
-        let _ = fs::remove_file(key_path);
-        let _ = fs::remove_file(cache_path);
+        cleanup_files(&key_path, &cache_path);
+        if !connected {
+            failed_iteration = Some(i);
+            break;
+        }
     }
+
+    target.shutdown().await;
+    cleanup_files(&target_key_path, &target_cache_path);
+
+    assert!(
+        failed_iteration.is_none(),
+        "local target was not reached during churn iteration {:?}",
+        failed_iteration
+    );
 }
 
 #[tokio::test]
-#[ignore = "hostile soak test: run manually with cargo test --test multi_node_hostile -- --ignored long_running_soak_node_stays_responsive"]
+#[ignore = "deferred one-minute soak test; run-full-validation executes it last"]
 async fn long_running_soak_node_stays_responsive() {
     let cfg = test_config("soak");
     let key_path = cfg.identity_key_path.clone();
     let cache_path = cfg.discovery.peer_cache_path.clone();
     let handle = start_node(cfg).await.expect("start node");
 
-    tokio::time::sleep(Duration::from_secs(60)).await;
+    for sample in 1..=12u32 {
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::timeout(Duration::from_secs(2), handle.get_peers())
+            .await
+            .unwrap_or_else(|_| panic!("soak responsiveness probe {sample} timed out"))
+            .unwrap_or_else(|err| panic!("soak responsiveness probe {sample} failed: {err}"));
+        tokio::time::timeout(Duration::from_secs(2), handle.snapshot.lock())
+            .await
+            .unwrap_or_else(|_| panic!("soak snapshot probe {sample} timed out"));
+    }
+
     let snap = handle.snapshot.lock().await.clone();
     handle.shutdown().await;
-    let _ = fs::remove_file(key_path);
-    let _ = fs::remove_file(cache_path);
+    cleanup_files(&key_path, &cache_path);
 
     assert!(snap.uptime_secs <= 120);
 }
 
+fn relay_server_config(label: &str) -> NodeConfig {
+    NodeConfig {
+        relay: RelayServiceConfig {
+            enabled: true,
+            max_reservations: 8,
+            max_reservations_per_peer: 1,
+            max_circuits: 16,
+            max_circuits_per_peer: 2,
+            max_circuit_bytes: 1024 * 1024,
+            max_circuit_duration_secs: 30,
+            reservation_rate_per_peer_per_min: 2,
+            reservation_rate_per_ip_per_min: 8,
+            circuit_rate_per_peer_per_min: 4,
+            circuit_rate_per_ip_per_min: 16,
+            ..RelayServiceConfig::default()
+        },
+        ..test_config(label)
+    }
+}
+
 fn test_config(label: &str) -> NodeConfig {
     NodeConfig {
+        profile: NodeProfile::Full,
         identity_key_path: temp_path(&format!("{label}-key"))
             .to_string_lossy()
             .to_string(),
         listen_addresses: vec!["/ip4/127.0.0.1/tcp/0".to_string()],
+        bootstrap_peers: Vec::new(),
+        relay_peers: Vec::new(),
         discovery: DiscoveryConfig {
             peer_cache_path: temp_path(&format!("{label}-cache"))
                 .to_string_lossy()
                 .to_string(),
+            public_bootstrap: PublicBootstrapConfig::private_infrastructure_only(),
+            rendezvous: RendezvousConfig {
+                client_enabled: false,
+                server_enabled: false,
+                ..RendezvousConfig::default()
+            },
+            dht: DhtDiscoveryConfig {
+                enabled: false,
+                announce: false,
+                discover: false,
+                ..DhtDiscoveryConfig::default()
+            },
             ..DiscoveryConfig::default()
+        },
+        public_ip_probe: PublicIpProbeConfig {
+            enabled: false,
+            ..PublicIpProbeConfig::default()
         },
         heartbeat_interval_secs: 1,
         ..NodeConfig::default()
     }
+}
+
+async fn wait_for_tcp_dial_addr(handle: &NodeHandle) -> (String, PeerId) {
+    tokio::time::timeout(LISTEN_TIMEOUT, async {
+        loop {
+            let snapshot = handle.snapshot.lock().await;
+            if let Some(addr) = snapshot
+                .local_listen_addresses
+                .iter()
+                .chain(snapshot.public_direct_listen_addresses.iter())
+                .find(|addr| addr.contains("/tcp/") && !addr.contains("/ws"))
+            {
+                let peer_id = handle.peer_id;
+                return (format!("{addr}/p2p/{peer_id}"), peer_id);
+            }
+            drop(snapshot);
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("timed out waiting for local TCP listen address")
+}
+
+async fn wait_for_peer_connection(handle: &NodeHandle, peer_id: &PeerId) -> bool {
+    let peer_id = peer_id.to_string();
+    tokio::time::timeout(CONNECT_TIMEOUT, async {
+        loop {
+            if handle.get_peers().await.is_ok_and(|peers| {
+                peers
+                    .iter()
+                    .any(|peer| peer.connected && peer.peer_id == peer_id)
+            }) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await
+    .is_ok()
+}
+
+async fn wait_for_relay_activity(handle: &NodeHandle) -> bool {
+    tokio::time::timeout(RELAY_ACTIVITY_TIMEOUT, async {
+        loop {
+            let snapshot = handle.snapshot.lock().await;
+            let activity = snapshot
+                .relay_reservations_accepted
+                .saturating_add(snapshot.relay_denied_reservations)
+                .saturating_add(snapshot.relay_rate_limited_events)
+                .saturating_add(snapshot.relay_server_errors);
+            if activity > 0 {
+                return;
+            }
+            drop(snapshot);
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await
+    .is_ok()
+}
+
+fn cleanup_files(key_path: &str, cache_path: &str) {
+    let _ = fs::remove_file(key_path);
+    let _ = fs::remove_file(cache_path);
 }
 
 fn temp_path(prefix: &str) -> std::path::PathBuf {

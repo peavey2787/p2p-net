@@ -4,7 +4,6 @@ setlocal EnableExtensions EnableDelayedExpansion
 set "ROOT=%~dp0"
 cd /d "%ROOT%"
 
-set "SKIP_IGNORED=0"
 set "NO_INSTALL_TOOLS=0"
 set "NO_CLEAN=0"
 set "NO_PAUSE=0"
@@ -12,11 +11,6 @@ set "FAILED_STEP="
 
 :parse_args
 if "%~1"=="" goto args_done
-if /I "%~1"=="--skip-ignored" (
-  set "SKIP_IGNORED=1"
-  shift
-  goto parse_args
-)
 if /I "%~1"=="--no-install-tools" (
   set "NO_INSTALL_TOOLS=1"
   shift
@@ -39,7 +33,6 @@ goto failed
 :args_done
 echo p2p-net full stable validation
 echo Root: %ROOT%
-echo SkipIgnored: %SKIP_IGNORED%
 echo NoInstallTools: %NO_INSTALL_TOOLS%
 echo NoClean: %NO_CLEAN%
 echo.
@@ -155,6 +148,7 @@ for %%P in (hickory-proto hickory-resolver) do (
 
 echo.
 echo ==^> Tests
+echo NOTE: The Rust harness will report three long hostile/load tests as ignored in this normal phase. They are deferred, not omitted: this runner executes each one once at the end, with the soak test last.
 set "CARGO_TARGET_DIR=%ROOT%target\full-validation\tests"
 echo CARGO_TARGET_DIR=!CARGO_TARGET_DIR!
 cargo test --workspace --locked -j 1
@@ -218,16 +212,32 @@ if errorlevel 1 (
   goto failed
 )
 
-if "%SKIP_IGNORED%"=="0" (
-  echo.
-  echo ==^> Ignored load/soak tests
-  set "CARGO_TARGET_DIR=%ROOT%target\full-validation\ignored"
-  echo CARGO_TARGET_DIR=!CARGO_TARGET_DIR!
-  cargo test --test multi_node_hostile --locked -j 1 -- --ignored --nocapture
-  if errorlevel 1 (
-    set "FAILED_STEP=Ignored load/soak tests"
-    goto failed
-  )
+echo.
+echo ==^> Deferred hostile relay-load test
+set "CARGO_TARGET_DIR=%ROOT%target\full-validation\hostile"
+echo CARGO_TARGET_DIR=!CARGO_TARGET_DIR!
+cargo test --test multi_node_hostile --locked -j 1 relay_reservation_spam_does_not_panic -- --ignored --exact --nocapture
+if errorlevel 1 (
+  set "FAILED_STEP=Deferred hostile relay-load test"
+  goto failed
+)
+
+echo.
+echo ==^> Deferred hostile connection-churn test
+echo CARGO_TARGET_DIR=!CARGO_TARGET_DIR!
+cargo test --test multi_node_hostile --locked -j 1 circuit_open_close_spam_does_not_hang -- --ignored --exact --nocapture
+if errorlevel 1 (
+  set "FAILED_STEP=Deferred hostile connection-churn test"
+  goto failed
+)
+
+echo.
+echo ==^> Deferred one-minute soak test ^(final test^)
+echo CARGO_TARGET_DIR=!CARGO_TARGET_DIR!
+cargo test --test multi_node_hostile --locked -j 1 long_running_soak_node_stays_responsive -- --ignored --exact --nocapture
+if errorlevel 1 (
+  set "FAILED_STEP=Deferred one-minute soak test"
+  goto failed
 )
 
 set "CARGO_TARGET_DIR="

@@ -33,6 +33,11 @@ fn dashboard_layout_is_bounded_across_terminal_sizes() {
                     "column overflow at {columns}x{rows}: {}",
                     line.plain_text()
                 );
+                for span in line.spans() {
+                    assert!(!span.text().contains('\x1b'));
+                    let _ = span.tone();
+                    let _ = span.bold();
+                }
             }
         }
     }
@@ -48,6 +53,11 @@ fn dashboard_neutralizes_terminal_escape_and_bidi_controls() {
     };
     snapshot.pulses =
         VecDeque::from(["incoming error peer=evil\x1b[2J\x1b[H\u{200b}masked".to_string()]);
+
+    assert_eq!(
+        dashboard_view::sanitize_terminal_text("raw\x1b[31m\u{202e}text"),
+        "raw?[31m?text"
+    );
 
     let text = dashboard_view::dashboard_lines(&snapshot, 120, 40)
         .into_iter()

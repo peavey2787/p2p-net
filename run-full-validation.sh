@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SKIP_IGNORED=0
 NO_INSTALL_TOOLS=0
 NO_CLEAN=0
 NO_PAUSE=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --skip-ignored)
-      SKIP_IGNORED=1
-      ;;
     --no-install-tools)
       NO_INSTALL_TOOLS=1
       ;;
@@ -135,7 +131,6 @@ run_cargo_audit_with_repo_config() {
 
 echo "p2p-net full stable validation"
 echo "Root: $ROOT"
-echo "SkipIgnored: $SKIP_IGNORED"
 echo "NoInstallTools: $NO_INSTALL_TOOLS"
 echo "NoClean: $NO_CLEAN"
 echo
@@ -167,6 +162,7 @@ run_step "Format check" cargo fmt --all -- --check
 run_step "Dependency graph guard" assert_no_rejected_dns_resolver
 
 set_validation_target tests
+echo "NOTE: The Rust harness will report three long hostile/load tests as ignored in this normal phase. They are deferred, not omitted: this runner executes each one once at the end, with the soak test last."
 run_step "Tests" cargo test --workspace --locked -j 1
 
 set_validation_target dashboard
@@ -187,10 +183,10 @@ else
   run_step "Dependency policy" cargo deny --config qa/ci/deny.toml check
 fi
 
-if [[ "$SKIP_IGNORED" != "1" ]]; then
-  set_validation_target ignored
-  run_step "Ignored load/soak tests" cargo test --test multi_node_hostile --locked -j 1 -- --ignored --nocapture
-fi
+set_validation_target hostile
+run_step "Deferred hostile relay-load test" cargo test --test multi_node_hostile --locked -j 1 relay_reservation_spam_does_not_panic -- --ignored --exact --nocapture
+run_step "Deferred hostile connection-churn test" cargo test --test multi_node_hostile --locked -j 1 circuit_open_close_spam_does_not_hang -- --ignored --exact --nocapture
+run_step "Deferred one-minute soak test (final test)" cargo test --test multi_node_hostile --locked -j 1 long_running_soak_node_stays_responsive -- --ignored --exact --nocapture
 
 clear_validation_target
 echo

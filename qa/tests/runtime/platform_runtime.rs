@@ -5,9 +5,11 @@ use p2p_net::connectivity::identity::load_or_create_identity_key_with_storage;
 use p2p_net::connectivity::peer_cache::{
     load_entries_with_storage, record_seen_peer_addr_with_storage,
 };
+#[cfg(unix)]
+use p2p_net::DesktopPlatformRuntime;
 use p2p_net::{
-    DesktopPlatformRuntime, DiscoveryConfig, MemoryNodeStorage, MobilePlatformRuntime,
-    NetworkReachability, NodeConfig, NodeRole, NodeStorage, PlatformKind, PlatformRuntime,
+    DiscoveryConfig, MemoryNodeStorage, MobilePlatformRuntime, NetworkReachability, NodeConfig,
+    NodeRole, NodeStorage, PlatformKind, PlatformRuntime,
 };
 
 #[test]

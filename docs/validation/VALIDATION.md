@@ -28,7 +28,9 @@ cargo test --features dashboard --locked -j 1
 cargo clippy --workspace --all-targets --all-features --locked -j 1 -- -D warnings
 cargo audit --file Cargo.lock  # root launcher stages qa/ci/audit.toml to .cargo/audit.toml
 cargo deny --config qa/ci/deny.toml check  # launcher probes equivalent check-level syntax when required
-cargo test --test multi_node_hostile --locked -j 1 -- --ignored --nocapture
+cargo test --test multi_node_hostile --locked -j 1 relay_reservation_spam_does_not_panic -- --ignored --exact --nocapture
+cargo test --test multi_node_hostile --locked -j 1 circuit_open_close_spam_does_not_hang -- --ignored --exact --nocapture
+cargo test --test multi_node_hostile --locked -j 1 long_running_soak_node_stays_responsive -- --ignored --exact --nocapture
 ```
 
 Defaults:
@@ -39,10 +41,11 @@ Defaults:
 - Fuzz targets are included under `qa/fuzz/`. The scheduled security workflow uses pinned `nightly-2026-08-20` and `cargo-fuzz 0.13.2` to build and run all targets.
 - GitHub Actions checkout is pinned to an immutable commit SHA and uses read-only repository permissions with credential persistence disabled.
 
+The three `#[ignore]` markers on `multi_node_hostile` are scheduling markers, not omissions. They keep the normal `cargo test --workspace` phase from running the expensive tests twice. The canonical launchers always execute each deferred test explicitly after Clippy/audit/deny, with the one-minute soak test last. The hostile relay and connection-churn tests create their own loopback peers, so they no longer silently return when external environment variables are missing.
+
 Windows CMD options:
 
 ```cmd
-run-full-validation.cmd --skip-ignored
 run-full-validation.cmd --no-install-tools
 run-full-validation.cmd --no-clean
 ```
@@ -50,7 +53,6 @@ run-full-validation.cmd --no-clean
 Bash options:
 
 ```bash
-./run-full-validation.sh --skip-ignored
 ./run-full-validation.sh --no-install-tools
 ./run-full-validation.sh --no-clean
 ```
@@ -146,7 +148,7 @@ Review the resulting `Cargo.lock` diff and RustSec/license/source changes, then 
 
 ## Scheduled security validation
 
-`.github/workflows/security-nightly.yml` runs the ignored hostile/load suite and bounded libFuzzer campaigns for heartbeat, config, peer cache, application-message, DNSADDR TXT, peer-multiaddr, and WebRTC STUN parsing. This complements the fast cross-platform push/PR matrix rather than weakening it.
+`.github/workflows/security-nightly.yml` repeats the complete validation suite, including the deferred hostile/load/soak tests, and runs bounded libFuzzer campaigns for heartbeat, config, peer cache, application-message, DNSADDR TXT, peer-multiaddr, and WebRTC STUN parsing. The cross-platform push/PR matrix also runs the complete validation launcher; the nightly job adds repeated coverage plus fuzzing rather than relying on skipped tests.
 
 ## Public fallback checks
 

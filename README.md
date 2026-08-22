@@ -46,12 +46,11 @@ Use the single full-validation launcher for your OS from the crate root. On Wind
 run-full-validation.cmd
 ```
 
-It cleans stale build artifacts, verifies the committed dependency lockfile with `--locked`, checks formatting without mutating source, then runs tests, dashboard-feature tests, clippy, `cargo audit`, `cargo deny`, and ignored load/soak tests. It uses isolated validation target directories to avoid stale/incomplete `rlib` artifacts on Windows. Rust is pinned to 1.98.0, audit/deny tool releases are pinned, and missing exact tool versions are installed unless `--no-install-tools` is used.
+It cleans stale build artifacts, verifies the committed dependency lockfile with `--locked`, checks formatting without mutating source, then runs tests, dashboard-feature tests, clippy, `cargo audit`, and `cargo deny`. Three intentionally long hostile/load/soak tests are deferred so they run once at the end, with the one-minute soak test last. The full runner has no skip option for those tests: `run-full-validation` means all registered tests run. It uses isolated validation target directories to avoid stale/incomplete `rlib` artifacts on Windows. Rust is pinned to 1.98.0, audit/deny tool releases are pinned, and missing exact tool versions are installed unless `--no-install-tools` is used.
 
 Useful options:
 
 ```cmd
-run-full-validation.cmd --skip-ignored
 run-full-validation.cmd --no-install-tools
 run-full-validation.cmd --no-clean
 ```
@@ -62,7 +61,7 @@ Linux equivalent:
 ./run-full-validation.sh
 ```
 
-Fuzz targets are included under `qa/fuzz/`. They are not part of the cross-platform stable launcher, but the scheduled security workflow builds/runs every target and also runs the ignored hostile/load suite. Additional validation and hostile-network notes are in `docs/validation/VALIDATION.md`.
+Fuzz targets are included under `qa/fuzz/`. They are not part of the cross-platform stable launcher, but the scheduled security workflow builds/runs every fuzz target and also repeats the complete validation suite including deferred hostile/load/soak tests. Additional validation and hostile-network notes are in `docs/validation/VALIDATION.md`.
 
 
 ## The General-Purpose Application API
@@ -220,7 +219,7 @@ Production operators still own deployment concerns that no library can supply au
 
 ## Manual checks
 
-Normally, do not run the individual commands manually. Use `run-full-validation.cmd` on Windows or `./run-full-validation.sh` on Linux; these are the canonical root-level one-file validation runners for formatting, tests, clippy, security audit, dependency policy, and ignored load/soak tests.
+Normally, do not run the individual commands manually. Use `run-full-validation.cmd` on Windows or `./run-full-validation.sh` on Linux; these are the canonical root-level one-file validation runners for formatting, tests, clippy, security audit, dependency policy, and the deferred hostile/load/soak tests that are always executed at the end.
 
 - `docs/impl/EVENT_HANDLING.md` documents the single-responsibility swarm event split.
 - `docs/impl/BEHAVIOUR_POLICY.md` documents profile-driven behaviour construction.

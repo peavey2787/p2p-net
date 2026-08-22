@@ -11,7 +11,7 @@ jobs:
   validation:
     name: stable-validation-${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -25,8 +25,8 @@ jobs:
         run: rustup toolchain install 1.98.0 --profile minimal --component rustfmt --component clippy && rustup default 1.98.0
       - name: Full validation (Unix)
         if: runner.os != 'Windows'
-        run: bash ./run-full-validation.sh --skip-ignored --no-pause
+        run: bash ./run-full-validation.sh --no-pause
       - name: Full validation (Windows)
         if: runner.os == 'Windows'
         shell: cmd
-        run: .\run-full-validation.cmd --skip-ignored --no-pause
+        run: .\run-full-validation.cmd --no-pause

@@ -19,7 +19,7 @@ jobs:
           persist-credentials: false
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.98.0 --profile minimal --component rustfmt --component clippy && rustup default 1.98.0
-      - name: Run ignored hostile/load tests
+      - name: Run complete validation including deferred hostile/load/soak tests
         run: bash ./run-full-validation.sh --no-pause
 
   fuzz:

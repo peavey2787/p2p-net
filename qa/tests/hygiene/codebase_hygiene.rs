@@ -130,7 +130,36 @@ fn repository_layout_matches_modular_baseline() {
                 && contents.contains("cargo deny --config qa/ci/deny.toml check"),
             "{launcher} must support both cargo-deny config-option placements"
         );
+        assert!(
+            !contents.contains("--skip-ignored"),
+            "{launcher} is the run-all gate and must not provide a path that omits deferred tests"
+        );
+        let relay_load = contents
+            .find("relay_reservation_spam_does_not_panic")
+            .expect("relay-load test must be scheduled by the full runner");
+        let connection_churn = contents
+            .find("circuit_open_close_spam_does_not_hang")
+            .expect("connection-churn test must be scheduled by the full runner");
+        let soak = contents
+            .find("long_running_soak_node_stays_responsive")
+            .expect("soak test must be scheduled by the full runner");
+        assert!(
+            relay_load < connection_churn && connection_churn < soak,
+            "{launcher} must defer hostile/load tests and keep the long soak test last"
+        );
     }
+
+    let ignore_marker = ["#[", "ignore"].concat();
+    let ignored_markers = text_files_under(&root, &["qa/tests"])
+        .into_iter()
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("rs"))
+        .map(|path| fs::read_to_string(path).expect("QA Rust source"))
+        .map(|source| source.matches(&ignore_marker).count())
+        .sum::<usize>();
+    assert_eq!(
+        ignored_markers, 3,
+        "adding an ignored QA test requires explicitly scheduling it in both full-validation launchers"
+    );
 
     let windows = fs::read_to_string(root.join("run-full-validation.cmd"))
         .expect("Windows validation launcher");
@@ -142,11 +171,11 @@ fn repository_layout_matches_modular_baseline() {
     let workflow =
         fs::read_to_string(root.join(".github/workflows/ci.yml")).expect("GitHub Actions workflow");
     assert!(
-        workflow.contains("bash ./run-full-validation.sh --skip-ignored --no-pause"),
+        workflow.contains("bash ./run-full-validation.sh --no-pause"),
         "GitHub Actions Unix validation must invoke the root launcher"
     );
     assert!(
-        workflow.contains(".\\run-full-validation.cmd --skip-ignored --no-pause"),
+        workflow.contains(".\\run-full-validation.cmd --no-pause"),
         "GitHub Actions Windows validation must invoke the root CMD launcher"
     );
     assert!(
