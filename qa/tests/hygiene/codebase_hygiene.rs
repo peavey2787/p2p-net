@@ -125,6 +125,22 @@ fn repository_layout_matches_modular_baseline() {
         !windows.to_ascii_lowercase().contains("call :"),
         "Windows validation must not rely on CALL :label subroutines"
     );
+
+    let workflow = fs::read_to_string(root.join(".github/workflows/ci.yml"))
+        .expect("GitHub Actions workflow");
+    assert!(
+        workflow.contains("bash ./run-full-validation.sh --skip-ignored --no-pause"),
+        "GitHub Actions Unix validation must invoke the root launcher"
+    );
+    assert!(
+        workflow.contains(".\\run-full-validation.cmd --skip-ignored --no-pause"),
+        "GitHub Actions Windows validation must invoke the root CMD launcher"
+    );
+    assert!(
+        !workflow.contains("qa/ci/run-full-validation.sh")
+            && !workflow.contains("qa\\ci\\run-full-validation.ps1"),
+        "GitHub Actions must not reference removed qa/ci validation launchers"
+    );
 }
 
 #[test]

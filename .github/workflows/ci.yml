@@ -19,8 +19,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - name: Full validation (Unix)
         if: runner.os != 'Windows'
-        run: bash qa/ci/run-full-validation.sh --skip-ignored
+        run: bash ./run-full-validation.sh --skip-ignored --no-pause
       - name: Full validation (Windows)
         if: runner.os == 'Windows'
-        shell: pwsh
-        run: .\qa\ci\run-full-validation.ps1 -SkipIgnored
+        shell: cmd
+        run: .\run-full-validation.cmd --skip-ignored --no-pause
