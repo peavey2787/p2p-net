@@ -180,6 +180,10 @@ fn repository_layout_matches_modular_baseline() {
         !manifest.contains("ratatui") && !lock.contains("name = \"ratatui\"") && !lock.contains("name = \"lru\""),
         "the dashboard must not reintroduce the known-unsound lru dependency through ratatui"
     );
+    assert!(
+        locked_package_version(&lock, "event-listener") >= Some((5, 4, 2)),
+        "event-listener must stay at or above 5.4.2 to exclude RUSTSEC-2026-0221"
+    );
 
     let nightly = fs::read_to_string(root.join(".github/workflows/security-nightly.yml"))
         .expect("nightly security workflow");
@@ -313,6 +317,22 @@ fn node_config_snapshot_and_validation_live_in_focused_modules() {
             && node_validation.contains("pub(crate) fn parse_multiaddrs"),
         "config validation and parsing helpers belong in config_validation.rs"
     );
+}
+
+fn locked_package_version(lock: &str, package: &str) -> Option<(u64, u64, u64)> {
+    let name_line = format!("name = \"{package}\"");
+    let section = lock
+        .split("[[package]]")
+        .find(|section| section.lines().any(|line| line == name_line))?;
+    let version = section
+        .lines()
+        .find_map(|line| line.strip_prefix("version = \""))?
+        .strip_suffix('"')?;
+    let mut parts = version.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts.next()?.split('-').next()?.parse().ok()?;
+    Some((major, minor, patch))
 }
 
 fn text_files_under(root: &Path, entries: &[&str]) -> Vec<PathBuf> {
