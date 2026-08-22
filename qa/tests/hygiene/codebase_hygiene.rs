@@ -183,6 +183,10 @@ fn repository_layout_matches_modular_baseline() {
         "the dashboard must not reintroduce the known-unsound lru dependency through ratatui"
     );
     assert!(
+        manifest.contains("event-listener = \">=5.4.2, <6\""),
+        "Cargo.toml must keep an explicit event-listener security floor so the committed lockfile has a manifest-backed patched resolution"
+    );
+    assert!(
         locked_package_version(&lock, "event-listener") >= Some((5, 4, 2)),
         "event-listener must stay at or above 5.4.2 to exclude RUSTSEC-2026-0221"
     );

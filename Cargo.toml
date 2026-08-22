@@ -198,6 +198,10 @@ path = "qa/tests/security/pulse_validation.rs"
 [dependencies]
 futures = "0.3"
 either = "1"
+# Keep the patched event-listener release in the manifest's resolution constraints.
+# This crate is already transitive; the direct security floor makes Cargo.lock
+# reproducible without relying on a hand-edited transitive package entry.
+event-listener = ">=5.4.2, <6"
 libp2p = { version = "0.56", default-features = false, features = [
     "tokio",
     "tcp",

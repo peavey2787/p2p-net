@@ -2429,6 +2429,7 @@ dependencies = [
  "blake3",
  "crossterm",
  "either",
+ "event-listener",
  "futures",
  "hex",
  "libp2p",
