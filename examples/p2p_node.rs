@@ -95,9 +95,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn full_node_default_config() -> NodeConfig {
-    let mut cfg = NodeConfig::default();
-    cfg.profile = NodeProfile::Full;
-    cfg
+    NodeConfig {
+        profile: NodeProfile::Full,
+        ..NodeConfig::default()
+    }
 }
 
 async fn run_ui(

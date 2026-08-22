@@ -19,7 +19,7 @@ fn dashboard_is_event_driven_and_avoids_periodic_full_snapshot_hashing() {
 fn dashboard_default_is_full_capability_without_example_specific_throttles() {
     let source = fs::read_to_string("examples/p2p_node.rs").expect("read dashboard example");
 
-    assert!(source.contains("cfg.profile = NodeProfile::Full"));
+    assert!(source.contains("profile: NodeProfile::Full"));
     assert!(source.contains("#[tokio::main]"));
     assert!(!source.contains("worker_threads = 1"));
     assert!(!source.contains("--low-cpu"));

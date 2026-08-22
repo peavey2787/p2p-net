@@ -141,6 +141,10 @@ fn repository_layout_matches_modular_baseline() {
             && !workflow.contains("qa\\ci\\run-full-validation.ps1"),
         "GitHub Actions must not reference removed qa/ci validation launchers"
     );
+    assert!(
+        workflow.contains("actions/checkout@v7") && !workflow.contains("actions/checkout@v4"),
+        "GitHub Actions checkout must use the Node 24-compatible action runtime"
+    );
 }
 
 #[test]

@@ -23,35 +23,31 @@ pub(crate) fn initial_relay_state(
     relay_reservation_plan: &RelayReservationPlan,
     relay_selection_plan: &RelaySelectionPlan,
 ) -> RelayState {
-    // Build from `Default` and mutate the public initialization fields rather
-    // than using struct-update syntax. `RelayState` deliberately keeps its
-    // internal DCUtR eviction queue private so callers cannot desynchronize
-    // it from the public retry-history maps.
-    let mut state = RelayState::default();
-    state.server_enabled = cfg.relay.is_active_now();
-    state.health = cfg.relay.health_now();
-    state.relay_client_reservation_attempts = relay_reservation_plan.attempted;
-    state.relay_client_reservation_failures = relay_reservation_plan.errors.len();
-    state.dcutr_enabled = resolved_config.dcutr_enabled;
-    state.relay_discovery_selected_relays = relay_selection_plan
-        .selected_strings()
-        .into_iter()
-        .collect::<BTreeSet<_>>();
-    state.relay_discovery_candidate_count = relay_selection_plan.total_candidates();
-    state.relay_discovery_configured_candidates = relay_selection_plan.configured_candidates;
-    state.relay_discovery_cached_candidates = relay_selection_plan.cached_candidates;
-    state.relay_discovery_rendezvous_candidates = relay_selection_plan.rendezvous_candidates;
-    state.relay_discovery_public_candidates = relay_selection_plan.public_candidates;
-    state.relay_discovery_ignored_candidates = relay_selection_plan.ignored_candidates;
-    state.relay_discovery_failures = relay_selection_plan
-        .errors
-        .len()
-        .saturating_add(relay_reservation_plan.errors.len());
-    state.relay_discovery_replacements = 0;
-    // Keep requested relay listeners out of advertised reachability until
-    // the relay transport confirms them with `NewListenAddr`.
-    state.relayed_listen_addrs = BTreeSet::new();
-    state
+    RelayState {
+        server_enabled: cfg.relay.is_active_now(),
+        health: cfg.relay.health_now(),
+        relay_client_reservation_attempts: relay_reservation_plan.attempted,
+        relay_client_reservation_failures: relay_reservation_plan.errors.len(),
+        dcutr_enabled: resolved_config.dcutr_enabled,
+        relay_discovery_selected_relays: relay_selection_plan
+            .selected_strings()
+            .into_iter()
+            .collect::<BTreeSet<_>>(),
+        relay_discovery_candidate_count: relay_selection_plan.total_candidates(),
+        relay_discovery_configured_candidates: relay_selection_plan.configured_candidates,
+        relay_discovery_cached_candidates: relay_selection_plan.cached_candidates,
+        relay_discovery_rendezvous_candidates: relay_selection_plan.rendezvous_candidates,
+        relay_discovery_public_candidates: relay_selection_plan.public_candidates,
+        relay_discovery_ignored_candidates: relay_selection_plan.ignored_candidates,
+        relay_discovery_failures: relay_selection_plan
+            .errors
+            .len()
+            .saturating_add(relay_reservation_plan.errors.len()),
+        // Keep requested relay listeners out of advertised reachability until
+        // the relay transport confirms them with `NewListenAddr`.
+        relayed_listen_addrs: BTreeSet::new(),
+        ..RelayState::default()
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
