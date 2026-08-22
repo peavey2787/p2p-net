@@ -96,7 +96,7 @@ if "%NO_CLEAN%"=="0" (
 
 echo.
 echo ==^> Verify committed dependency lockfile
-cargo metadata --locked --format-version 1 --no-deps >nul
+cargo metadata --locked --format-version 1 >nul
 if errorlevel 1 (
   set "FAILED_STEP=Verify committed dependency lockfile"
   goto failed

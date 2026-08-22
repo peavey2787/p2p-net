@@ -158,7 +158,7 @@ if [[ "$NO_CLEAN" != "1" ]]; then
   cargo clean
 fi
 
-run_step "Verify committed dependency lockfile" cargo metadata --locked --format-version 1 --no-deps
+run_step "Verify committed dependency lockfile" cargo metadata --locked --format-version 1
 
 ensure_cargo_tool cargo-audit 0.22.2
 ensure_cargo_tool cargo-deny 0.20.2

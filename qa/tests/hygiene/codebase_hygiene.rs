@@ -109,8 +109,9 @@ fn repository_layout_matches_modular_baseline() {
     for launcher in ["run-full-validation.cmd", "run-full-validation.sh"] {
         let contents = fs::read_to_string(root.join(launcher)).expect("validation launcher");
         assert!(
-            contents.contains("cargo metadata --locked --format-version 1 --no-deps"),
-            "{launcher} must verify the committed Cargo.lock without regenerating it"
+            contents.contains("cargo metadata --locked --format-version 1")
+                && !contents.contains("cargo metadata --locked --format-version 1 --no-deps"),
+            "{launcher} must fully resolve and verify the committed Cargo.lock without regenerating it"
         );
         assert!(
             !contents.contains("cargo generate-lockfile") && !contents.contains("rm -f Cargo.lock"),

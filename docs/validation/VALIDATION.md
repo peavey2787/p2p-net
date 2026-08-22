@@ -21,7 +21,7 @@ The script remains the canonical one-command runner after the profile/environmen
 The production validation path **does not modify dependency or source inputs**. It verifies the committed lockfile, checks formatting, runs the dependency graph guard, and then executes the stable checks in isolated target directories:
 
 ```text
-cargo metadata --locked --format-version 1 --no-deps
+cargo metadata --locked --format-version 1
 cargo fmt --all -- --check
 cargo test --workspace --locked -j 1
 cargo test --features dashboard --locked -j 1
