@@ -323,27 +323,26 @@ fn prometheus_metrics_exports_operator_counters() {
 
 #[test]
 fn dashboard_distinguishes_discovered_pending_and_connected_peers() {
-    let dashboard = fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/p2p_node.rs"),
-    )
-    .expect("dashboard example");
-    assert!(dashboard.contains("NAT/Public: {} / {}"));
-    assert!(dashboard.contains("Local Listen: {}"));
-    assert!(dashboard.contains("public_addr_display(snap)"));
-    assert!(dashboard.contains("local_listen_display(snap)"));
-    assert!(dashboard.contains("Application Peers: {}"));
-    assert!(dashboard.contains("Infrastructure Peers: {}"));
-    assert!(dashboard.contains("DHT Routing Peers: {}"));
-    assert!(dashboard.contains("Relay Peers: {}"));
-    assert!(dashboard.contains("All Swarm Connections: {}"));
-    assert!(dashboard.contains("Auto-Connect: enabled={}"));
-    assert!(dashboard.contains("dial_attempts={}"));
-    assert!(dashboard.contains("pending_plans={}"));
-    assert!(dashboard.contains("awaiting_addrs={}"));
-    assert!(dashboard.contains("connection_plan_pending_peers"));
-    assert!(dashboard.contains("auto_connect_awaiting_address_peers"));
-    assert!(dashboard.contains("application_peer_connections"));
-    assert!(dashboard.contains("all_swarm_connections"));
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let dashboard = fs::read_to_string(root.join("examples/p2p_node.rs"))
+        .expect("dashboard example");
+    let view = fs::read_to_string(root.join("examples/p2p_node/view/sections.rs"))
+        .expect("dashboard view");
+
+    assert!(dashboard.contains("dashboard_lines"));
+    assert!(view.contains("public_addr_display(snap)"));
+    assert!(view.contains("local_listen_display(snap)"));
+    assert!(view.contains("application_peer_connections"));
+    assert!(view.contains("infrastructure_peer_connections"));
+    assert!(view.contains("dht_routing_peer_connections"));
+    assert!(view.contains("relay_peer_connections"));
+    assert!(view.contains("all_swarm_connections"));
+    assert!(view.contains("peer_book_known_peers"));
+    assert!(view.contains("peer_book_discovered_peers"));
+    assert!(view.contains("auto_connect_dial_attempts"));
+    assert!(view.contains("auto_connect_dial_failures"));
+    assert!(view.contains("connection_plan_pending_peers"));
+    assert!(view.contains("auto_connect_awaiting_address_peers"));
 }
 
 #[test]

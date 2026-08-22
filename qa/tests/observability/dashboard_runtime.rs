@@ -16,6 +16,16 @@ fn dashboard_is_event_driven_and_avoids_periodic_full_snapshot_hashing() {
 }
 
 #[test]
+fn dashboard_panic_path_restores_style_and_sanitizes_dynamic_text() {
+    let source = fs::read_to_string("examples/p2p_node.rs").expect("read dashboard example");
+
+    assert!(source.contains("SetAttribute(Attribute::Reset)"));
+    assert!(source.contains("ResetColor"));
+    assert!(source.contains("view::sanitize_terminal_text(&format!(\"{info}\"))"));
+    assert!(!source.contains("default_hook(info)"));
+}
+
+#[test]
 fn dashboard_default_is_full_capability_without_example_specific_throttles() {
     let source = fs::read_to_string("examples/p2p_node.rs").expect("read dashboard example");
 

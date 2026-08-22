@@ -127,6 +127,10 @@ path = "qa/tests/observability/observability.rs"
 name = "dashboard_runtime"
 path = "qa/tests/observability/dashboard_runtime.rs"
 
+[[test]]
+name = "dashboard_rendering"
+path = "qa/tests/observability/dashboard_rendering.rs"
+
 # operator integration tests
 [[test]]
 name = "operator_docs"

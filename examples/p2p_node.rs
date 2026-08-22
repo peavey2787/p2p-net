@@ -15,7 +15,7 @@ use std::time::{Duration, SystemTime};
 
 use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::event::{Event, EventStream, KeyCode};
-use crossterm::style::Print;
+use crossterm::style::{Attribute, Color, Print, ResetColor, SetAttribute, SetForegroundColor};
 use crossterm::{execute, queue};
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, size as terminal_size, Clear, ClearType,
@@ -24,6 +24,11 @@ use crossterm::terminal::{
 use futures::StreamExt;
 use p2p_net::{start_node, NodeConfig, NodeProfile, NodeSnapshot};
 use tokio::time::MissedTickBehavior;
+
+#[path = "p2p_node/view/mod.rs"]
+mod view;
+
+use view::{dashboard_lines, Tone};
 
 static BACKGROUND_WORKER_PANICKED: AtomicBool = AtomicBool::new(false);
 const PANIC_LOG_PATH: &str = "p2p-node-panic.log";
@@ -172,7 +177,13 @@ fn setup_terminal() -> io::Result<DashboardTerminal> {
 
 fn restore_terminal(terminal: &mut DashboardTerminal) -> io::Result<()> {
     let raw_result = disable_raw_mode();
-    let screen_result = execute!(terminal, Show, LeaveAlternateScreen);
+    let screen_result = execute!(
+        terminal,
+        SetAttribute(Attribute::Reset),
+        ResetColor,
+        Show,
+        LeaveAlternateScreen
+    );
     raw_result?;
     screen_result
 }
@@ -215,150 +226,38 @@ async fn shutdown_signal() -> io::Result<()> {
     tokio::signal::ctrl_c().await
 }
 
-fn public_addr_display(snap: &NodeSnapshot) -> String {
-    if let Some(addr) = &snap.public_addr {
-        return addr.clone();
-    }
-    if !snap.relay_discovery_selected_relays.is_empty() {
-        return "none yet; relay fallback selected".to_string();
-    }
-    if snap.public_relay_candidate_count > 0 {
-        return "none yet; public relay candidates available".to_string();
-    }
-    if snap.public_ip_probe_enabled {
-        return format!(
-            "none yet; public_ip_probe status={} ip={}",
-            snap.public_ip_probe_status,
-            snap.public_ip_probe_addr.as_deref().unwrap_or("-")
-        );
-    }
-    "none yet; no public direct/relayed addr".to_string()
-}
-
-fn public_ip_probe_display(snap: &NodeSnapshot) -> String {
-    format!(
-        "enabled={} status={} ip={} external_addrs={}",
-        snap.public_ip_probe_enabled,
-        snap.public_ip_probe_status,
-        snap.public_ip_probe_addr.as_deref().unwrap_or("-"),
-        snap.public_ip_probe_external_addresses.len()
-    )
-}
-
-fn local_listen_display(snap: &NodeSnapshot) -> String {
-    if snap.local_listen_addresses.is_empty() {
-        "-".to_string()
-    } else {
-        snap.local_listen_addresses.join(", ")
-    }
-}
-
 fn draw_dashboard(terminal: &mut DashboardTerminal, snap: &NodeSnapshot) -> io::Result<()> {
-    let (_, rows) = terminal_size().unwrap_or((120, 40));
-    let text = dashboard_text(snap, usize::from(rows));
-    queue!(
-        terminal,
-        MoveTo(0, 0),
-        Clear(ClearType::All),
-        Print(text)
-    )?;
+    let (columns, rows) = terminal_size().unwrap_or((120, 40));
+    let lines = dashboard_lines(snap, usize::from(columns), usize::from(rows));
+
+    queue!(terminal, MoveTo(0, 0), Clear(ClearType::All))?;
+    for (row, line) in lines.iter().enumerate() {
+        queue!(terminal, MoveTo(0, row as u16))?;
+        for span in line.spans() {
+            queue!(
+                terminal,
+                SetAttribute(Attribute::Reset),
+                SetForegroundColor(tone_color(span.tone()))
+            )?;
+            if span.bold() {
+                queue!(terminal, SetAttribute(Attribute::Bold))?;
+            }
+            queue!(terminal, Print(span.text()))?;
+        }
+    }
+    queue!(terminal, SetAttribute(Attribute::Reset), ResetColor)?;
     terminal.flush()
 }
 
-fn dashboard_text(snap: &NodeSnapshot, rows: usize) -> String {
-    let mut lines = vec![
-        "p2p-net full node  |  q/Esc to quit".to_string(),
-        format!("Network: {}", snap.network_label),
-        format!("PeerID: {}", snap.peer_id),
-        format!(
-            "NAT/Public: {} / {}",
-            snap.nat_status,
-            public_addr_display(snap)
-        ),
-        format!("Public IP Probe: {}", public_ip_probe_display(snap)),
-        format!("Local Listen: {}", local_listen_display(snap)),
-        format!(
-            "Platform: {} runtime={} storage={}",
-            snap.environment_platform, snap.platform_runtime, snap.platform_storage
-        ),
-        format!("Transports: {}", snap.active_transports.join(", ")),
-        String::new(),
-        format!(
-            "Peers: app={} infra={} dht={} relay={} swarm={} | known={} discovered={}",
-            snap.application_peer_connections,
-            snap.infrastructure_peer_connections,
-            snap.dht_routing_peer_connections,
-            snap.relay_peer_connections,
-            snap.all_swarm_connections,
-            snap.peer_book_known_peers,
-            snap.peer_book_discovered_peers
-        ),
-        format!(
-            "Auto-connect: enabled={} attempts={} failures={} pending={} awaiting_addrs={}",
-            snap.auto_connect_enabled,
-            snap.auto_connect_dial_attempts,
-            snap.auto_connect_dial_failures,
-            snap.connection_plan_pending_peers,
-            snap.auto_connect_awaiting_address_peers
-        ),
-        format!(
-            "Fallback: mode={} bootstrap={} rendezvous={} relay={} rv_candidates={} reason={}",
-            snap.public_fallback_mode,
-            snap.public_bootstrap_used,
-            snap.public_rendezvous_used,
-            snap.public_relay_used,
-            snap.public_rendezvous_candidate_count,
-            snap.public_fallback_reason
-        ),
-        format!(
-            "Relay: server={} health={} mediator={} server_res={} client_res={} attempts={} failures={}",
-            snap.relay_server_enabled,
-            snap.relay_service_health.as_str(),
-            snap.mediator_enabled,
-            snap.relay_reservations_accepted,
-            snap.relay_client_reservations,
-            snap.relay_client_reservation_attempts,
-            snap.relay_client_reservation_failures
-        ),
-        format!(
-            "Relay discovery: selected={} candidates={} failures={}",
-            snap.relay_discovery_selected_relays.len(),
-            snap.relay_discovery_candidate_count,
-            snap.relay_discovery_failures
-        ),
-        format!(
-            "DHT provider: enabled={} announced={} queries={} found={} peers={}",
-            snap.dht_provider_enabled,
-            snap.dht_provider_namespaces_announced,
-            snap.dht_provider_queries,
-            snap.dht_provider_records_found,
-            snap.dht_provider_peers_discovered
-        ),
-        format!(
-            "Circuits: active={} denied={} bytes_fwd={} | DCUtR: enabled={} attempts={} ok={} failures={} fallback={} suppressed={}",
-            snap.relay_active_circuits,
-            snap.relay_denied_requests,
-            snap.relay_bytes_forwarded,
-            snap.dcutr_enabled,
-            snap.dcutr_attempts,
-            snap.dcutr_successes,
-            snap.dcutr_failures,
-            snap.dcutr_relay_fallbacks,
-            snap.dcutr_retry_suppressed
-        ),
-        String::new(),
-        "Heartbeat / event pulse:".to_string(),
-    ];
-
-    let available_pulses = rows.saturating_sub(lines.len().saturating_add(1));
-    lines.extend(
-        snap.pulses
-            .iter()
-            .take(available_pulses.max(1))
-            .map(|line| format!("  {line}")),
-    );
-    lines.push(String::new());
-    lines.join("\r\n")
+fn tone_color(tone: Tone) -> Color {
+    match tone {
+        Tone::Text => Color::Reset,
+        Tone::Muted => Color::DarkGrey,
+        Tone::Accent => Color::Cyan,
+        Tone::Good => Color::Green,
+        Tone::Warn => Color::Yellow,
+        Tone::Bad => Color::Red,
+    }
 }
 
 fn arg_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
@@ -368,26 +267,31 @@ fn arg_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
 }
 
 fn install_dashboard_panic_hook() {
-    let default_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
+    std::panic::set_hook(Box::new(|info| {
         BACKGROUND_WORKER_PANICKED.store(true, Ordering::Relaxed);
 
         let _ = disable_raw_mode();
         let mut stderr = io::stderr();
-        let _ = execute!(stderr, LeaveAlternateScreen);
+        let _ = execute!(
+            stderr,
+            SetAttribute(Attribute::Reset),
+            ResetColor,
+            Show,
+            LeaveAlternateScreen
+        );
 
+        let safe_info = view::sanitize_terminal_text(&format!("{info}"));
         if let Ok(mut log) = OpenOptions::new()
             .create(true)
             .append(true)
             .open(PANIC_LOG_PATH)
         {
-            let _ = writeln!(log, "{:?}: {info}", SystemTime::now());
+            let _ = writeln!(log, "{:?}: {safe_info}", SystemTime::now());
         }
 
         let _ = writeln!(
             stderr,
             "\nbackground worker panicked; terminal restored; see {PANIC_LOG_PATH}"
         );
-        default_hook(info);
     }));
 }
