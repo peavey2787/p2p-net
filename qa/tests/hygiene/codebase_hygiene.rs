@@ -109,13 +109,18 @@ fn repository_layout_matches_modular_baseline() {
     for launcher in ["run-full-validation.cmd", "run-full-validation.sh"] {
         let contents = fs::read_to_string(root.join(launcher)).expect("validation launcher");
         assert!(
-            contents.contains("cargo deny check --config qa/ci/deny.toml"),
-            "{launcher} must pass cargo-deny config after the check subcommand"
+            contents.contains("cargo deny check --config qa/ci/deny.toml --help"),
+            "{launcher} must probe whether the installed cargo-deny accepts check-level config"
+        );
+        assert!(
+            contents.contains("cargo deny check --config qa/ci/deny.toml")
+                && contents.contains("cargo deny --config qa/ci/deny.toml check"),
+            "{launcher} must support both cargo-deny config-option placements"
         );
         assert!(
             !contents.contains("run_cargo_deny_with_repo_config")
                 && !contents.contains("call :run_cargo_deny_with_repo_config"),
-            "{launcher} must invoke cargo-deny directly instead of relying on a batch/shell helper"
+            "{launcher} must keep cargo-deny dispatch inline rather than relying on a batch/shell subroutine"
         );
     }
 

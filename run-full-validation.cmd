@@ -220,7 +220,12 @@ if not "!AUDIT_STATUS!"=="0" (
 
 echo.
 echo ==^> Dependency policy
-cargo deny check --config qa/ci/deny.toml
+cargo deny check --config qa/ci/deny.toml --help >nul 2>&1
+if not errorlevel 1 (
+  cargo deny check --config qa/ci/deny.toml
+) else (
+  cargo deny --config qa/ci/deny.toml check
+)
 if errorlevel 1 (
   set "FAILED_STEP=Dependency policy"
   goto failed

@@ -174,7 +174,11 @@ run_step "Clippy" cargo clippy --workspace --all-targets --all-features --locked
 
 clear_validation_target
 run_step "Security audit" run_cargo_audit_with_repo_config
-run_step "Dependency policy" cargo deny check --config qa/ci/deny.toml
+if cargo deny check --config qa/ci/deny.toml --help >/dev/null 2>&1; then
+  run_step "Dependency policy" cargo deny check --config qa/ci/deny.toml
+else
+  run_step "Dependency policy" cargo deny --config qa/ci/deny.toml check
+fi
 
 if [[ "$SKIP_IGNORED" != "1" ]]; then
   set_validation_target ignored

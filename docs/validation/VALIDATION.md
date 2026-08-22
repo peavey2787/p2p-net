@@ -27,7 +27,7 @@ cargo test --workspace --locked -j 1
 cargo test --features dashboard --locked -j 1
 cargo clippy --workspace --all-targets --all-features --locked -j 1 -- -D warnings
 cargo audit  # root launcher stages qa/ci/audit.toml to .cargo/audit.toml
-cargo deny check --config qa/ci/deny.toml
+cargo deny --config qa/ci/deny.toml check
 cargo test --test multi_node_hostile --locked -j 1 -- --ignored --nocapture
 ```
 
@@ -116,13 +116,15 @@ The test is registered in `Cargo.toml`, so `run-full-validation.cmd` and `run-fu
 
 `cargo-audit` reads repository audit configuration from `.cargo/audit.toml` in the installed version this project validates against. The canonical validation scripts keep `qa/ci/audit.toml` as the source file and stage it to `.cargo/audit.toml` only while `cargo audit` runs.
 
-The canonical launchers invoke `cargo-deny` directly with the repository configuration on the `check` subcommand:
+The canonical launchers invoke `cargo-deny` directly with the repository configuration and adapt to the installed CLI option placement:
 
 ```text
-cargo deny check --config qa/ci/deny.toml
+cargo deny --config qa/ci/deny.toml check
 ```
 
-This avoids Windows batch subroutine/label handling entirely and matches the CLI accepted by the validation toolchain. Use `run-full-validation.cmd` or `run-full-validation.sh` for the exact flow.
+The root validation launchers detect older `cargo-deny` releases that instead require `cargo deny check --config qa/ci/deny.toml` and select the accepted form automatically.
+
+This avoids Windows batch subroutine/label handling entirely while remaining compatible with both cargo-deny CLI layouts seen across local and hosted CI toolchains. Use `run-full-validation.cmd` or `run-full-validation.sh` for the exact flow.
 
 ## Public fallback checks
 
