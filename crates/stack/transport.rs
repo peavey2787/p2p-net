@@ -10,10 +10,19 @@ use crate::common::error::NetError;
 use crate::connectivity::webrtc::WEBRTC_DIRECT_TRANSPORT;
 use crate::{NodeConfig, ResolvedNodeConfig};
 
-// Keep this comfortably above the default libp2p Ping cadence. A shorter
-// timeout continuously tears down otherwise healthy DHT, relay, and app
-// connections between keepalives, creating CPU churn and allocator growth.
-const SWARM_IDLE_CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
+// Keep idle expiry safely beyond the configured Ping cadence. Otherwise a
+// low-frequency keepalive policy can continuously tear down healthy idle
+// connections just before their next ping, causing rediscovery/redial churn.
+const MIN_SWARM_IDLE_CONNECTION_TIMEOUT_SECS: u64 = 30;
+const SWARM_IDLE_TIMEOUT_PING_MULTIPLIER: u64 = 2;
+
+fn swarm_idle_connection_timeout(ping_interval_secs: u64) -> Duration {
+    Duration::from_secs(
+        ping_interval_secs
+            .saturating_mul(SWARM_IDLE_TIMEOUT_PING_MULTIPLIER)
+            .max(MIN_SWARM_IDLE_CONNECTION_TIMEOUT_SECS),
+    )
+}
 
 #[derive(Debug, Clone)]
 pub struct TransportPlan {
@@ -59,7 +68,19 @@ pub async fn build_swarm(
     // resolved profile policy. WebRTC-direct is a real swarm transport here,
     // so it shares the same peer routing and connection state as TCP/QUIC/WS.
     let behaviour_policy = &resolved_cfg.enabled_behaviours;
-    let mut active = vec!["quic", "tcp", "websocket", WEBRTC_DIRECT_TRANSPORT];
+    let mut active = Vec::new();
+    if cfg.listeners.quic {
+        active.push("quic");
+    }
+    if cfg.listeners.tcp {
+        active.push("tcp");
+    }
+    if cfg.listeners.websocket {
+        active.push("websocket");
+    }
+    if cfg.listeners.webrtc_direct {
+        active.push(WEBRTC_DIRECT_TRANSPORT);
+    }
     if behaviour_policy.gossipsub {
         active.push("gossipsub");
     }
@@ -118,6 +139,8 @@ pub async fn build_swarm(
                 local_peer,
                 relay_behaviour,
                 network_id: cfg.network_id,
+                gossipsub_heartbeat_interval_secs: cfg.gossipsub_heartbeat_interval_secs,
+                ping_interval_secs: cfg.ping_interval_secs,
                 relay_cfg: &relay_cfg,
                 connection_limits_cfg: &cfg.connection_limits,
                 discovery_cfg: &cfg.discovery,
@@ -125,10 +148,14 @@ pub async fn build_swarm(
             })
         })
         .map_err(|e| NetError::Build(e.to_string()))?
-        .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(SWARM_IDLE_CONNECTION_TIMEOUT))
+        .with_swarm_config(|swarm_cfg| {
+            swarm_cfg.with_idle_connection_timeout(swarm_idle_connection_timeout(
+                cfg.ping_interval_secs,
+            ))
+        })
         .build();
 
-    let listen_addrs = cfg.parsed_listen_addresses()?;
+    let listen_addrs = cfg.enabled_listen_addresses()?;
     for addr in &listen_addrs {
         swarm
             .listen_on(addr.clone())

@@ -25,42 +25,38 @@ pub(crate) async fn handle_identify_observed_addr(
         identify::Event::Received { peer_id, info, .. } => (peer_id, info),
         _ => return,
     };
-    let expected_application_protocol = ctx
-        .discovery_cfg
-        .application_protocol_version(ctx.network_id)
-        .ok();
-    let application_compatible = expected_application_protocol
-        .as_deref()
-        .is_some_and(|expected| info.protocol_version == expected);
+    let application_compatible = info.protocol_version == ctx.application_protocol_version;
     let was_pending_relay_verification = ctx
         .relay_state
         .unverified_relayed_peers
         .contains_key(peer_id);
     if application_compatible {
-        if let Ok(namespaces) = ctx.discovery_cfg.rendezvous_namespaces(ctx.network_id) {
-            for namespace in namespaces {
-                ctx.peer_book
-                    .record_namespace(*peer_id, namespace, PeerSource::Connected);
-            }
+        for namespace in ctx.application_namespaces {
+            ctx.peer_book.record_namespace(
+                *peer_id,
+                namespace.clone(),
+                PeerSource::Connected,
+            );
         }
         ctx.peer_book.record_connected(*peer_id, None);
         ctx.relay_state.unverified_relayed_peers.remove(peer_id);
         crate::stack::allow_dcutr_peer(swarm, *peer_id);
     }
-    let protocols = info
+    // Identify can be one of the busiest paths while public DHT queries are
+    // converging. Inspect borrowed protocol strings directly instead of
+    // allocating a Vec<String> for every Identify response.
+    let supports_relay_hop = info
         .protocols
         .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>();
-    let supports_relay_hop = protocols
+        .any(|protocol| protocol.as_ref() == "/libp2p/circuit/relay/0.2.0/hop");
+    let supports_rendezvous = info
+        .protocols
         .iter()
-        .any(|protocol| protocol == "/libp2p/circuit/relay/0.2.0/hop");
-    let supports_rendezvous = protocols
+        .any(|protocol| protocol.as_ref().starts_with("/rendezvous/"));
+    let supports_dcutr = info
+        .protocols
         .iter()
-        .any(|protocol| protocol.starts_with("/rendezvous/"));
-    let supports_dcutr = protocols
-        .iter()
-        .any(|protocol| protocol.starts_with("/libp2p/dcutr"));
+        .any(|protocol| protocol.as_ref().starts_with("/libp2p/dcutr"));
     let relay_pulse = if supports_relay_hop {
         maybe_reserve_dht_relay(*peer_id, info, swarm, ctx)
     } else {
@@ -77,12 +73,26 @@ pub(crate) async fn handle_identify_observed_addr(
 
     let observed_addr = &info.observed_addr;
     let classification = classify_listen_addr(observed_addr);
-    if should_advertise_observed_addr(observed_addr, classification, ctx.relay_state) {
+    let observed_addr_changed = ctx
+        .identify_addresses
+        .record_observed_local_addr(observed_addr);
+    if should_advertise_observed_addr(observed_addr, classification, ctx.relay_state)
+        && (observed_addr_changed || classification.is_relayed())
+    {
+        // A relayed address can become valid after its reservation is confirmed,
+        // so re-check relayed observations even when the multiaddr is unchanged.
+        // ExternalAddressCandidates performs its own bounded deduplication.
         add_external_address_candidate(swarm, observed_addr.clone());
     }
 
+    if !observed_addr_changed && relay_pulse.is_none() && !application_compatible {
+        return;
+    }
+
     let mut guard = ctx.snapshot.lock().await;
-    record_listen_addr_snapshot(&mut guard, observed_addr, classification);
+    if observed_addr_changed {
+        record_listen_addr_snapshot(&mut guard, observed_addr, classification);
+    }
     guard.apply_relay_state(ctx.relay_state);
     if let Some(pulse) = relay_pulse {
         push_pulse(&mut guard.pulses, pulse);
@@ -100,16 +110,18 @@ pub(crate) async fn handle_identify_observed_addr(
             },
         );
     }
-    match classification {
-        ListenAddrClass::PublicDirect => push_pulse(
-            &mut guard.pulses,
-            format!("identify observed public direct addr {observed_addr}"),
-        ),
-        ListenAddrClass::Relayed => push_pulse(
-            &mut guard.pulses,
-            format!("identify observed relayed addr {observed_addr}"),
-        ),
-        ListenAddrClass::LocalOnly => {}
+    if observed_addr_changed {
+        match classification {
+            ListenAddrClass::PublicDirect => push_pulse(
+                &mut guard.pulses,
+                format!("identify observed public direct addr {observed_addr}"),
+            ),
+            ListenAddrClass::Relayed => push_pulse(
+                &mut guard.pulses,
+                format!("identify observed relayed addr {observed_addr}"),
+            ),
+            ListenAddrClass::LocalOnly => {}
+        }
     }
 }
 

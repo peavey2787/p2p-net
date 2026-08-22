@@ -19,6 +19,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 use std::{
+    future::Future,
     net::SocketAddr,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -44,6 +45,92 @@ use webrtc::{
 
 use crate::tokio::{error::Error, sdp, sdp::random_ufrag, stream::Stream, Connection};
 
+const CONNECTION_SETUP_TIMEOUT: Duration = Duration::from_secs(20);
+const CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
+
+struct MuxConnCleanup {
+    udp_mux: Arc<dyn UDPMux + Send + Sync>,
+    ufrag: Option<String>,
+}
+
+impl MuxConnCleanup {
+    fn new(udp_mux: Arc<dyn UDPMux + Send + Sync>, ufrag: String) -> Self {
+        Self {
+            udp_mux,
+            ufrag: Some(ufrag),
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.ufrag = None;
+    }
+}
+
+impl Drop for MuxConnCleanup {
+    fn drop(&mut self) {
+        let Some(ufrag) = self.ufrag.take() else {
+            return;
+        };
+        let Ok(handle) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
+        let udp_mux = self.udp_mux.clone();
+        drop(handle.spawn(async move {
+            let cleanup = udp_mux.remove_conn_by_ufrag(&ufrag);
+            if tokio::time::timeout(CLEANUP_TIMEOUT, cleanup).await.is_err() {
+                tracing::trace!("WebRTC mux cleanup timed out for ufrag={ufrag}");
+            }
+        }));
+    }
+}
+
+struct PendingPeerConnection(Option<RTCPeerConnection>);
+
+impl PendingPeerConnection {
+    fn new(connection: RTCPeerConnection) -> Self {
+        Self(Some(connection))
+    }
+
+    fn get(&self) -> &RTCPeerConnection {
+        self.0.as_ref().expect("pending peer connection")
+    }
+
+    fn take(mut self) -> RTCPeerConnection {
+        self.0.take().expect("pending peer connection")
+    }
+}
+
+impl Drop for PendingPeerConnection {
+    fn drop(&mut self) {
+        let Some(connection) = self.0.take() else {
+            return;
+        };
+        let Ok(handle) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
+        drop(handle.spawn(async move {
+            let close = connection.close();
+            match tokio::time::timeout(CLEANUP_TIMEOUT, close).await {
+                Ok(Ok(())) => {}
+                Ok(Err(err)) => {
+                    tracing::trace!("WebRTC setup close-on-drop finished with error: {err}");
+                }
+                Err(_) => tracing::trace!("WebRTC setup close-on-drop timed out"),
+            }
+        }));
+    }
+}
+
+async fn setup_with_timeout<T>(future: impl Future<Output = Result<T, Error>>) -> Result<T, Error> {
+    match futures::future::select(Box::pin(future), Delay::new(CONNECTION_SETUP_TIMEOUT)).await {
+        Either::Left((result, _)) => result,
+        Either::Right(((), _)) => Err(Error::Internal(format!(
+            "WebRTC connection setup took longer than {} seconds",
+            CONNECTION_SETUP_TIMEOUT.as_secs()
+        ))),
+    }
+}
+
 /// Creates a new outbound WebRTC connection.
 pub(crate) async fn outbound(
     addr: SocketAddr,
@@ -55,17 +142,46 @@ pub(crate) async fn outbound(
 ) -> Result<(PeerId, Connection), Error> {
     tracing::debug!(address=%addr, "new outbound connection to address");
 
-    let (peer_connection, ufrag) = new_outbound_connection(addr, config, udp_mux).await?;
+    let ufrag = random_ufrag();
+    let mut cleanup = MuxConnCleanup::new(udp_mux.clone(), ufrag.clone());
+    let result = setup_with_timeout(outbound_inner(
+        addr,
+        config,
+        udp_mux,
+        client_fingerprint,
+        server_fingerprint,
+        id_keys,
+        &ufrag,
+    ))
+    .await;
+    if result.is_ok() {
+        cleanup.disarm();
+    }
+    result
+}
 
-    let offer = peer_connection.create_offer(None).await?;
+async fn outbound_inner(
+    addr: SocketAddr,
+    config: RTCConfiguration,
+    udp_mux: Arc<dyn UDPMux + Send + Sync>,
+    client_fingerprint: Fingerprint,
+    server_fingerprint: Fingerprint,
+    id_keys: identity::Keypair,
+    ufrag: &str,
+) -> Result<(PeerId, Connection), Error> {
+    let peer_connection = PendingPeerConnection::new(
+        new_outbound_connection(addr, config, udp_mux.clone(), ufrag).await?,
+    );
+
+    let offer = peer_connection.get().create_offer(None).await?;
     tracing::debug!(offer=%offer.sdp, "created SDP offer for outbound connection");
-    peer_connection.set_local_description(offer).await?;
+    peer_connection.get().set_local_description(offer).await?;
 
-    let answer = sdp::answer(addr, server_fingerprint, &ufrag);
+    let answer = sdp::answer(addr, server_fingerprint, ufrag);
     tracing::debug!(?answer, "calculated SDP answer for outbound connection");
-    peer_connection.set_remote_description(answer).await?; // This will start the gathering of ICE candidates.
+    peer_connection.get().set_remote_description(answer).await?; // This will start the gathering of ICE candidates.
 
-    let data_channel = create_substream_for_noise_handshake(&peer_connection).await?;
+    let data_channel = create_substream_for_noise_handshake(peer_connection.get()).await?;
     let peer_id = noise::outbound(
         id_keys,
         data_channel,
@@ -74,7 +190,10 @@ pub(crate) async fn outbound(
     )
     .await?;
 
-    Ok((peer_id, Connection::new(peer_connection).await))
+    Ok((
+        peer_id,
+        Connection::new(peer_connection.take(), udp_mux, ufrag.to_owned()).await,
+    ))
 }
 
 /// Creates a new inbound WebRTC connection.
@@ -88,18 +207,44 @@ pub(crate) async fn inbound(
 ) -> Result<(PeerId, Connection), Error> {
     tracing::debug!(address=%addr, ufrag=%remote_ufrag, "new inbound connection from address");
 
-    let peer_connection = new_inbound_connection(addr, config, udp_mux, &remote_ufrag).await?;
+    let mut cleanup = MuxConnCleanup::new(udp_mux.clone(), remote_ufrag.clone());
+    let result = setup_with_timeout(inbound_inner(
+        addr,
+        config,
+        udp_mux,
+        server_fingerprint,
+        &remote_ufrag,
+        id_keys,
+    ))
+    .await;
+    if result.is_ok() {
+        cleanup.disarm();
+    }
+    result
+}
 
-    let offer = sdp::offer(addr, &remote_ufrag);
+async fn inbound_inner(
+    addr: SocketAddr,
+    config: RTCConfiguration,
+    udp_mux: Arc<dyn UDPMux + Send + Sync>,
+    server_fingerprint: Fingerprint,
+    remote_ufrag: &str,
+    id_keys: identity::Keypair,
+) -> Result<(PeerId, Connection), Error> {
+    let peer_connection = PendingPeerConnection::new(
+        new_inbound_connection(addr, config, udp_mux.clone(), remote_ufrag).await?,
+    );
+
+    let offer = sdp::offer(addr, remote_ufrag);
     tracing::debug!(?offer, "calculated SDP offer for inbound connection");
-    peer_connection.set_remote_description(offer).await?;
+    peer_connection.get().set_remote_description(offer).await?;
 
-    let answer = peer_connection.create_answer(None).await?;
+    let answer = peer_connection.get().create_answer(None).await?;
     tracing::debug!(?answer, "created SDP answer for inbound connection");
-    peer_connection.set_local_description(answer).await?; // This will start the gathering of ICE candidates.
+    peer_connection.get().set_local_description(answer).await?; // This will start the gathering of ICE candidates.
 
-    let data_channel = create_substream_for_noise_handshake(&peer_connection).await?;
-    let client_fingerprint = get_remote_fingerprint(&peer_connection).await;
+    let data_channel = create_substream_for_noise_handshake(peer_connection.get()).await?;
+    let client_fingerprint = get_remote_fingerprint(peer_connection.get()).await;
     let peer_id = noise::inbound(
         id_keys,
         data_channel,
@@ -108,16 +253,24 @@ pub(crate) async fn inbound(
     )
     .await?;
 
-    Ok((peer_id, Connection::new(peer_connection).await))
+    Ok((
+        peer_id,
+        Connection::new(
+            peer_connection.take(),
+            udp_mux,
+            remote_ufrag.to_owned(),
+        )
+        .await,
+    ))
 }
 
 async fn new_outbound_connection(
     addr: SocketAddr,
     config: RTCConfiguration,
     udp_mux: Arc<dyn UDPMux + Send + Sync>,
-) -> Result<(RTCPeerConnection, String), Error> {
-    let ufrag = random_ufrag();
-    let se = setting_engine(udp_mux, &ufrag, addr);
+    ufrag: &str,
+) -> Result<RTCPeerConnection, Error> {
+    let se = setting_engine(udp_mux, ufrag, addr);
 
     let connection = APIBuilder::new()
         .with_setting_engine(se)
@@ -125,7 +278,7 @@ async fn new_outbound_connection(
         .new_peer_connection(config)
         .await?;
 
-    Ok((connection, ufrag))
+    Ok(connection)
 }
 
 async fn new_inbound_connection(

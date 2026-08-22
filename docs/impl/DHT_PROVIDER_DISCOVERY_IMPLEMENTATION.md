@@ -3,6 +3,7 @@
 ## Modules
 
 - `crates/connectivity/dht.rs` owns DHT namespace provider configuration, startup planning, provider-query tracking, and Kademlia event handling.
+- `crates/connectivity/dht/keys.rs` owns deterministic provider-key derivation and public-bootstrap anchor key construction.
 - `crates/node/events/kademlia.rs` updates node snapshots and operator pulses from Kademlia events.
 - `crates/node/mod.rs` starts DHT namespace announcement/discovery after rendezvous startup planning.
 
@@ -15,7 +16,8 @@ For every derived namespace up to `max_namespaces_per_refresh`:
 1. `start_providing(namespace_key)` announces the local node as a provider when announcement is enabled.
 2. `get_providers(namespace_key)` queries for other providers when discovery is enabled and the DHT policy says discovery should run.
 
-Startup performs the first announce/query immediately. Runtime refreshes are throttled by `discovery.dht.refresh_interval_secs` and already-announced namespaces are not re-submitted every heartbeat.
+Startup performs the first announce/query immediately. Runtime retries back off through 5, 15, 30, and 60 seconds, then use `discovery.dht.refresh_interval_secs`; recovery from zero connected peers may accelerate the next refresh with a 5-second minimum gap, and a newly learned public address triggers an immediate refresh. Ordinary additional connections do not reschedule discovery, preventing a query -> connection -> refresh feedback loop. Already-announced namespaces are not re-submitted every heartbeat.
+The libp2p Kademlia behaviour separately receives `periodic_bootstrap_interval_secs` and `query_parallelism`. Provider-key derivation is cached in `DhtProviderState`; the anchor-key search also reuses a pre-hashed SHA-256 prefix rather than re-hashing invariant namespace/anchor material on every attempt. `provider_key_replicas` remains configurable and defaults to three.
 
 ## Event behavior
 

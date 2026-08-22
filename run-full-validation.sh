@@ -4,30 +4,53 @@ set -euo pipefail
 SKIP_IGNORED=0
 NO_INSTALL_TOOLS=0
 NO_CLEAN=0
+NO_PAUSE=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --skip-ignored)
       SKIP_IGNORED=1
-      shift
       ;;
     --no-install-tools)
       NO_INSTALL_TOOLS=1
-      shift
       ;;
     --no-clean)
       NO_CLEAN=1
-      shift
+      ;;
+    --no-pause)
+      NO_PAUSE=1
       ;;
     *)
-      echo "unknown argument: $1" >&2
+      echo "Unknown argument: $1" >&2
       exit 2
       ;;
   esac
+  shift
 done
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
+
+pause_if_interactive() {
+  local status="$1"
+  if [[ "$NO_PAUSE" == "0" && -t 0 && -z "${CI:-}" ]]; then
+    echo
+    if [[ "$status" == "0" ]]; then
+      read -r -p "Validation complete. Press Enter to close..." _ || true
+    else
+      read -r -p "Validation failed. Press Enter to close..." _ || true
+    fi
+  fi
+}
+
+on_exit() {
+  local status=$?
+  trap - EXIT
+  unset CARGO_TARGET_DIR || true
+  pause_if_interactive "$status"
+  exit "$status"
+}
+trap on_exit EXIT
 
 run_step() {
   local name="$1"
@@ -36,7 +59,6 @@ run_step() {
   echo "==> ${name}"
   "$@"
 }
-
 
 assert_stable_rust() {
   local version
@@ -54,7 +76,6 @@ cargo_tool_installed() {
 
 ensure_cargo_tool() {
   local name="$1"
-  shift
   if cargo_tool_installed "$name"; then
     echo "$name already installed."
     return
@@ -63,7 +84,7 @@ ensure_cargo_tool() {
     echo "$name is missing. Re-run without --no-install-tools or install it manually." >&2
     exit 2
   fi
-  run_step "Install ${name}" "$@"
+  run_step "Install ${name}" cargo install "$name" --locked
 }
 
 set_validation_target() {
@@ -81,25 +102,15 @@ assert_no_rejected_dns_resolver() {
     exit 1
   fi
 
-  local rejected_names=("hickory-""proto" "hickory-""resolver")
-
+  local rejected_names=("hickory-proto" "hickory-resolver")
+  local package_name
   for package_name in "${rejected_names[@]}"; do
-    local package_version
-    package_version="$(awk -v pkg="$package_name" '
-      /^\[\[package\]\]$/ { in_pkg=1; name=""; version=""; next }
-      in_pkg && $0 == "name = \"" pkg "\"" { name=pkg }
-      in_pkg && /^version = / { version=$0; gsub(/^version = \"|\"$/, "", version) }
-      in_pkg && name == pkg && version != "" { print version; exit 0 }
-    ' Cargo.lock)"
-
-    if [[ -n "$package_version" ]]; then
-      local package_spec="${package_name}@${package_version}"
-      echo "${package_name} ${package_version} is present in Cargo.lock. Dependency path:" >&2
-      cargo tree --target all -i "$package_spec" || true
-      echo "${package_name} ${package_version} is still present in Cargo.lock." >&2
+    if grep -Fq "$package_name" Cargo.lock; then
+      echo "${package_name} is present in Cargo.lock. Dependency path:" >&2
+      cargo tree --target all -i "$package_name" || true
+      echo "${package_name} is still present in Cargo.lock." >&2
       exit 1
     fi
-
     echo "${package_name} is not present in Cargo.lock."
   done
 }
@@ -125,36 +136,51 @@ echo "SkipIgnored: $SKIP_IGNORED"
 echo "NoInstallTools: $NO_INSTALL_TOOLS"
 echo "NoClean: $NO_CLEAN"
 echo
-echo "This script is the canonical one-command validation runner. It auto-formats with cargo fmt and uses isolated target directories to avoid stale/incomplete artifact errors."
+echo "This is the canonical Linux one-file validation runner. It auto-formats with cargo fmt and uses isolated target directories to avoid stale/incomplete build artifacts."
 
 export CARGO_INCREMENTAL=0
 export CARGO_BUILD_PIPELINING=false
+
+command -v rustc >/dev/null 2>&1 || { echo "rustc was not found on PATH." >&2; exit 1; }
+command -v cargo >/dev/null 2>&1 || { echo "cargo was not found on PATH." >&2; exit 1; }
 
 run_step "Rust version" rustc --version
 cargo --version
 assert_stable_rust
 
 if [[ "$NO_CLEAN" != "1" ]]; then
-  run_step "Clean validation artifacts" bash -lc 'rm -rf target/full-validation && cargo clean'
+  echo
+  echo "==> Clean validation artifacts"
+  rm -rf target/full-validation
+  cargo clean
 fi
 
-run_step "Refresh dependency lockfile" bash -lc 'rm -f Cargo.lock && cargo generate-lockfile'
+run_step "Refresh dependency lockfile" bash -c 'rm -f Cargo.lock && cargo generate-lockfile'
 
-ensure_cargo_tool cargo-audit cargo install cargo-audit --locked
-ensure_cargo_tool cargo-deny cargo install cargo-deny --locked
+ensure_cargo_tool cargo-audit
+ensure_cargo_tool cargo-deny
 
 run_step "Format" cargo fmt
 run_step "Dependency graph guard" assert_no_rejected_dns_resolver
 
-run_step "Tests" bash -lc 'export CARGO_TARGET_DIR="$PWD/target/full-validation/tests"; cargo test --workspace --locked -j 1'
-run_step "Dashboard feature tests" bash -lc 'export CARGO_TARGET_DIR="$PWD/target/full-validation/dashboard"; cargo test --features dashboard --locked -j 1'
-run_step "Clippy" bash -lc 'export CARGO_TARGET_DIR="$PWD/target/full-validation/clippy"; cargo clippy --workspace --all-targets --all-features --locked -j 1 -- -D warnings'
+set_validation_target tests
+run_step "Tests" cargo test --workspace --locked -j 1
+
+set_validation_target dashboard
+run_step "Dashboard feature tests" cargo test --features dashboard --locked -j 1
+
+set_validation_target clippy
+run_step "Clippy" cargo clippy --workspace --all-targets --all-features --locked -j 1 -- -D warnings
+
+clear_validation_target
 run_step "Security audit" run_cargo_audit_with_repo_config
-run_step "Dependency policy" cargo deny --config qa/ci/deny.toml check
+run_step "Dependency policy" cargo deny check --config qa/ci/deny.toml
 
 if [[ "$SKIP_IGNORED" != "1" ]]; then
-  run_step "Ignored load/soak tests" bash -lc 'export CARGO_TARGET_DIR="$PWD/target/full-validation/ignored"; cargo test --test multi_node_hostile --locked -j 1 -- --ignored --nocapture'
+  set_validation_target ignored
+  run_step "Ignored load/soak tests" cargo test --test multi_node_hostile --locked -j 1 -- --ignored --nocapture
 fi
 
+clear_validation_target
 echo
 echo "All stable p2p-net validation checks passed."

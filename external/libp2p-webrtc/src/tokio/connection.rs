@@ -22,6 +22,7 @@ use std::{
     pin::Pin,
     sync::Arc,
     task::{Context, Poll, Waker},
+    time::Duration,
 };
 
 use futures::{
@@ -38,6 +39,7 @@ use futures::{
 use libp2p_core::muxing::{StreamMuxer, StreamMuxerEvent};
 use webrtc::{
     data::data_channel::DataChannel as DetachedDataChannel, data_channel::RTCDataChannel,
+    ice::udp_mux::UDPMux,
     peer_connection::RTCPeerConnection,
 };
 
@@ -46,6 +48,7 @@ use crate::tokio::{error::Error, stream, stream::Stream};
 /// Maximum number of unprocessed data channels.
 /// See [`Connection::poll_inbound`].
 const MAX_DATA_CHANNELS_IN_FLIGHT: usize = 10;
+const DROP_CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// A WebRTC connection, wrapping [`RTCPeerConnection`] and implementing [`StreamMuxer`] trait.
 pub struct Connection {
@@ -53,6 +56,11 @@ pub struct Connection {
     ///
     /// Uses futures mutex because used in async code (see poll_outbound and poll_close).
     peer_conn: Arc<FutMutex<RTCPeerConnection>>,
+
+    /// UDP mux registration backing this established connection. Retaining the
+    /// ufrag lets both graceful close and Drop remove the mux entry explicitly.
+    udp_mux: Arc<dyn UDPMux + Send + Sync>,
+    ufrag: String,
 
     /// Channel onto which incoming data channels are put.
     incoming_data_channels_rx: mpsc::Receiver<Arc<DetachedDataChannel>>,
@@ -70,9 +78,50 @@ pub struct Connection {
 
 impl Unpin for Connection {}
 
+impl Drop for Connection {
+    fn drop(&mut self) {
+        // Swarm normally drives `poll_close`, but error/cancellation paths may
+        // drop a muxer before that future completes. Release both layers as
+        // independent fail-safes so one stalled cleanup cannot retain the other.
+        let Ok(handle) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
+        let peer_conn = self.peer_conn.clone();
+        drop(handle.spawn(async move {
+            let close = async move {
+                let peer_conn = peer_conn.lock().await;
+                peer_conn.close().await
+            };
+            match tokio::time::timeout(DROP_CLEANUP_TIMEOUT, close).await {
+                Ok(Ok(())) => {}
+                Ok(Err(err)) => {
+                    tracing::trace!("WebRTC close-on-drop finished with error: {err}");
+                }
+                Err(_) => tracing::trace!("WebRTC close-on-drop timed out"),
+            }
+        }));
+
+        let udp_mux = self.udp_mux.clone();
+        let ufrag = self.ufrag.clone();
+        drop(handle.spawn(async move {
+            let cleanup = udp_mux.remove_conn_by_ufrag(&ufrag);
+            if tokio::time::timeout(DROP_CLEANUP_TIMEOUT, cleanup)
+                .await
+                .is_err()
+            {
+                tracing::trace!("WebRTC mux cleanup timed out for ufrag={ufrag}");
+            }
+        }));
+    }
+}
+
 impl Connection {
     /// Creates a new connection.
-    pub(crate) async fn new(rtc_conn: RTCPeerConnection) -> Self {
+    pub(crate) async fn new(
+        rtc_conn: RTCPeerConnection,
+        udp_mux: Arc<dyn UDPMux + Send + Sync>,
+        ufrag: String,
+    ) -> Self {
         let (data_channel_tx, data_channel_rx) = mpsc::channel(MAX_DATA_CHANNELS_IN_FLIGHT);
 
         Connection::register_incoming_data_channels_handler(
@@ -83,6 +132,8 @@ impl Connection {
 
         Self {
             peer_conn: Arc::new(FutMutex::new(rtc_conn)),
+            udp_mux,
+            ufrag,
             incoming_data_channels_rx: data_channel_rx,
             outbound_fut: None,
             close_fut: None,
@@ -108,13 +159,18 @@ impl Connection {
 
             Box::pin(async move {
                 data_channel.on_open({
-                    let data_channel = data_channel.clone();
+                    // Do not capture a strong Arc to the channel inside a callback
+                    // owned by that same channel. That creates a self-cycle if the
+                    // callback remains registered after firing.
+                    let data_channel = Arc::downgrade(&data_channel);
                     Box::new(move || {
-                        tracing::debug!(channel=%data_channel.id(), "Data channel open");
-
+                        let data_channel = data_channel.clone();
                         Box::pin(async move {
-                            let data_channel = data_channel.clone();
+                            let Some(data_channel) = data_channel.upgrade() else {
+                                return;
+                            };
                             let id = data_channel.id();
+                            tracing::debug!(channel=%id, "Data channel open");
                             match data_channel.detach().await {
                                 Ok(detached) => {
                                     let mut tx = tx.lock().await;
@@ -253,7 +309,6 @@ impl StreamMuxer for Connection {
         let fut = self.close_fut.get_or_insert(Box::pin(async move {
             let peer_conn = peer_conn.lock().await;
             peer_conn.close().await?;
-
             Ok(())
         }));
 
@@ -276,13 +331,17 @@ pub(crate) async fn register_data_channel_open_handler(
     data_channel_tx: Sender<Arc<DetachedDataChannel>>,
 ) {
     data_channel.on_open({
-        let data_channel = data_channel.clone();
+        // The handler is stored by `data_channel`; use Weak so the callback
+        // cannot keep its own channel alive forever.
+        let data_channel = Arc::downgrade(&data_channel);
         Box::new(move || {
-            tracing::debug!(channel=%data_channel.id(), "Data channel open");
-
+            let data_channel = data_channel.clone();
             Box::pin(async move {
-                let data_channel = data_channel.clone();
+                let Some(data_channel) = data_channel.upgrade() else {
+                    return;
+                };
                 let id = data_channel.id();
+                tracing::debug!(channel=%id, "Data channel open");
                 match data_channel.detach().await {
                     Ok(detached) => {
                         if let Err(e) = data_channel_tx.send(detached.clone()) {

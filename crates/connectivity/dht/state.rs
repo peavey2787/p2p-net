@@ -92,7 +92,11 @@ impl DhtProviderState {
     }
 
     pub fn mark_auto_connect_attempted(&mut self, peer: PeerId) -> bool {
-        self.auto_connect_waiting_for_addrs.remove(&peer);
+        remove_peer_from_bounded_set(
+            &mut self.auto_connect_waiting_for_addrs,
+            &mut self.auto_connect_waiting_order,
+            &peer,
+        );
         let inserted = self.auto_connect_attempted_peers.insert(peer);
         if inserted {
             let now = now_unix_secs();
@@ -143,16 +147,32 @@ impl DhtProviderState {
     }
 
     pub fn mark_auto_connect_failed(&mut self, peer: &PeerId) -> bool {
-        self.auto_connect_waiting_for_addrs.remove(peer);
-        self.auto_connect_attempted_peers.remove(peer)
+        remove_peer_from_bounded_set(
+            &mut self.auto_connect_waiting_for_addrs,
+            &mut self.auto_connect_waiting_order,
+            peer,
+        );
+        remove_peer_from_bounded_set(
+            &mut self.auto_connect_attempted_peers,
+            &mut self.auto_connect_attempted_order,
+            peer,
+        )
     }
 
     /// Make a previously connected discovery peer eligible for the bounded
     /// reconnect policy. The retry history is intentionally retained so a
     /// flapping peer cannot bypass the cooldown or per-window attempt cap.
     pub fn mark_auto_connect_disconnected(&mut self, peer: &PeerId) {
-        self.auto_connect_waiting_for_addrs.remove(peer);
-        self.auto_connect_attempted_peers.remove(peer);
+        remove_peer_from_bounded_set(
+            &mut self.auto_connect_waiting_for_addrs,
+            &mut self.auto_connect_waiting_order,
+            peer,
+        );
+        remove_peer_from_bounded_set(
+            &mut self.auto_connect_attempted_peers,
+            &mut self.auto_connect_attempted_order,
+            peer,
+        );
     }
 
     #[must_use]
@@ -300,8 +320,16 @@ impl DhtProviderState {
                 break;
             };
             if self.discovered_provider_peers.remove(&evicted).is_some() {
-                self.auto_connect_attempted_peers.remove(&evicted);
-                self.auto_connect_waiting_for_addrs.remove(&evicted);
+                remove_peer_from_bounded_set(
+                    &mut self.auto_connect_attempted_peers,
+                    &mut self.auto_connect_attempted_order,
+                    &evicted,
+                );
+                remove_peer_from_bounded_set(
+                    &mut self.auto_connect_waiting_for_addrs,
+                    &mut self.auto_connect_waiting_order,
+                    &evicted,
+                );
                 self.provider_addr_lookup_started_unix_secs.remove(&evicted);
                 self.provider_addr_lookup_queries
                     .retain(|_, peer| peer != &evicted);
@@ -310,11 +338,45 @@ impl DhtProviderState {
     }
 }
 
+fn remove_peer_from_bounded_set(
+    set: &mut HashSet<PeerId>,
+    order: &mut VecDeque<PeerId>,
+    peer: &PeerId,
+) -> bool {
+    let removed = set.remove(peer);
+    if removed {
+        order.retain(|queued| queued != peer);
+    }
+    removed
+}
+
 fn prune_peer_set(set: &mut HashSet<PeerId>, order: &mut VecDeque<PeerId>, max_entries: usize) {
     while set.len() > max_entries {
         let Some(evicted) = order.pop_front() else {
             break;
         };
         set.remove(&evicted);
+    }
+}
+
+#[cfg(test)]
+mod memory_bound_tests {
+    use super::*;
+
+    #[test]
+    fn auto_connect_tracking_queues_do_not_accumulate_stale_entries() {
+        let mut state = DhtProviderState::default();
+        let peer = PeerId::random();
+
+        for _ in 0..10_000 {
+            assert!(state.mark_auto_connect_waiting_for_addrs(peer));
+            assert!(state.mark_auto_connect_attempted(peer));
+            assert!(state.mark_auto_connect_failed(&peer));
+        }
+
+        assert!(state.auto_connect_attempted_peers.is_empty());
+        assert!(state.auto_connect_waiting_for_addrs.is_empty());
+        assert!(state.auto_connect_attempted_order.is_empty());
+        assert!(state.auto_connect_waiting_order.is_empty());
     }
 }

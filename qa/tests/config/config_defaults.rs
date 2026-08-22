@@ -23,12 +23,19 @@ fn public_fallback_is_enabled_by_default_for_normal_app_mode() {
     );
     assert!(cfg.discovery.public_bootstrap.relay_peers.is_empty());
     assert!(cfg.discovery.public_bootstrap.auto_connect_discovered_peers);
+    assert!(cfg.listeners.tcp);
+    assert!(cfg.listeners.quic);
+    assert!(cfg.listeners.websocket);
+    assert!(cfg.listeners.webrtc_direct);
     assert!(cfg.public_ip_probe.enabled);
     assert!(cfg.public_ip_probe.advertise_listen_addresses);
     assert!(cfg.discovery.rendezvous.client_enabled);
     assert!(!cfg.discovery.rendezvous.server_enabled);
     assert!(cfg.discovery.dht.discover_with_rendezvous_peers);
     assert_eq!(cfg.discovery.dht.refresh_interval_secs, 300);
+    assert_eq!(cfg.discovery.dht.periodic_bootstrap_interval_secs, Some(300));
+    assert_eq!(cfg.discovery.dht.query_parallelism, 3);
+    assert_eq!(cfg.discovery.dht.provider_key_replicas, 3);
     assert!(cfg.discovery.public_bootstrap.bootstrap_decision(0).used);
     assert!(!cfg.discovery.public_bootstrap.bootstrap_decision(1).used);
     assert!(!cfg.discovery.public_bootstrap.rendezvous_decision(1).used);
@@ -178,11 +185,33 @@ fn generated_default_config_reloads_successfully() {
     let loaded = NodeConfig::load_json_file(&path).expect("reload config");
     let _ = fs::remove_file(path);
     assert!(!loaded.relay.enabled);
+    assert_eq!(loaded.gossipsub_heartbeat_interval_secs, 5);
+    assert_eq!(loaded.ping_interval_secs, 15);
     assert_eq!(loaded.listen_addresses.len(), 4);
     assert!(loaded
         .listen_addresses
         .iter()
         .any(|addr| addr.contains("/webrtc-direct")));
+}
+
+#[test]
+fn listener_switches_filter_expensive_inbound_transports() {
+    let cfg = NodeConfig {
+        listeners: p2p_net::ListenerConfig {
+            websocket: false,
+            webrtc_direct: false,
+            ..p2p_net::ListenerConfig::default()
+        },
+        ..NodeConfig::default()
+    };
+
+    let enabled = cfg.enabled_listen_addresses().expect("listen addresses");
+    assert!(enabled.iter().any(|addr| addr.to_string().contains("/quic-v1")));
+    assert!(enabled.iter().any(|addr| addr.to_string().contains("/tcp/4001")));
+    assert!(!enabled.iter().any(|addr| addr.to_string().contains("/ws")));
+    assert!(!enabled
+        .iter()
+        .any(|addr| addr.to_string().contains("/webrtc-direct")));
 }
 
 #[test]

@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use p2p_net::NodeConfig;
+use p2p_net::{NodeConfig, NodeProfile};
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -48,6 +48,24 @@ fn operator_example_configs_validate() {
     consumer
         .validate()
         .expect("consumer default config validates");
+    assert_eq!(consumer.profile, NodeProfile::Full);
+    assert!(consumer.listeners.websocket);
+    assert!(consumer.listeners.webrtc_direct);
+    assert_eq!(consumer.heartbeat_interval_secs, 30);
+    assert_eq!(consumer.gossipsub_heartbeat_interval_secs, 5);
+    assert_eq!(consumer.ping_interval_secs, 15);
+    assert_eq!(consumer.startup_peer_cache_probe, 5);
+    assert_eq!(
+        consumer.discovery.dht.periodic_bootstrap_interval_secs,
+        Some(300)
+    );
+    assert_eq!(consumer.discovery.dht.query_parallelism, 3);
+    assert_eq!(consumer.discovery.dht.provider_key_replicas, 3);
+    assert_eq!(consumer.discovery.dht.refresh_interval_secs, 300);
+    assert_eq!(consumer.discovery.dht.max_namespaces_per_refresh, 16);
+    assert_eq!(consumer.discovery.rendezvous.discover_limit, 64);
+    assert_eq!(consumer.discovery.relay_discovery.max_reservations, 8);
+    assert_eq!(consumer.connection_limits.max_established, Some(128));
     assert_eq!(
         consumer.discovery.public_bootstrap.mode.as_str(),
         "fallback_only"

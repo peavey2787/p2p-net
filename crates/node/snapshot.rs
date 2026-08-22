@@ -4,7 +4,10 @@ use std::collections::VecDeque;
 
 use crate::connectivity::relay::{RelayServiceHealth, RelayState};
 
-const MAX_SNAPSHOT_ADDRS: usize = 16;
+mod helpers;
+
+pub(crate) use helpers::network_label;
+use helpers::push_unique_recent;
 
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct NodeSnapshot {
@@ -218,21 +221,5 @@ impl NodeSnapshot {
         self.dcutr_relay_fallbacks = relay_state.dcutr_relay_fallbacks;
         self.dcutr_upgrade_eligible_connections = relay_state.dcutr_upgrade_eligible_connections;
         self.dcutr_retry_suppressed = relay_state.dcutr_retry_suppressed;
-    }
-}
-
-fn push_unique_recent(values: &mut Vec<String>, value: String) {
-    values.retain(|existing| existing != &value);
-    values.insert(0, value);
-    if values.len() > MAX_SNAPSHOT_ADDRS {
-        values.truncate(MAX_SNAPSHOT_ADDRS);
-    }
-}
-
-pub(crate) fn network_label(network_id: u32) -> String {
-    if network_id == 0 {
-        "MAINNET".to_string()
-    } else {
-        format!("TESTNET-{network_id}")
     }
 }

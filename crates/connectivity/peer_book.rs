@@ -12,6 +12,7 @@ use libp2p::{Multiaddr, PeerId};
 use crate::api::{PeerInfo, PeerSource};
 
 const MAX_ADDRS_PER_PEER: usize = 64;
+pub const DEFAULT_MAX_PEER_BOOK_RECORDS: usize = 2048;
 
 /// One normalized peer record in the local peer book.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,12 +74,38 @@ impl PeerRecord {
 }
 
 /// Local in-memory peer index merged from all discovery and connection sources.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+///
+/// Disconnected records are bounded and oldest-first evicted. Connected peers are
+/// protected from eviction; connection limits provide their independent bound.
+/// An auxiliary index makes periodic reconnect candidate selection O(candidates)
+/// instead of repeatedly scanning every known peer.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PeerBook {
     peers: HashMap<PeerId, PeerRecord>,
+    disconnected_namespace_peers: BTreeSet<PeerId>,
+    disconnected_eviction_order: BTreeSet<(u64, PeerId)>,
+    connected_count: usize,
+    max_records: usize,
+}
+
+impl Default for PeerBook {
+    fn default() -> Self {
+        Self::with_max_records(DEFAULT_MAX_PEER_BOOK_RECORDS)
+    }
 }
 
 impl PeerBook {
+    #[must_use]
+    pub fn with_max_records(max_records: usize) -> Self {
+        Self {
+            peers: HashMap::new(),
+            disconnected_namespace_peers: BTreeSet::new(),
+            disconnected_eviction_order: BTreeSet::new(),
+            connected_count: 0,
+            max_records: max_records.max(1),
+        }
+    }
+
     #[must_use]
     pub fn len(&self) -> usize {
         self.peers.len()
@@ -90,23 +117,17 @@ impl PeerBook {
     }
 
     pub fn record_peer(&mut self, peer_id: PeerId, source: PeerSource) {
-        let record = self
-            .peers
-            .entry(peer_id)
-            .or_insert_with(|| PeerRecord::new(peer_id));
-        record.sources.insert(source);
-        record.mark_seen();
+        self.mutate_peer(peer_id, |record| {
+            record.sources.insert(source);
+        });
     }
 
     pub fn record_addr(&mut self, peer_id: PeerId, addr: Multiaddr, source: PeerSource) {
-        let record = self
-            .peers
-            .entry(peer_id)
-            .or_insert_with(|| PeerRecord::new(peer_id));
-        record.sources.insert(source);
-        record.addresses.insert(addr.to_string());
-        prune_peer_addrs(record);
-        record.mark_seen();
+        self.mutate_peer(peer_id, |record| {
+            record.sources.insert(source);
+            record.addresses.insert(addr.to_string());
+            prune_peer_addrs(record);
+        });
     }
 
     pub fn record_namespace(
@@ -115,27 +136,22 @@ impl PeerBook {
         namespace: impl Into<String>,
         source: PeerSource,
     ) {
-        let record = self
-            .peers
-            .entry(peer_id)
-            .or_insert_with(|| PeerRecord::new(peer_id));
-        record.sources.insert(source);
-        record.namespaces.insert(namespace.into());
-        record.mark_seen();
+        let namespace = namespace.into();
+        self.mutate_peer(peer_id, move |record| {
+            record.sources.insert(source);
+            record.namespaces.insert(namespace);
+        });
     }
 
     pub fn record_connected(&mut self, peer_id: PeerId, addr: Option<Multiaddr>) {
-        let record = self
-            .peers
-            .entry(peer_id)
-            .or_insert_with(|| PeerRecord::new(peer_id));
-        record.connected = true;
-        record.sources.insert(PeerSource::Connected);
-        if let Some(addr) = addr {
-            record.addresses.insert(addr.to_string());
-            prune_peer_addrs(record);
-        }
-        record.mark_seen();
+        self.mutate_peer(peer_id, |record| {
+            record.connected = true;
+            record.sources.insert(PeerSource::Connected);
+            if let Some(addr) = addr {
+                record.addresses.insert(addr.to_string());
+                prune_peer_addrs(record);
+            }
+        });
     }
 
     pub fn record_capabilities(
@@ -145,54 +161,44 @@ impl PeerBook {
         supports_rendezvous: Option<bool>,
         supports_dcutr: Option<bool>,
     ) {
-        let record = self
-            .peers
-            .entry(peer_id)
-            .or_insert_with(|| PeerRecord::new(peer_id));
-        if supports_relay.is_some() {
-            record.supports_relay = supports_relay;
-        }
-        if supports_rendezvous.is_some() {
-            record.supports_rendezvous = supports_rendezvous;
-        }
-        if supports_dcutr.is_some() {
-            record.supports_dcutr = supports_dcutr;
-        }
-        record.mark_seen();
+        self.mutate_peer(peer_id, |record| {
+            if supports_relay.is_some() {
+                record.supports_relay = supports_relay;
+            }
+            if supports_rendezvous.is_some() {
+                record.supports_rendezvous = supports_rendezvous;
+            }
+            if supports_dcutr.is_some() {
+                record.supports_dcutr = supports_dcutr;
+            }
+        });
     }
 
     pub fn record_relay_preferred(&mut self, peer_id: PeerId, relay_preferred: bool) {
-        let record = self
-            .peers
-            .entry(peer_id)
-            .or_insert_with(|| PeerRecord::new(peer_id));
-        record.relay_preferred = relay_preferred;
-        record.mark_seen();
+        self.mutate_peer(peer_id, |record| {
+            record.relay_preferred = relay_preferred;
+        });
     }
 
     pub fn record_disconnected(&mut self, peer_id: PeerId) {
-        let record = self
-            .peers
-            .entry(peer_id)
-            .or_insert_with(|| PeerRecord::new(peer_id));
-        record.connected = false;
-        record.mark_seen();
+        self.mutate_peer(peer_id, |record| {
+            record.connected = false;
+        });
     }
 
     pub fn record_disconnected_if_known(&mut self, peer_id: PeerId) {
-        if let Some(record) = self.peers.get_mut(&peer_id) {
-            record.connected = false;
-            record.mark_seen();
+        if !self.peers.contains_key(&peer_id) {
+            return;
         }
+        self.mutate_peer(peer_id, |record| {
+            record.connected = false;
+        });
     }
 
     pub fn record_failure(&mut self, peer_id: PeerId) {
-        let record = self
-            .peers
-            .entry(peer_id)
-            .or_insert_with(|| PeerRecord::new(peer_id));
-        record.failures = record.failures.saturating_add(1);
-        record.mark_seen();
+        self.mutate_peer(peer_id, |record| {
+            record.failures = record.failures.saturating_add(1);
+        });
     }
 
     #[must_use]
@@ -204,17 +210,21 @@ impl PeerBook {
         self.peers.values()
     }
 
+    /// Indexed disconnected peers that have at least one application namespace.
+    pub fn reconnect_candidates(&self) -> impl Iterator<Item = PeerId> + '_ {
+        self.disconnected_namespace_peers.iter().copied()
+    }
+
     #[must_use]
     pub fn has_application_namespace(
         &self,
         peer_id: &PeerId,
-        namespaces: &BTreeSet<String>,
+        namespaces: &[String],
     ) -> bool {
         self.record(peer_id).is_some_and(|record| {
-            record
-                .namespaces
-                .iter()
-                .any(|namespace| namespaces.contains(namespace))
+            record.namespaces.iter().any(|namespace| {
+                namespaces.iter().any(|candidate| candidate == namespace)
+            })
         })
     }
 
@@ -231,12 +241,74 @@ impl PeerBook {
 
     #[must_use]
     pub fn connected_count(&self) -> usize {
-        self.peers.values().filter(|peer| peer.connected).count()
+        self.connected_count
     }
 
     #[must_use]
     pub fn discovered_count(&self) -> usize {
-        self.peers.values().filter(|peer| !peer.connected).count()
+        self.peers.len().saturating_sub(self.connected_count)
+    }
+
+    fn mutate_peer(&mut self, peer_id: PeerId, mutate: impl FnOnce(&mut PeerRecord)) {
+        let previous = self
+            .peers
+            .get(&peer_id)
+            .map(|record| (record.connected, record.last_seen_unix_secs));
+        if let Some((false, Some(last_seen))) = previous {
+            self.disconnected_eviction_order
+                .remove(&(last_seen, peer_id));
+        }
+
+        {
+            let record = self
+                .peers
+                .entry(peer_id)
+                .or_insert_with(|| PeerRecord::new(peer_id));
+            mutate(record);
+            record.mark_seen();
+        }
+        self.sync_indexes(peer_id, previous.map(|(connected, _)| connected).unwrap_or(false));
+        self.enforce_record_bound();
+    }
+
+    fn sync_indexes(&mut self, peer_id: PeerId, was_connected: bool) {
+        let Some(record) = self.peers.get(&peer_id) else {
+            return;
+        };
+        if was_connected != record.connected {
+            if record.connected {
+                self.connected_count = self.connected_count.saturating_add(1);
+            } else {
+                self.connected_count = self.connected_count.saturating_sub(1);
+            }
+        }
+        if !record.connected && !record.namespaces.is_empty() {
+            self.disconnected_namespace_peers.insert(peer_id);
+        } else {
+            self.disconnected_namespace_peers.remove(&peer_id);
+        }
+        if !record.connected {
+            if let Some(last_seen) = record.last_seen_unix_secs {
+                self.disconnected_eviction_order.insert((last_seen, peer_id));
+            }
+        }
+    }
+
+    fn enforce_record_bound(&mut self) {
+        while self.peers.len() > self.max_records {
+            let victim = self
+                .disconnected_eviction_order
+                .iter()
+                .next()
+                .copied();
+            let Some((last_seen, victim)) = victim else {
+                // Connected records are protected; connection limits are their bound.
+                break;
+            };
+            self.disconnected_eviction_order.remove(&(last_seen, victim));
+            self.peers.remove(&victim);
+            self.disconnected_namespace_peers.remove(&victim);
+        }
     }
 }
 
@@ -284,6 +356,8 @@ mod tests {
         assert_eq!(peers[0].supports_relay, Some(true));
         assert_eq!(peers[0].supports_dcutr, Some(true));
         assert!(book.record(&peer).expect("record").relay_preferred);
+        assert_eq!(book.connected_count(), 1);
+        assert_eq!(book.reconnect_candidates().count(), 0);
     }
 
     #[test]
@@ -309,5 +383,32 @@ mod tests {
             book.record(&peer).expect("record").addresses.len(),
             MAX_ADDRS_PER_PEER
         );
+    }
+
+    #[test]
+    fn disconnected_records_are_bounded_and_indexed() {
+        let mut book = PeerBook::with_max_records(4);
+        for _ in 0..8 {
+            let peer = PeerId::random();
+            book.record_namespace(peer, "p2p-net/1/app/tag", PeerSource::DhtProvider);
+        }
+
+        assert_eq!(book.len(), 4);
+        assert_eq!(book.discovered_count(), 4);
+        assert_eq!(book.reconnect_candidates().count(), 4);
+    }
+
+    #[test]
+    fn connected_records_are_protected_from_discovery_eviction() {
+        let connected = PeerId::random();
+        let mut book = PeerBook::with_max_records(2);
+        book.record_connected(connected, None);
+        for _ in 0..5 {
+            book.record_peer(PeerId::random(), PeerSource::DhtProvider);
+        }
+
+        assert!(book.record(&connected).is_some());
+        assert_eq!(book.connected_count(), 1);
+        assert!(book.len() <= 2);
     }
 }

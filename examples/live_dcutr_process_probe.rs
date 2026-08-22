@@ -1,6 +1,6 @@
 //! Two-process live DCUtR acceptance probe.
 //!
-//! `cargo run --example live_dcutr_process_probe`
+//! `cargo run --release --example live_dcutr_process_probe`
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};

@@ -3,9 +3,9 @@ use std::fs;
 use libp2p::PeerId;
 use p2p_net::connectivity::{limits::ConnectionCapState, peer_cache};
 use p2p_net::{
-    validate_heartbeat_wire, ConnectionLimitsConfig, DiscoveryConfig, HeartbeatEnvelope,
-    HeartbeatReplayCache, HeartbeatValidationDecision, MessageSecurityConfig, NodeConfig,
-    RelayServiceConfig,
+    encode_heartbeat_wire, validate_heartbeat_wire, ConnectionLimitsConfig, DiscoveryConfig,
+    HeartbeatEnvelope, HeartbeatReplayCache, HeartbeatValidationDecision, MessageSecurityConfig,
+    NodeConfig, RelayServiceConfig,
 };
 
 #[test]
@@ -23,7 +23,7 @@ fn thousand_malformed_gossip_messages_are_rejected() {
 }
 
 #[test]
-fn oversized_json_gossip_is_rejected_before_parse() {
+fn oversized_heartbeat_is_rejected_before_binary_parse() {
     let peer = PeerId::random();
     let cfg = MessageSecurityConfig {
         max_heartbeat_wire_bytes: 64,
@@ -43,7 +43,7 @@ fn replay_old_heartbeat_is_ignored_without_poisoning_cache() {
     let cfg = MessageSecurityConfig::default();
     let mut cache = HeartbeatReplayCache::new(&cfg);
     let env = HeartbeatEnvelope::new(peer);
-    let data = serde_json::to_vec(&env).expect("heartbeat json");
+    let data = encode_heartbeat_wire(&env).expect("heartbeat wire");
 
     let first = validate_heartbeat_wire(peer, &data, env.timestamp_ns, &cfg, &mut cache);
     let replay = validate_heartbeat_wire(peer, &data, env.timestamp_ns, &cfg, &mut cache);
@@ -64,7 +64,7 @@ fn spoofed_heartbeat_is_rejected_under_hostile_load() {
     for _ in 0..128 {
         let claimed_peer = PeerId::random();
         let env = HeartbeatEnvelope::new(claimed_peer);
-        let data = serde_json::to_vec(&env).expect("heartbeat json");
+        let data = encode_heartbeat_wire(&env).expect("heartbeat wire");
         let result =
             validate_heartbeat_wire(real_source, &data, env.timestamp_ns, &cfg, &mut cache);
         assert_eq!(result.decision, HeartbeatValidationDecision::Reject);

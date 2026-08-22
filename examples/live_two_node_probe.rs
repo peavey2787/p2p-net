@@ -1,7 +1,7 @@
 //! Live public-network probe for two isolated p2p-net instances.
 //!
 //! Run with:
-//! `cargo run --example live_two_node_probe`
+//! `cargo run --release --example live_two_node_probe`
 
 use std::collections::HashSet;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};

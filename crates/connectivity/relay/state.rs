@@ -4,7 +4,9 @@ use std::time::Instant;
 use libp2p::{autonat, Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+const MAX_TRACKED_DCUTR_PEERS: usize = 1_024;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RelayServiceHealth {
     #[default]
@@ -77,6 +79,27 @@ pub struct RelayReservationPlan {
     pub errors: Vec<String>,
 }
 
+impl RelayState {
+    /// Bound node-level DCUtR retry history; the behaviour has its own bound too.
+    ///
+    /// This intentionally does not keep a second ordering queue. The retry maps
+    /// are historical bookkeeping only, so evicting any old identity at the
+    /// backstop is sufficient and avoids a second structure that can accumulate
+    /// stale entries or make `RelayState` harder for downstream callers to build.
+    pub(crate) fn track_dcutr_peer(&mut self, peer: PeerId) {
+        if self.dcutr_attempts_by_peer.contains_key(&peer) {
+            return;
+        }
+        while self.dcutr_attempts_by_peer.len() >= MAX_TRACKED_DCUTR_PEERS {
+            let Some(evicted) = self.dcutr_attempts_by_peer.keys().next().cloned() else {
+                break;
+            };
+            self.dcutr_attempts_by_peer.remove(&evicted);
+            self.dcutr_last_attempt_by_peer.remove(&evicted);
+        }
+    }
+}
+
 pub fn update_nat_state(state: &mut RelayState, event: &autonat::Event) {
     if let autonat::Event::StatusChanged { old: _, new } = event {
         state.behind_restrictive_nat = matches!(
@@ -101,3 +124,6 @@ pub fn classify_relay_denial(status_debug: &str) -> RelayServiceHealth {
         RelayServiceHealth::Error
     }
 }
+
+#[cfg(test)]
+mod tests;

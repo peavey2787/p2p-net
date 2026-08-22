@@ -1,5 +1,3 @@
-use std::collections::{HashMap, VecDeque};
-
 use libp2p::swarm::Swarm;
 use libp2p::{identify, Multiaddr, PeerId};
 use libp2p_rendezvous as rendezvous;
@@ -7,64 +5,18 @@ use libp2p_rendezvous as rendezvous;
 use crate::api::PeerSource;
 use crate::connectivity::discovery::DiscoveryConfig;
 use crate::connectivity::peer_book::PeerBook;
-use crate::connectivity::peer_cache;
+use crate::connectivity::peer_cache::PeerCacheWriteBatch;
 use crate::connectivity::relay::{relay_reservation_addr, RelayReservationPlan};
 use crate::connectivity::rendezvous::{
     peer_record_addrs, RendezvousActionPlan, RendezvousPeerNamespace, RendezvousState,
 };
-use crate::platform::NodeStorage;
 
 use super::behaviour::{MeshBehaviour, MeshEvent};
 
 const MAX_IDENTIFY_ADDRS_PER_PEER: usize = 8;
-const MAX_IDENTIFY_ROUTING_PEERS: usize = 2_048;
 
-/// Bounded Identify address memory for Kademlia routing peers, kept out of the application peer book and cache.
-#[derive(Debug, Default)]
-pub struct IdentifyAddressState {
-    by_peer: HashMap<PeerId, VecDeque<Multiaddr>>,
-    peer_order: VecDeque<PeerId>,
-}
-
-impl IdentifyAddressState {
-    fn record(&mut self, swarm: &mut Swarm<MeshBehaviour>, peer: PeerId, address: Multiaddr) {
-        let is_new_peer = !self.by_peer.contains_key(&peer);
-        let addresses = self.by_peer.entry(peer).or_default();
-        if addresses.iter().any(|known| known == &address) {
-            return;
-        }
-        addresses.push_back(address.clone());
-        swarm.behaviour_mut().kademlia.add_address(&peer, address);
-
-        while addresses.len() > MAX_IDENTIFY_ADDRS_PER_PEER {
-            let Some(expired) = addresses.pop_front() else {
-                break;
-            };
-            swarm
-                .behaviour_mut()
-                .kademlia
-                .remove_address(&peer, &expired);
-        }
-
-        if is_new_peer {
-            self.peer_order.push_back(peer);
-        }
-        while self.by_peer.len() > MAX_IDENTIFY_ROUTING_PEERS {
-            let Some(expired_peer) = self.peer_order.pop_front() else {
-                break;
-            };
-            let Some(expired_addresses) = self.by_peer.remove(&expired_peer) else {
-                continue;
-            };
-            for expired in expired_addresses {
-                swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .remove_address(&expired_peer, &expired);
-            }
-        }
-    }
-}
+mod identify_state;
+pub use identify_state::IdentifyAddressState;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StartupDiscoveryPlan {
@@ -281,8 +233,8 @@ pub fn refresh_rendezvous(
 pub fn on_mesh_event(
     swarm: &mut Swarm<MeshBehaviour>,
     event: &MeshEvent,
-    discovery_cfg: &DiscoveryConfig,
-    storage: &dyn NodeStorage,
+    _discovery_cfg: &DiscoveryConfig,
+    peer_cache_writes: &mut PeerCacheWriteBatch,
     peer_book: &mut PeerBook,
     identify_addresses: &mut IdentifyAddressState,
 ) {
@@ -290,8 +242,7 @@ pub fn on_mesh_event(
         on_identify_event(
             swarm,
             ev,
-            discovery_cfg,
-            storage,
+            peer_cache_writes,
             peer_book,
             identify_addresses,
         );
@@ -301,8 +252,8 @@ pub fn on_mesh_event(
 pub fn on_rendezvous_client_event(
     swarm: &mut Swarm<MeshBehaviour>,
     event: &rendezvous::client::Event,
-    discovery_cfg: &DiscoveryConfig,
-    storage: &dyn NodeStorage,
+    _discovery_cfg: &DiscoveryConfig,
+    peer_cache_writes: &mut PeerCacheWriteBatch,
     state: &mut RendezvousState,
 ) -> String {
     match event {
@@ -341,15 +292,10 @@ pub fn on_rendezvous_client_event(
                 let peer = registration.record.peer_id();
                 for addr in peer_record_addrs(registration) {
                     add_peer_address_to_discovery(swarm, peer, addr.clone());
-                    peer_cache::record_seen_peer_addr_with_storage(
-                        discovery_cfg,
-                        &peer,
-                        &addr,
-                        storage,
-                    );
+                    peer_cache_writes.record_seen(peer, addr.clone());
                     learned = learned.saturating_add(1);
                 }
-                state.discovered_peers.insert(peer);
+                state.record_discovered_peer(peer);
             }
             match completed_namespace {
                 Some(namespace) => format!(
@@ -447,8 +393,7 @@ pub fn add_peer_address_to_discovery(
 fn on_identify_event(
     swarm: &mut Swarm<MeshBehaviour>,
     event: &identify::Event,
-    discovery_cfg: &DiscoveryConfig,
-    storage: &dyn NodeStorage,
+    peer_cache_writes: &mut PeerCacheWriteBatch,
     peer_book: &mut PeerBook,
     identify_addresses: &mut IdentifyAddressState,
 ) {
@@ -475,12 +420,7 @@ fn on_identify_event(
                 peer_book.record_addr(*peer_id, addr.clone(), PeerSource::Connected);
             }
             if persist_as_application_peer {
-                peer_cache::record_seen_peer_addr_with_storage(
-                    discovery_cfg,
-                    peer_id,
-                    addr,
-                    storage,
-                );
+                peer_cache_writes.record_seen(*peer_id, addr.clone());
             }
         }
     }

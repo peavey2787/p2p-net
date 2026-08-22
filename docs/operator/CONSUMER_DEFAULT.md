@@ -45,6 +45,14 @@ This separation allows the network layer to be easy for normal users while keepi
 
 Use `examples/consumer-default.config.json` as the consumer-facing example. Its important properties are:
 
+- the example uses the `full` profile and serves Kademlia while retaining DHT client discovery;
+- TCP, QUIC, WebSocket, and WebRTC-direct inbound listeners remain enabled by default;
+- iterative DHT query parallelism remains 3, provider-key replication remains 3, and the normal 300-second periodic bootstrap timer remains enabled;
+- Gossipsub mesh maintenance remains at 5 seconds and connection pings remain at 15 seconds;
+- rendezvous discovery keeps its normal 64-peer batch and relay discovery keeps its normal production reservation policy;
+- connection safety uses the normal production cap (128 total established by default), not an example-specific low-CPU ceiling;
+- CPU optimizations coalesce observability and peer-cache persistence, suppress duplicate Identify dashboard work, and avoid connection-triggered DHT refresh churn instead of reducing protocol capability;
+- native WebRTC-direct bounds/ages unverified half-open UDP state and explicitly cleans failed, cancelled, and dropped peer connections instead of retaining transport resources across churn;
 - manual `bootstrap_peers` are empty;
 - manual `relay_peers` are empty;
 - public fallback mode is `fallback_only`;
@@ -105,6 +113,6 @@ That shape is the private/operator path. See `PRIVATE_INFRASTRUCTURE_FIRST.md` a
 
 ### Public DHT meetup retries
 
-Consumer mode does not assume one startup DHT query is enough. After the public IP probe discovers public external addresses, the node adds those addresses to libp2p and immediately reruns app-namespace DHT provider announcement/discovery. The runtime also refreshes app-namespace DHT discovery according to `discovery.dht.refresh_interval_secs` so nodes can meet after bootstrap routing improves without turning every heartbeat into public-DHT work.
+Consumer mode does not assume one startup DHT query is enough. After the initial announce/query, startup retries back off through 5, 15, 30, and 60 seconds before settling on `discovery.dht.refresh_interval_secs`. Recovery from zero connected peers can pull the next refresh forward, subject to a 5-second minimum gap, and learning public external addresses triggers an immediate refresh. Ordinary additional connections do not restart the DHT refresh timer. This lets nodes meet as routing improves without tying DHT work to every application heartbeat.
 
 When no separate public relay fleet is configured, resolved public libp2p bootstrap peers are also tried as best-effort relay candidates. They are not app peers and they are not trusted contacts; they are only public infrastructure candidates. Relays that do not support reservation fail visibly while DHT discovery and direct-dial attempts continue.

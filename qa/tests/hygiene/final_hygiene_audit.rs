@@ -24,11 +24,15 @@ fn original_srp_hotspots_stay_split() {
 
     for (path, max_lines) in [
         ("crates/node/config.rs", 280),
+        ("crates/node/config/listeners.rs", 100),
         ("crates/node/config_validation.rs", 220),
         ("crates/node/metrics.rs", 80),
         ("crates/node/metrics/prometheus.rs", 260),
         ("crates/node/runtime.rs", 320),
+        ("crates/node/runtime/dht_schedule.rs", 100),
+        ("crates/node/runtime/periodic.rs", 140),
         ("crates/node/snapshot.rs", 240),
+        ("crates/node/snapshot/helpers.rs", 60),
         ("crates/node/startup.rs", 120),
         ("crates/node/startup/addrs.rs", 260),
         ("crates/connectivity/relay/address.rs", 100),

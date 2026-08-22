@@ -1,8 +1,16 @@
 {
   "profile": "lite",
   "network_id": 7001,
+  "gossipsub_heartbeat_interval_secs": 5,
+  "ping_interval_secs": 15,
   "identity_key_path": "state/client-node.identity.hex",
   "listen_addresses": [],
+  "listeners": {
+    "tcp": true,
+    "quic": true,
+    "websocket": true,
+    "webrtc_direct": true
+  },
   "bootstrap_peers": [],
   "relay_peers": [],
   "reserve_configured_relays": true,
@@ -39,7 +47,10 @@
       "discover": true,
       "discover_with_rendezvous_peers": true,
       "refresh_interval_secs": 300,
-      "max_namespaces_per_refresh": 16
+      "periodic_bootstrap_interval_secs": 300,
+      "query_parallelism": 3,
+      "max_namespaces_per_refresh": 16,
+      "provider_key_replicas": 3
     },
     "relay_discovery": {
       "enabled": true,

@@ -15,8 +15,12 @@ default = ["dns"]
 # there is no hidden hard-coded third-party resolver.
 # LAN multicast discovery/mDNS is intentionally not included.
 dns = ["libp2p/dns"]
-dashboard = ["dep:crossterm", "dep:ratatui"]
+dashboard = ["dep:crossterm", "dep:ratatui", "tokio/signal"]
 webrtc-oob-probe = ["dep:webrtc"]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
 
 [lib]
 name = "p2p_net"
@@ -107,6 +111,10 @@ name = "codebase_hygiene"
 path = "qa/tests/hygiene/codebase_hygiene.rs"
 
 [[test]]
+name = "codebase_architecture_hygiene"
+path = "qa/tests/hygiene/codebase_architecture_hygiene.rs"
+
+[[test]]
 name = "final_hygiene_audit"
 path = "qa/tests/hygiene/final_hygiene_audit.rs"
 
@@ -114,6 +122,10 @@ path = "qa/tests/hygiene/final_hygiene_audit.rs"
 [[test]]
 name = "observability"
 path = "qa/tests/observability/observability.rs"
+
+[[test]]
+name = "dashboard_runtime"
+path = "qa/tests/observability/dashboard_runtime.rs"
 
 # operator integration tests
 [[test]]
@@ -201,7 +213,7 @@ libp2p = { version = "0.56", default-features = false, features = [
 ] }
 libp2p-rendezvous = "0.17.1"
 ratatui = { version = "0.29", optional = true }
-crossterm = { version = "0.28", optional = true }
+crossterm = { version = "0.28", optional = true, features = ["event-stream"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 hex = "0.4"

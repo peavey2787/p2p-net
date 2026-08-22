@@ -1,6 +1,5 @@
 use libp2p::{PeerId, Swarm};
 
-use crate::connectivity::peer_cache;
 use crate::stack::MeshBehaviour;
 
 use super::super::super::push_pulse;
@@ -33,7 +32,7 @@ pub(crate) async fn handle_outgoing_connection_error(
             application_dial_error = Some(format!("peer={peer} error={error_debug}"));
         }
         if ctx.peer_book.record(peer).is_some() {
-            peer_cache::record_peer_addr_failure_with_storage(ctx.discovery_cfg, peer, ctx.storage);
+            ctx.peer_cache_writes.record_failure(*peer);
             ctx.peer_book.record_failure(peer.to_owned());
         }
 

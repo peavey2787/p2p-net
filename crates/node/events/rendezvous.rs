@@ -24,7 +24,7 @@ pub(crate) async fn handle_client_event(
         swarm,
         ev,
         ctx.discovery_cfg,
-        ctx.storage,
+        ctx.peer_cache_writes,
         ctx.rendezvous_state,
     );
     let auto_dial_pulses = maybe_auto_dial_rendezvous_peers(auto_dial_candidates, swarm, ctx);

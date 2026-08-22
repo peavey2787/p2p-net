@@ -9,7 +9,6 @@ use crate::connectivity::dns::DnsaddrConfig;
 use crate::connectivity::limits::ConnectionLimitsConfig;
 use crate::connectivity::mediator::MediatorConfig;
 use crate::connectivity::relay::RelayServiceConfig;
-use crate::connectivity::webrtc::DEFAULT_WEBRTC_DIRECT_LISTEN_ADDR;
 use crate::platform::PlatformRuntime;
 use crate::protocol::pulse::MessageSecurityConfig;
 
@@ -19,6 +18,11 @@ use super::config_validation::{parse_multiaddrs, validate_node_config};
 use super::environment::{EnvironmentConfig, EnvironmentReport};
 use super::profile::{NodeProfile, ResolvedNodeConfig};
 use super::public_ip::PublicIpProbeConfig;
+
+mod listeners;
+
+pub use listeners::ListenerConfig;
+use listeners::default_listen_addresses;
 
 /// Swarm + heartbeat configuration for a standalone P2P network instance.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -32,11 +36,18 @@ pub struct NodeConfig {
     pub environment: EnvironmentConfig,
     pub network_id: u32,
     pub heartbeat_interval_secs: u64,
+    /// Internal Gossipsub mesh-maintenance heartbeat cadence.
+    pub gossipsub_heartbeat_interval_secs: u64,
+    /// Outbound libp2p ping cadence for each established connection.
+    pub ping_interval_secs: u64,
     pub startup_peer_cache_probe: usize,
     /// Stable libp2p node identity key file. Created on first run and reused after that.
     pub identity_key_path: String,
     /// Multiaddrs this node should listen on. Missing config uses safe shared-node defaults.
     pub listen_addresses: Vec<String>,
+    /// Per-transport inbound listener switches. Disable WebSocket/WebRTC-direct when unused.
+    #[serde(default)]
+    pub listeners: ListenerConfig,
     /// Public bootstrap peers to dial on startup. Full /p2p/<PeerId> multiaddrs are required.
     pub bootstrap_peers: Vec<String>,
     /// Discovery, peer-cache, bootstrap seed, and rendezvous controls.
@@ -79,9 +90,12 @@ impl Default for NodeConfig {
             environment: EnvironmentConfig::default(),
             network_id: 1,
             heartbeat_interval_secs: 30,
+            gossipsub_heartbeat_interval_secs: 5,
+            ping_interval_secs: 15,
             startup_peer_cache_probe: 5,
             identity_key_path: ".p2p-net-identity-key".to_string(),
             listen_addresses: default_listen_addresses(),
+            listeners: ListenerConfig::default(),
             bootstrap_peers: Vec::new(),
             discovery: DiscoveryConfig::default(),
             public_ip_probe: PublicIpProbeConfig::default(),
@@ -189,6 +203,15 @@ impl NodeConfig {
         parse_multiaddrs("listen_addresses", &self.listen_addresses)
     }
 
+    /// Return only configured listen addresses whose transport listener is enabled.
+    pub fn enabled_listen_addresses(&self) -> Result<Vec<Multiaddr>, NetError> {
+        Ok(self
+            .parsed_listen_addresses()?
+            .into_iter()
+            .filter(|addr| self.listeners.allows(addr))
+            .collect())
+    }
+
     pub fn parsed_bootstrap_peers(&self) -> Result<Vec<Multiaddr>, NetError> {
         parse_multiaddrs("bootstrap_peers", &self.bootstrap_peers)
     }
@@ -231,15 +254,6 @@ impl NodeConfig {
             &self.discovery.rendezvous_peers,
         )
     }
-}
-
-fn default_listen_addresses() -> Vec<String> {
-    vec![
-        "/ip4/0.0.0.0/udp/4001/quic-v1".to_string(),
-        DEFAULT_WEBRTC_DIRECT_LISTEN_ADDR.to_string(),
-        "/ip4/0.0.0.0/tcp/4001".to_string(),
-        "/ip4/0.0.0.0/tcp/4002/ws".to_string(),
-    ]
 }
 
 fn default_true() -> bool {

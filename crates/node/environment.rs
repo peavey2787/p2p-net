@@ -185,15 +185,21 @@ impl EnvironmentReport {
             .platform_hint
             .or(runtime_hints.as_ref().and_then(|v| v.platform_hint))
             .unwrap_or(PlatformKind::current());
+        let enabled_listen_addresses = cfg
+            .enabled_listen_addresses()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|addr| addr.to_string())
+            .collect::<Vec<_>>();
         let can_listen_tcp = hints
             .can_listen_tcp
             .or(runtime_hints.as_ref().and_then(|v| v.can_listen_tcp))
-            .unwrap_or(listen_addresses_include(&cfg.listen_addresses, "/tcp/"));
+            .unwrap_or(listen_addresses_include(&enabled_listen_addresses, "/tcp/"));
         let can_listen_quic = hints
             .can_listen_quic
             .or(runtime_hints.as_ref().and_then(|v| v.can_listen_quic))
             .unwrap_or(
-                cfg.listen_addresses
+                enabled_listen_addresses
                     .iter()
                     .any(|addr| addr.contains("/udp/") && addr.contains("/quic")),
             );

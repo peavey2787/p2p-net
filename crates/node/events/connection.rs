@@ -5,7 +5,6 @@ use std::time::{Duration, Instant};
 
 use crate::api::PeerSource;
 use crate::connectivity::addr::{has_reachable_transport, is_local_direct_addr};
-use crate::connectivity::peer_cache;
 use crate::connectivity::relay::{relay_peer_id, update_nat_state, RelayServiceHealth};
 use crate::stack::{
     add_external_address_candidate, add_hole_punch_candidate, refresh_rendezvous, MeshBehaviour,
@@ -121,12 +120,8 @@ pub(crate) async fn handle_connection_established(
     }
 
     if track_as_application_peer {
-        peer_cache::record_seen_peer_addr_with_storage(
-            ctx.discovery_cfg,
-            &peer_id,
-            &remote_addr,
-            ctx.storage,
-        );
+        ctx.peer_cache_writes
+            .record_seen(peer_id, remote_addr.clone());
         ctx.metrics
             .record_storage_write(remote_addr.to_string().len());
         ctx.peer_book
@@ -175,6 +170,7 @@ pub(crate) async fn handle_connection_established(
             let max_attempts = ctx.dcutr_policy.max_attempts_per_peer;
             let now = Instant::now();
             let retry_interval = Duration::from_secs(ctx.dcutr_policy.retry_interval_secs.max(1));
+            ctx.relay_state.track_dcutr_peer(peer_id);
             let attempts = ctx
                 .relay_state
                 .dcutr_attempts_by_peer
@@ -397,9 +393,13 @@ pub(crate) async fn handle_expired_listen_addr(
         ctx.relay_state
             .relayed_listen_addrs
             .remove(&address.to_string());
+        let address_string = address.to_string();
         for pending in ctx.relay_state.pending_relay_listen_addrs.values_mut() {
-            pending.remove(&address.to_string());
+            pending.remove(&address_string);
         }
+        ctx.relay_state
+            .pending_relay_listen_addrs
+            .retain(|_, pending| !pending.is_empty());
     }
     let mut guard = ctx.snapshot.lock().await;
     remove_listen_addr_snapshot(&mut guard, &address, classification);

@@ -20,7 +20,7 @@ The shared library does not ship a project-operated public rendezvous or relay f
 
 ## Consumer vs operator examples
 
-- `examples/consumer-default.config.json` documents the normal user-facing behavior: public fallback on, manual bootstrap peers empty, public auto-connect on, rendezvous client on, DHT provider discovery on, and contact trust left to the application layer.
+- `examples/consumer-default.config.json` documents the normal user-facing full-node behavior: public fallback on, manual bootstrap peers empty, public auto-connect on, all normal inbound transports enabled, Kademlia server/client capability enabled, normal DHT parallelism/replication retained, and contact trust left to the application layer.
 - `examples/public-fallback.config.json` is the expanded public-fallback example for operators and power users who want to see the full fallback shape.
 - `examples/private-infrastructure-first.config.json` documents the Advanced/operator private mode: public fallback disabled, public auto-connect disabled, and owned bootstrap/rendezvous/relay peers supplied explicitly.
 

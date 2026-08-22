@@ -7,8 +7,8 @@
 //! Two-terminal example:
 //!
 //! ```text
-//! cargo run --example live_webrtc_oob_probe -- --role answer --exchange-dir .live-webrtc --session demo
-//! cargo run --example live_webrtc_oob_probe -- --role offer --exchange-dir .live-webrtc --session demo
+//! cargo run --release --example live_webrtc_oob_probe -- --role answer --exchange-dir .live-webrtc --session demo
+//! cargo run --release --example live_webrtc_oob_probe -- --role offer --exchange-dir .live-webrtc --session demo
 //! ```
 //!
 //! The automation writes the strings to files under `--exchange-dir`, but those

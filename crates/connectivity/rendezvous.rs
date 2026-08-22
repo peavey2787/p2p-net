@@ -11,6 +11,8 @@ use libp2p::{Multiaddr, PeerId};
 use libp2p_rendezvous as rendezvous;
 use serde::{Deserialize, Serialize};
 
+const MAX_DISCOVERED_PEER_HISTORY: usize = 8192;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RendezvousConfig {
@@ -166,6 +168,18 @@ pub struct RendezvousState {
 }
 
 impl RendezvousState {
+    pub fn record_discovered_peer(&mut self, peer: PeerId) {
+        if self.discovered_peers.contains(&peer) {
+            return;
+        }
+        if self.discovered_peers.len() >= MAX_DISCOVERED_PEER_HISTORY {
+            if let Some(evicted) = self.discovered_peers.iter().next().cloned() {
+                self.discovered_peers.remove(&evicted);
+            }
+        }
+        self.discovered_peers.insert(peer);
+    }
+
     #[must_use]
     pub fn namespace_registration_count(&self) -> usize {
         self.registered_namespaces.len()
@@ -307,6 +321,16 @@ mod tests {
             ..RendezvousConfig::default()
         };
         assert!(bad_regs.validate().is_err());
+    }
+
+
+    #[test]
+    fn discovered_peer_history_is_bounded() {
+        let mut state = RendezvousState::default();
+        for _ in 0..(MAX_DISCOVERED_PEER_HISTORY + 128) {
+            state.record_discovered_peer(PeerId::random());
+        }
+        assert_eq!(state.discovered_peers.len(), MAX_DISCOVERED_PEER_HISTORY);
     }
 
     #[test]

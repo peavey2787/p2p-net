@@ -8,8 +8,10 @@ use tokio::sync::Mutex;
 
 use crate::api::accounted_transport_bytes;
 use crate::common::error::NetError;
-use crate::connectivity::dht::{start_dht_namespace_discovery, DhtNamespacePlan, DhtProviderState};
-use crate::protocol::pulse::collect_local_heartbeat;
+use crate::connectivity::dht::{
+    start_dht_namespace_discovery_immediate, DhtNamespacePlan, DhtProviderState,
+};
+use crate::protocol::pulse::{collect_local_heartbeat, encode_heartbeat_wire};
 use crate::stack::{add_external_address_candidate, MeshBehaviour};
 
 use super::config::NodeConfig;
@@ -17,25 +19,27 @@ use super::public_ip::PublicIpProbeResult;
 use super::push_pulse;
 use super::snapshot::NodeSnapshot;
 
-pub(crate) async fn publish_heartbeat(
+pub(crate) struct PublishedHeartbeat {
+    pub(crate) accounted_bytes: u64,
+    pub(crate) pulse: String,
+}
+
+pub(crate) fn publish_heartbeat(
     swarm: &mut Swarm<MeshBehaviour>,
     local_peer: PeerId,
     topic: &IdentTopic,
-    snapshot: &Arc<Mutex<NodeSnapshot>>,
-) -> Result<u64, NetError> {
+) -> Result<PublishedHeartbeat, NetError> {
     let env = collect_local_heartbeat(local_peer)?;
-    let payload = serde_json::to_vec(&env).map_err(|e| NetError::GossipCodec(e.to_string()))?;
+    let payload = encode_heartbeat_wire(&env)?;
     let accounted_bytes = accounted_transport_bytes(payload.len());
     let _ = swarm
         .behaviour_mut()
         .gossipsub
         .publish(topic.clone(), payload);
-    let mut guard = snapshot.lock().await;
-    push_pulse(
-        &mut guard.pulses,
-        format!("local heartbeat {} {}", env.peer_id, env.nonce_hex),
-    );
-    Ok(accounted_bytes)
+    Ok(PublishedHeartbeat {
+        accounted_bytes,
+        pulse: format!("local heartbeat {} {}", env.peer_id, env.nonce_hex),
+    })
 }
 
 pub(crate) async fn apply_public_ip_probe_result(
@@ -53,7 +57,7 @@ pub(crate) async fn apply_public_ip_probe_result(
     let dht_plan = if result.external_addresses.is_empty() {
         None
     } else {
-        Some(start_dht_namespace_discovery(
+        Some(start_dht_namespace_discovery_immediate(
             swarm,
             cfg.network_id,
             &cfg.discovery,

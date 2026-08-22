@@ -27,12 +27,12 @@ impl AutoDialStats {
         match outcome {
             AutoDialOutcome::DialStarted(_) => {
                 self.dial_attempts = self.dial_attempts.saturating_add(1);
-                self.awaiting_address_peers.remove(peer);
+                self.remove_awaiting(peer);
             }
             AutoDialOutcome::DialFailed(_) => {
                 self.dial_attempts = self.dial_attempts.saturating_add(1);
                 self.dial_failures = self.dial_failures.saturating_add(1);
-                self.awaiting_address_peers.remove(peer);
+                self.remove_awaiting(peer);
             }
             AutoDialOutcome::AwaitingAddress => {
                 self.mark_awaiting_address(*peer);
@@ -42,19 +42,19 @@ impl AutoDialStats {
                 self.mark_awaiting_address(*peer);
             }
             AutoDialOutcome::AlreadyConnected => {
-                self.awaiting_address_peers.remove(peer);
+                self.remove_awaiting(peer);
             }
             _ => {}
         }
     }
 
     pub(crate) fn clear_awaiting(&mut self, peer: &PeerId) {
-        self.awaiting_address_peers.remove(peer);
+        self.remove_awaiting(peer);
     }
 
     pub(crate) fn record_async_failure(&mut self, peer: &PeerId) {
         self.dial_failures = self.dial_failures.saturating_add(1);
-        self.awaiting_address_peers.remove(peer);
+        self.remove_awaiting(peer);
     }
 
     pub(crate) fn awaiting_address_count(&self) -> usize {
@@ -74,12 +74,28 @@ impl AutoDialStats {
     }
 
     pub(crate) fn allow_peer(&mut self, peer: &PeerId) {
-        self.suppressed_peers.remove(peer);
+        self.remove_suppressed(peer);
     }
 
     #[must_use]
     pub(crate) fn is_suppressed(&self, peer: &PeerId) -> bool {
         self.suppressed_peers.contains(peer)
+    }
+
+    fn remove_awaiting(&mut self, peer: &PeerId) -> bool {
+        let removed = self.awaiting_address_peers.remove(peer);
+        if removed {
+            self.awaiting_address_order.retain(|queued| queued != peer);
+        }
+        removed
+    }
+
+    fn remove_suppressed(&mut self, peer: &PeerId) -> bool {
+        let removed = self.suppressed_peers.remove(peer);
+        if removed {
+            self.suppressed_order.retain(|queued| queued != peer);
+        }
+        removed
     }
 
     fn mark_awaiting_address(&mut self, peer: PeerId) {
@@ -275,5 +291,29 @@ mod tests {
         assert!(stats.is_suppressed(&peer));
         stats.allow_peer(&peer);
         assert!(!stats.is_suppressed(&peer));
+    }
+}
+
+
+#[cfg(test)]
+mod memory_bound_tests {
+    use super::*;
+
+    #[test]
+    fn auto_dial_order_queues_do_not_accumulate_removed_peers() {
+        let mut stats = AutoDialStats::default();
+        let peer = PeerId::random();
+
+        for _ in 0..10_000 {
+            stats.mark_awaiting_address(peer);
+            stats.clear_awaiting(&peer);
+            stats.suppress_peer(peer);
+            stats.allow_peer(&peer);
+        }
+
+        assert!(stats.awaiting_address_peers.is_empty());
+        assert!(stats.awaiting_address_order.is_empty());
+        assert!(stats.suppressed_peers.is_empty());
+        assert!(stats.suppressed_order.is_empty());
     }
 }

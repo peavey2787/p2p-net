@@ -57,12 +57,16 @@ Former hotspot status:
 
 ```text
 crates/node/mod.rs — 421 lines
-crates/node/config.rs — 247 lines
+crates/node/config.rs — 255 lines
+crates/node/config/listeners.rs — 53 lines
 crates/node/config_validation.rs — 165 lines
 crates/node/metrics.rs — 11 lines
 crates/node/metrics/prometheus.rs — 24 lines
-crates/node/runtime.rs — 313 lines
-crates/node/snapshot.rs — 230 lines
+crates/node/runtime.rs — 285 lines
+crates/node/runtime/dht_schedule.rs — 72 lines
+crates/node/runtime/periodic.rs — 119 lines
+crates/node/snapshot.rs — 225 lines
+crates/node/snapshot/helpers.rs — 17 lines
 crates/node/startup.rs — 104 lines
 crates/node/startup/addrs.rs — 251 lines
 crates/connectivity/relay.rs — 13 lines
@@ -82,6 +86,8 @@ The root layout is organized and not nested:
 Cargo.toml
 Cargo.lock
 README.md
+run-full-validation.cmd
+run-full-validation.sh
 crates/
 docs/
 examples/
@@ -131,6 +137,6 @@ That test locks in the cleanup by checking:
 
 The edit sandbox does not include `cargo`, `rustc`, or `rustfmt`, so Rust compilation, formatting, clippy, cargo-deny, cargo-audit, and soak tests must be verified on a machine with the Rust toolchain installed:
 
-```powershell
-.\qa\ci\run-full-validation.ps1
+```cmd
+run-full-validation.cmd
 ```

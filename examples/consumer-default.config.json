@@ -1,6 +1,10 @@
 {
-  "profile": "auto",
+  "profile": "full",
   "network_id": 7001,
+  "heartbeat_interval_secs": 30,
+  "gossipsub_heartbeat_interval_secs": 5,
+  "ping_interval_secs": 15,
+  "startup_peer_cache_probe": 5,
   "identity_key_path": "state/consumer-node.identity.hex",
   "listen_addresses": [
     "/ip4/0.0.0.0/udp/4001/quic-v1",
@@ -8,9 +12,25 @@
     "/ip4/0.0.0.0/tcp/4001",
     "/ip4/0.0.0.0/tcp/4002/ws"
   ],
+  "listeners": {
+    "tcp": true,
+    "quic": true,
+    "websocket": true,
+    "webrtc_direct": true
+  },
   "bootstrap_peers": [],
   "relay_peers": [],
   "reserve_configured_relays": true,
+  "connection_limits": {
+    "enabled": true,
+    "max_pending_incoming": 32,
+    "max_pending_outgoing": 32,
+    "max_established_incoming": 64,
+    "max_established_outgoing": 64,
+    "max_established": 128,
+    "max_established_per_peer": 3,
+    "max_established_per_ip": 8
+  },
   "discovery": {
     "peer_cache_path": "state/consumer-peer-cache.json",
     "bootstrap_seed_peers": [],
@@ -22,7 +42,7 @@
       "register": true,
       "discover": true,
       "register_ttl_secs": 7200,
-      "discover_limit": 100
+      "discover_limit": 64
     },
     "namespace": {
       "app_id": "hydra-msg",
@@ -39,7 +59,10 @@
       "discover": true,
       "discover_with_rendezvous_peers": true,
       "refresh_interval_secs": 300,
-      "max_namespaces_per_refresh": 16
+      "periodic_bootstrap_interval_secs": 300,
+      "query_parallelism": 3,
+      "max_namespaces_per_refresh": 16,
+      "provider_key_replicas": 3
     },
     "relay_discovery": {
       "enabled": true,

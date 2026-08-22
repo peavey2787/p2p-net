@@ -100,7 +100,7 @@ version = "2"
 
 [dependencies.tokio]
 version = "1.38"
-features = ["net"]
+features = ["net", "rt", "time"]
 optional = true
 default-features = false
 

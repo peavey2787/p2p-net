@@ -3,20 +3,24 @@
 //! Startup code constructs the swarm and initial discovery state, then hands
 //! ownership to this module so `node::mod` stays focused on public startup.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use futures::StreamExt;
 use libp2p::gossipsub::{IdentTopic, TopicHash};
+use libp2p::swarm::SwarmEvent;
 use libp2p::{Multiaddr, PeerId, Swarm};
 use tokio::sync::{broadcast, mpsc, Mutex};
+use tokio::time::MissedTickBehavior;
 use tokio::task::JoinHandle;
 
 use crate::api::{AppMessage, NodeMetrics};
 use crate::connectivity::connection_strategy::PendingConnectionPlans;
-use crate::connectivity::dht::{start_dht_namespace_discovery_with_interval, DhtProviderState};
+use crate::connectivity::dht::DhtProviderState;
 use crate::connectivity::limits::ConnectionCapState;
 use crate::connectivity::peer_book::PeerBook;
+use crate::connectivity::peer_cache::PeerCacheWriteBatch;
 use crate::connectivity::relay::{RelayReservationPlan, RelayState};
 use crate::connectivity::relay_discovery::RelaySelectionPlan;
 use crate::connectivity::rendezvous::RendezvousState;
@@ -28,18 +32,19 @@ use crate::stack::{IdentifyAddressState, MeshBehaviour};
 use super::commands::{self, NodeCommandContext};
 use super::config::NodeConfig;
 use super::dial::AutoDialStats;
-use super::events::{self, SwarmEventContext};
+use super::events::{self, ObservabilityBatch, SwarmEventContext};
 use super::handle::NodeCommand;
 use super::profile::ResolvedNodeConfig;
 use super::public_ip;
-use super::runtime_maintenance;
-use super::runtime_tasks::{
-    apply_dht_refresh_snapshot, apply_public_ip_probe_result, publish_heartbeat,
-};
+use super::runtime_tasks::apply_public_ip_probe_result;
 use super::snapshot::NodeSnapshot;
 
-const DHT_STARTUP_REFRESH_INTERVAL_SECS: u64 = 5;
-const DHT_STARTUP_REFRESHES: usize = 12;
+mod dht_schedule;
+mod periodic;
+mod state;
+
+const OBSERVABILITY_FLUSH_INTERVAL: Duration = Duration::from_secs(1);
+const PEER_CACHE_FLUSH_INTERVAL: Duration = Duration::from_secs(5);
 pub(crate) struct NodeRuntimeContext {
     pub(crate) cfg: NodeConfig,
     pub(crate) resolved_config: ResolvedNodeConfig,
@@ -47,6 +52,7 @@ pub(crate) struct NodeRuntimeContext {
     pub(crate) local_peer: PeerId,
     pub(crate) heartbeat_topic: IdentTopic,
     pub(crate) snapshot: Arc<Mutex<NodeSnapshot>>,
+    pub(crate) snapshot_revision: Arc<AtomicU64>,
     pub(crate) storage: Arc<dyn NodeStorage>,
     pub(crate) rendezvous_peers: Vec<Multiaddr>,
     pub(crate) relay_reservation_plan: RelayReservationPlan,
@@ -71,6 +77,7 @@ async fn run_node_runtime(ctx: NodeRuntimeContext) {
         local_peer,
         heartbeat_topic,
         snapshot,
+        snapshot_revision,
         storage,
         rendezvous_peers,
         relay_reservation_plan,
@@ -85,6 +92,9 @@ async fn run_node_runtime(ctx: NodeRuntimeContext) {
 
     let heartbeat_interval = Duration::from_secs(cfg.heartbeat_interval_secs.max(1));
     let mut ticker = tokio::time::interval(heartbeat_interval);
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    let mut observability_ticker = tokio::time::interval(OBSERVABILITY_FLUSH_INTERVAL);
+    observability_ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let mut runtime_state = RuntimeState::new(
         &cfg,
         &resolved_config,
@@ -95,18 +105,35 @@ async fn run_node_runtime(ctx: NodeRuntimeContext) {
         peer_book,
     );
     let heartbeat_topic_hash = heartbeat_topic.hash().clone();
+    let application_protocol_version = cfg
+        .discovery
+        .application_protocol_version(cfg.network_id)
+        .expect("validated discovery namespace configuration");
+    let application_namespaces = cfg
+        .discovery
+        .rendezvous_namespaces(cfg.network_id)
+        .expect("validated discovery namespace configuration");
     let started_at = std::time::Instant::now();
+    let enabled_listen_addresses = cfg
+        .enabled_listen_addresses()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|addr| addr.to_string())
+        .collect();
     let mut public_ip_probe = Box::pin(public_ip::probe_public_addresses(
         cfg.public_ip_probe.clone(),
-        cfg.listen_addresses.clone(),
+        enabled_listen_addresses,
     ));
     let mut public_ip_probe_done = false;
+    let mut dht_refresh_sleep = Box::pin(tokio::time::sleep_until(
+        runtime_state.dht_refresh_schedule.next_due(),
+    ));
 
     loop {
         tokio::select! {
             biased;
             _ = ticker.tick() => {
-                tick_runtime(
+                periodic::tick_runtime(
                     &cfg,
                     &mut swarm,
                     local_peer,
@@ -115,9 +142,36 @@ async fn run_node_runtime(ctx: NodeRuntimeContext) {
                     &mut runtime_state,
                     started_at,
                 ).await;
+                snapshot_revision.fetch_add(1, Ordering::Relaxed);
+            }
+            _ = observability_ticker.tick() => {
+                if periodic::flush_observability(
+                    &cfg,
+                    &snapshot,
+                    storage.as_ref(),
+                    &mut runtime_state,
+                )
+                .await
+                {
+                    snapshot_revision.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+            _ = &mut dht_refresh_sleep => {
+                periodic::refresh_dht(
+                    &cfg,
+                    &mut swarm,
+                    &snapshot,
+                    &mut runtime_state,
+                    "scheduled",
+                ).await;
+                snapshot_revision.fetch_add(1, Ordering::Relaxed);
+                dht_refresh_sleep
+                    .as_mut()
+                    .reset(runtime_state.dht_refresh_schedule.next_due());
             }
             public_ip_result = &mut public_ip_probe, if !public_ip_probe_done => {
                 public_ip_probe_done = true;
+                let refreshed_dht = !public_ip_result.external_addresses.is_empty();
                 apply_public_ip_probe_result(
                     public_ip_result,
                     &cfg,
@@ -126,6 +180,13 @@ async fn run_node_runtime(ctx: NodeRuntimeContext) {
                     &mut runtime_state.dht_state,
                     rendezvous_peers.len(),
                 ).await;
+                snapshot_revision.fetch_add(1, Ordering::Relaxed);
+                if refreshed_dht {
+                    runtime_state.dht_refresh_schedule.record_refresh();
+                    dht_refresh_sleep
+                        .as_mut()
+                        .reset(runtime_state.dht_refresh_schedule.next_due());
+                }
             }
             maybe_shutdown = shutdown_rx.recv() => {
                 let _ = maybe_shutdown;
@@ -149,40 +210,67 @@ async fn run_node_runtime(ctx: NodeRuntimeContext) {
                         },
                     )
                     .await;
+                    snapshot_revision.fetch_add(1, Ordering::Relaxed);
                 } else {
                     break;
                 }
             }
             evt = swarm.select_next_some() => {
-                let mut event_ctx = SwarmEventContext {
-                    snapshot: &snapshot,
-                    rep: &mut runtime_state.rep,
-                    relay_state: &mut runtime_state.relay_state,
-                    rendezvous_state: &mut runtime_state.rendezvous_state,
-                    dht_state: &mut runtime_state.dht_state,
-                    peer_book: &mut runtime_state.peer_book,
-                    pending_connections: &mut runtime_state.pending_connections,
-                    auto_dial_stats: &mut runtime_state.auto_dial_stats,
-                    connection_caps: &mut runtime_state.connection_caps,
-                    relay_cfg: &cfg.relay,
-                    dcutr_policy: &cfg.dcutr,
-                    discovery_cfg: &cfg.discovery,
-                    storage: storage.as_ref(),
-                    rendezvous_peers: &rendezvous_peers,
-                    message_security: &cfg.message_security,
-                    replay_cache: &mut runtime_state.replay_cache,
-                    heartbeat_topic_hash: &heartbeat_topic_hash,
-                    app_topic_hashes: &runtime_state.app_topic_hashes,
-                    app_messages: &messages_tx,
-                    metrics: &mut runtime_state.metrics,
-                    identify_addresses: &mut runtime_state.identify_addresses,
-                    local_peer,
-                    network_id: cfg.network_id,
-                };
-                events::handle_swarm_event(evt, &mut swarm, &mut event_ctx).await;
+                let connectivity_recovered = matches!(
+                    &evt,
+                    SwarmEvent::ConnectionEstablished { num_established, .. }
+                        if num_established.get() == 1
+                            && swarm.connected_peers().take(2).count() == 1
+                );
+                let snapshot_update_deferred = events::snapshot_update_deferred(&evt);
+                {
+                    let mut event_ctx = SwarmEventContext {
+                        snapshot: &snapshot,
+                        rep: &mut runtime_state.rep,
+                        relay_state: &mut runtime_state.relay_state,
+                        rendezvous_state: &mut runtime_state.rendezvous_state,
+                        dht_state: &mut runtime_state.dht_state,
+                        peer_book: &mut runtime_state.peer_book,
+                        pending_connections: &mut runtime_state.pending_connections,
+                        auto_dial_stats: &mut runtime_state.auto_dial_stats,
+                        connection_caps: &mut runtime_state.connection_caps,
+                        relay_cfg: &cfg.relay,
+                        dcutr_policy: &cfg.dcutr,
+                        discovery_cfg: &cfg.discovery,
+                        peer_cache_writes: &mut runtime_state.peer_cache_writes,
+                        rendezvous_peers: &rendezvous_peers,
+                        message_security: &cfg.message_security,
+                        replay_cache: &mut runtime_state.replay_cache,
+                        heartbeat_topic_hash: &heartbeat_topic_hash,
+                        app_topic_hashes: &runtime_state.app_topic_hashes,
+                        app_messages: &messages_tx,
+                        metrics: &mut runtime_state.metrics,
+                        identify_addresses: &mut runtime_state.identify_addresses,
+                        observability: &mut runtime_state.observability,
+                        local_peer,
+                        network_id: cfg.network_id,
+                        application_protocol_version: &application_protocol_version,
+                        application_namespaces: &application_namespaces,
+                    };
+                    events::handle_swarm_event(evt, &mut swarm, &mut event_ctx).await;
+                }
+                if !snapshot_update_deferred {
+                    snapshot_revision.fetch_add(1, Ordering::Relaxed);
+                }
+                if connectivity_recovered
+                    && runtime_state
+                        .dht_refresh_schedule
+                        .request_connectivity_recovery_refresh()
+                {
+                    dht_refresh_sleep
+                        .as_mut()
+                        .reset(runtime_state.dht_refresh_schedule.next_due());
+                }
             }
         }
     }
+    runtime_state.flush_peer_cache(&cfg, storage.as_ref());
+    periodic::flush_observability(&cfg, &snapshot, storage.as_ref(), &mut runtime_state).await;
 }
 
 struct RuntimeState {
@@ -198,115 +286,8 @@ struct RuntimeState {
     app_topic_hashes: Vec<TopicHash>,
     metrics: NodeMetrics,
     identify_addresses: IdentifyAddressState,
-    last_dht_refresh: Instant,
-    dht_startup_refreshes: usize,
-}
-
-impl RuntimeState {
-    fn new(
-        cfg: &NodeConfig,
-        resolved_config: &ResolvedNodeConfig,
-        relay_reservation_plan: RelayReservationPlan,
-        relay_selection_plan: RelaySelectionPlan,
-        rendezvous_state: RendezvousState,
-        dht_state: DhtProviderState,
-        peer_book: PeerBook,
-    ) -> Self {
-        Self {
-            rep: ReputationStore::new(cfg.message_security.reputation.clone()),
-            replay_cache: HeartbeatReplayCache::new(&cfg.message_security),
-            relay_state: runtime_maintenance::initial_relay_state(
-                cfg,
-                resolved_config,
-                &relay_reservation_plan,
-                &relay_selection_plan,
-            ),
-            rendezvous_state,
-            dht_state,
-            peer_book,
-            pending_connections: PendingConnectionPlans::default(),
-            auto_dial_stats: AutoDialStats::default(),
-            connection_caps: ConnectionCapState::new(&cfg.connection_limits),
-            app_topic_hashes: Vec::new(),
-            metrics: NodeMetrics::default(),
-            identify_addresses: IdentifyAddressState::default(),
-            last_dht_refresh: Instant::now(),
-            dht_startup_refreshes: 0,
-        }
-    }
-}
-
-async fn tick_runtime(
-    cfg: &NodeConfig,
-    swarm: &mut Swarm<MeshBehaviour>,
-    local_peer: PeerId,
-    heartbeat_topic: &IdentTopic,
-    snapshot: &Arc<Mutex<NodeSnapshot>>,
-    runtime_state: &mut RuntimeState,
-    started_at: std::time::Instant,
-) {
-    events::enforce_relay_schedule(&cfg.relay, swarm, snapshot, &mut runtime_state.relay_state)
-        .await;
-    runtime_maintenance::close_expired_unverified_relayed(
-        swarm,
-        snapshot,
-        &mut runtime_state.relay_state,
-    )
-    .await;
-    runtime_maintenance::maintain_application_connections(
-        cfg,
-        swarm,
-        local_peer,
-        snapshot,
-        &runtime_state.peer_book,
-        &mut runtime_state.pending_connections,
-        &mut runtime_state.dht_state,
-        &mut runtime_state.auto_dial_stats,
-    )
-    .await;
-    if let Ok(bytes) = publish_heartbeat(swarm, local_peer, heartbeat_topic, snapshot).await {
-        runtime_state
-            .metrics
-            .bandwidth
-            .record_sent(None, Some("heartbeat"), bytes);
-    }
-    runtime_state.metrics.compute.execution_cycles_estimated = runtime_state
-        .metrics
-        .compute
-        .execution_cycles_estimated
-        .saturating_add(1);
-    runtime_state.metrics.compute.active_request_count =
-        u32::try_from(runtime_state.pending_connections.pending_count()).unwrap_or(u32::MAX);
-    let dht_refresh_secs = if runtime_state.dht_startup_refreshes < DHT_STARTUP_REFRESHES {
-        cfg.discovery
-            .dht
-            .refresh_interval_secs
-            .clamp(1, DHT_STARTUP_REFRESH_INTERVAL_SECS)
-    } else {
-        cfg.discovery.dht.refresh_interval_secs.max(1)
-    };
-    let dht_refresh_interval = Duration::from_secs(dht_refresh_secs);
-    let dht_plan = if runtime_state.last_dht_refresh.elapsed() >= dht_refresh_interval {
-        runtime_state.last_dht_refresh = Instant::now();
-        runtime_state.dht_startup_refreshes = runtime_state.dht_startup_refreshes.saturating_add(1);
-        Some(start_dht_namespace_discovery_with_interval(
-            swarm,
-            cfg.network_id,
-            &cfg.discovery,
-            runtime_state.rendezvous_state.registered_with.len(),
-            &mut runtime_state.dht_state,
-            dht_refresh_secs,
-        ))
-    } else {
-        None
-    };
-
-    let mut guard = snapshot.lock().await;
-    runtime_state.metrics.uptime_seconds = started_at.elapsed().as_secs();
-    runtime_state.metrics.compute.choked_peers_count =
-        u32::try_from(guard.connection_cap_disconnects).unwrap_or(u32::MAX);
-    guard.uptime_secs = runtime_state.metrics.uptime_seconds;
-    if let Some(plan) = dht_plan {
-        apply_dht_refresh_snapshot(&mut guard, &runtime_state.dht_state, &plan, "periodic");
-    }
+    observability: ObservabilityBatch,
+    peer_cache_writes: PeerCacheWriteBatch,
+    dht_refresh_schedule: dht_schedule::DhtRefreshSchedule,
+    last_peer_cache_flush: std::time::Instant,
 }

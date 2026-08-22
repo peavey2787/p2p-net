@@ -19,12 +19,13 @@
 // DEALINGS IN THE SOFTWARE.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, VecDeque},
     io,
     io::ErrorKind,
     net::SocketAddr,
     sync::Arc,
     task::{Context, Poll},
+    time::{Duration, Instant},
 };
 
 use async_trait::async_trait;
@@ -48,6 +49,72 @@ use webrtc::{
 use crate::tokio::req_res_chan;
 
 const RECEIVE_MTU: usize = 8192;
+// Unknown STUN endpoints are only pre-handshake deduplication state. Keeping them
+// forever lets failed/spoofed handshakes grow memory without bound on public
+// WebRTC-direct listeners. This does not limit established WebRTC connections.
+const MAX_PENDING_NEW_ADDRS: usize = 4096;
+const PENDING_NEW_ADDR_TTL: Duration = Duration::from_secs(30);
+
+#[derive(Debug, Default)]
+struct PendingNewAddrs {
+    seen: HashMap<SocketAddr, Instant>,
+    order: VecDeque<(Instant, SocketAddr)>,
+}
+
+impl PendingNewAddrs {
+    fn remember(&mut self, addr: SocketAddr) -> bool {
+        let now = Instant::now();
+        self.prune(now);
+        if self.seen.contains_key(&addr) {
+            return false;
+        }
+
+        self.seen.insert(addr, now);
+        self.order.push_back((now, addr));
+        self.prune(now);
+        true
+    }
+
+    fn remove(&mut self, addr: &SocketAddr) {
+        if self.seen.remove(addr).is_some() {
+            self.order.retain(|(_, queued)| queued != addr);
+        }
+    }
+
+    fn clear(&mut self) {
+        self.seen.clear();
+        self.order.clear();
+    }
+
+    fn prune(&mut self, now: Instant) {
+        while let Some(&(seen_at, addr)) = self.order.front() {
+            let is_current = self.seen.get(&addr).copied() == Some(seen_at);
+            if !is_current {
+                self.order.pop_front();
+                continue;
+            }
+
+            let expired = now.saturating_duration_since(seen_at) >= PENDING_NEW_ADDR_TTL;
+            let over_capacity = self.seen.len() > MAX_PENDING_NEW_ADDRS;
+            if !expired && !over_capacity {
+                break;
+            }
+
+            self.order.pop_front();
+            self.seen.remove(&addr);
+        }
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.seen.len()
+    }
+
+    #[cfg(test)]
+    fn queued_len(&self) -> usize {
+        self.order.len()
+    }
+}
 
 /// A previously unseen address of a remote which has sent us an ICE binding request.
 #[derive(Debug)]
@@ -80,8 +147,8 @@ pub(crate) struct UDPMuxNewAddr {
     /// Maps from socket address to the underlying connection.
     address_map: HashMap<SocketAddr, UDPMuxConn>,
 
-    /// Set of the new addresses to avoid sending the same address multiple times.
-    new_addrs: HashSet<SocketAddr>,
+    /// Bounded/expiring pre-handshake address deduplication state.
+    new_addrs: PendingNewAddrs,
 
     /// `true` when UDP mux is closed.
     is_closed: bool,
@@ -118,7 +185,7 @@ impl UDPMuxNewAddr {
             listen_addr,
             conns: HashMap::default(),
             address_map: HashMap::default(),
-            new_addrs: HashSet::default(),
+            new_addrs: PendingNewAddrs::default(),
             is_closed: false,
             send_buffer: None,
             close_futures: FuturesUnordered::default(),
@@ -312,6 +379,10 @@ impl UDPMuxNewAddr {
                     for address in removed_conn.get_addresses() {
                         self.address_map.remove(&address);
                     }
+                    // Explicit removal is also used by failed/cancelled handshake
+                    // cleanup. Close the underlying mux connection so ICE resources
+                    // are released rather than only dropping our lookup entry.
+                    removed_conn.close();
                 }
 
                 let _ = response.send(());
@@ -319,8 +390,14 @@ impl UDPMuxNewAddr {
                 continue;
             }
 
-            // => Remove closed connections
-            let _ = self.close_futures.poll_next_unpin(cx);
+            // => Remove all closed connections that are ready. Draining the ready
+            // set prevents completed cleanup futures from piling up during churn.
+            loop {
+                match self.close_futures.poll_next_unpin(cx) {
+                    Poll::Ready(Some(())) => continue,
+                    Poll::Ready(None) | Poll::Pending => break,
+                }
+            }
 
             // => Write previously received data to local connections
             match self.write_future.poll_unpin(cx) {
@@ -357,26 +434,25 @@ impl UDPMuxNewAddr {
 
                             match conn {
                                 None => {
-                                    if !self.new_addrs.contains(&addr) {
-                                        match ufrag_from_stun_message(read.filled(), false) {
-                                            Ok(ufrag) => {
-                                                tracing::trace!(
-                                                    address=%&addr,
-                                                    %ufrag,
-                                                    "Notifying about new address from ufrag",
-                                                );
-                                                self.new_addrs.insert(addr);
-                                                return Poll::Ready(UDPMuxEvent::NewAddr(
-                                                    NewAddr { addr, ufrag },
-                                                ));
-                                            }
-                                            Err(e) => {
-                                                tracing::debug!(
-                                                    address=%&addr,
-                                                    "Unknown address (non STUN packet: {})",
-                                                    e
-                                                );
-                                            }
+                                    match ufrag_from_stun_message(read.filled(), false) {
+                                        Ok(ufrag) if self.new_addrs.remember(addr) => {
+                                            tracing::trace!(
+                                                address=%&addr,
+                                                %ufrag,
+                                                "Notifying about new address from ufrag",
+                                            );
+                                            return Poll::Ready(UDPMuxEvent::NewAddr(NewAddr {
+                                                addr,
+                                                ufrag,
+                                            }));
+                                        }
+                                        Ok(_) => {}
+                                        Err(e) => {
+                                            tracing::debug!(
+                                                address=%&addr,
+                                                "Unknown address (non STUN packet: {})",
+                                                e
+                                            );
                                         }
                                     }
                                 }
@@ -569,6 +645,36 @@ fn ufrag_from_stun_message(buffer: &[u8], local_ufrag: bool) -> Result<String, E
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod pending_new_addr_tests {
+    use super::*;
+
+    #[test]
+    fn pending_new_addresses_are_bounded() {
+        let mut pending = PendingNewAddrs::default();
+        for port in 1..=(MAX_PENDING_NEW_ADDRS + 512) {
+            let addr = SocketAddr::from(([127, 0, 0, 1], (port % u16::MAX as usize) as u16));
+            pending.remember(addr);
+        }
+        assert!(pending.len() <= MAX_PENDING_NEW_ADDRS);
+        assert!(pending.queued_len() <= MAX_PENDING_NEW_ADDRS);
+    }
+
+    #[test]
+    fn removing_pending_address_allows_it_to_be_reported_again() {
+        let mut pending = PendingNewAddrs::default();
+        let addr = SocketAddr::from(([127, 0, 0, 1], 12345));
+        for _ in 0..10_000 {
+            assert!(pending.remember(addr));
+            assert!(!pending.remember(addr));
+            pending.remove(&addr);
+        }
+        assert_eq!(pending.len(), 0);
+        assert_eq!(pending.queued_len(), 0);
+        assert!(pending.remember(addr));
     }
 }
 

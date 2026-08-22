@@ -89,3 +89,51 @@ fn direct_webrtc_probe_stays_on_the_audited_dependency_generation() {
         "the direct WebRTC probe must not advertise the known-problematic AES-256 SRTP profile"
     );
 }
+
+#[test]
+fn local_webrtc_patch_bounds_half_open_udp_state_and_cleans_failed_mux_connections() {
+    let webrtc_manifest = include_str!("../../../external/libp2p-webrtc/Cargo.toml");
+    let mux_source = include_str!("../../../external/libp2p-webrtc/src/tokio/udp_mux.rs");
+    let upgrade_source = include_str!("../../../external/libp2p-webrtc/src/tokio/upgrade.rs");
+    let connection_source = include_str!("../../../external/libp2p-webrtc/src/tokio/connection.rs");
+
+    for required in [
+        "MAX_PENDING_NEW_ADDRS",
+        "PENDING_NEW_ADDR_TTL",
+        "PendingNewAddrs",
+        "removed_conn.close()",
+    ] {
+        assert!(
+            mux_source.contains(required),
+            "local WebRTC UDP mux must retain the bounded half-open-state guard `{required}`"
+        );
+    }
+    for required in [
+        "CONNECTION_SETUP_TIMEOUT",
+        "MuxConnCleanup",
+        "PendingPeerConnection",
+        "remove_conn_by_ufrag",
+    ] {
+        assert!(
+            upgrade_source.contains(required),
+            "failed/cancelled WebRTC setup must retain cleanup guard `{required}`"
+        );
+    }
+    assert!(
+        !mux_source.contains("new_addrs: HashSet<SocketAddr>"),
+        "unbounded WebRTC pre-handshake source tracking must not return"
+    );
+    assert!(
+        connection_source.contains("impl Drop for Connection")
+            && connection_source.contains("peer_conn.close().await"),
+        "WebRTC connections must retain fail-safe close-on-drop cleanup"
+    );
+    assert!(
+        connection_source.matches("Arc::downgrade(&data_channel)").count() >= 2,
+        "WebRTC data-channel callbacks must not strongly capture the channel that owns them"
+    );
+    assert!(
+        webrtc_manifest.contains("features = [\"net\", \"rt\", \"time\"]"),
+        "the local WebRTC patch uses Tokio runtime cleanup and must declare the rt feature"
+    );
+}

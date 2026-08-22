@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::common::error::NetError;
 use crate::common::utils::unix_timestamp_ns;
 
-pub const HEARTBEAT_SCHEMA_VERSION: u16 = 1;
+pub const HEARTBEAT_SCHEMA_VERSION: u16 = 2;
 pub const HEARTBEAT_ENTROPY_BYTES: usize = 32;
 pub const MAX_HEARTBEAT_WIRE_BYTES: usize = 4096;
 pub const MAX_HEARTBEAT_AGE_SECS: u64 = 10 * 60;
@@ -18,11 +18,17 @@ pub const DEFAULT_REPLAY_CACHE_CAPACITY: usize = 8192;
 pub const DEFAULT_REPLAY_CACHE_TTL_SECS: u64 = 15 * 60;
 
 const NS_PER_SEC: u64 = 1_000_000_000;
+const HEARTBEAT_WIRE_MAGIC: [u8; 4] = *b"P2PH";
+const NONCE_BYTES: usize = 32;
+const FIXED_WIRE_BYTES: usize =
+    HEARTBEAT_WIRE_MAGIC.len() + 2 + 2 + 8 + NONCE_BYTES + HEARTBEAT_ENTROPY_BYTES;
 
 pub fn heartbeat_topic(network_id: u32) -> String {
     format!("p2p-net/heartbeat/v{HEARTBEAT_SCHEMA_VERSION}/net-{network_id}")
 }
 
+/// Logical heartbeat envelope. The network wire format is compact binary; serde
+/// support remains for diagnostics and embedding APIs and is not used on gossip.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeartbeatEnvelope {
     /// Topic-specific wire schema version. Missing or wrong versions are rejected.
@@ -52,6 +58,94 @@ impl HeartbeatEnvelope {
 
 pub fn collect_local_heartbeat(peer_id: PeerId) -> Result<HeartbeatEnvelope, NetError> {
     Ok(HeartbeatEnvelope::new(peer_id))
+}
+
+/// Encode the v2 heartbeat as a compact binary frame:
+/// magic | schema(u16) | peer_len(u16) | peer_id bytes | timestamp(u64) |
+/// nonce([u8;32]) | entropy([u8;32]).
+pub fn encode_heartbeat_wire(env: &HeartbeatEnvelope) -> Result<Vec<u8>, NetError> {
+    let peer = env
+        .peer_id
+        .parse::<PeerId>()
+        .map_err(|err| NetError::GossipCodec(format!("invalid heartbeat peer id: {err}")))?;
+    let peer_bytes = peer.to_bytes();
+    let peer_len = u16::try_from(peer_bytes.len())
+        .map_err(|_| NetError::GossipCodec("heartbeat peer id is too long".to_string()))?;
+    let nonce = decode_nonce(&env.nonce_hex)
+        .ok_or_else(|| NetError::GossipCodec("heartbeat nonce must be 32-byte hex".to_string()))?;
+    if env.entropy.len() != HEARTBEAT_ENTROPY_BYTES {
+        return Err(NetError::GossipCodec(format!(
+            "heartbeat entropy must be {HEARTBEAT_ENTROPY_BYTES} bytes"
+        )));
+    }
+
+    let mut wire = Vec::with_capacity(FIXED_WIRE_BYTES + peer_bytes.len());
+    wire.extend_from_slice(&HEARTBEAT_WIRE_MAGIC);
+    wire.extend_from_slice(&env.schema_version.to_be_bytes());
+    wire.extend_from_slice(&peer_len.to_be_bytes());
+    wire.extend_from_slice(&peer_bytes);
+    wire.extend_from_slice(&env.timestamp_ns.to_be_bytes());
+    wire.extend_from_slice(&nonce);
+    wire.extend_from_slice(&env.entropy);
+    Ok(wire)
+}
+
+fn decode_heartbeat_wire(data: &[u8]) -> Result<HeartbeatEnvelope, NetError> {
+    if data.len() < FIXED_WIRE_BYTES {
+        return Err(NetError::GossipCodec("heartbeat frame is truncated".to_string()));
+    }
+    if data[..HEARTBEAT_WIRE_MAGIC.len()] != HEARTBEAT_WIRE_MAGIC {
+        return Err(NetError::GossipCodec("heartbeat frame magic mismatch".to_string()));
+    }
+
+    let mut cursor = HEARTBEAT_WIRE_MAGIC.len();
+    let schema_version = read_u16(data, &mut cursor)?;
+    let peer_len = usize::from(read_u16(data, &mut cursor)?);
+    let expected_len = FIXED_WIRE_BYTES
+        .checked_add(peer_len)
+        .ok_or_else(|| NetError::GossipCodec("heartbeat frame length overflow".to_string()))?;
+    if data.len() != expected_len {
+        return Err(NetError::GossipCodec("heartbeat frame length mismatch".to_string()));
+    }
+
+    let peer_end = cursor + peer_len;
+    let peer = PeerId::from_bytes(&data[cursor..peer_end])
+        .map_err(|err| NetError::GossipCodec(format!("invalid heartbeat peer id bytes: {err}")))?;
+    cursor = peer_end;
+    let timestamp_ns = read_u64(data, &mut cursor)?;
+
+    let mut nonce = [0u8; NONCE_BYTES];
+    nonce.copy_from_slice(&data[cursor..cursor + NONCE_BYTES]);
+    cursor += NONCE_BYTES;
+    let entropy = data[cursor..cursor + HEARTBEAT_ENTROPY_BYTES].to_vec();
+
+    Ok(HeartbeatEnvelope {
+        schema_version,
+        peer_id: peer.to_string(),
+        timestamp_ns,
+        nonce_hex: hex::encode(nonce),
+        entropy,
+    })
+}
+
+fn read_u16(data: &[u8], cursor: &mut usize) -> Result<u16, NetError> {
+    let end = cursor.saturating_add(2);
+    let bytes: [u8; 2] = data
+        .get(*cursor..end)
+        .and_then(|slice| slice.try_into().ok())
+        .ok_or_else(|| NetError::GossipCodec("heartbeat frame is truncated".to_string()))?;
+    *cursor = end;
+    Ok(u16::from_be_bytes(bytes))
+}
+
+fn read_u64(data: &[u8], cursor: &mut usize) -> Result<u64, NetError> {
+    let end = cursor.saturating_add(8);
+    let bytes: [u8; 8] = data
+        .get(*cursor..end)
+        .and_then(|slice| slice.try_into().ok())
+        .ok_or_else(|| NetError::GossipCodec("heartbeat frame is truncated".to_string()))?;
+    *cursor = end;
+    Ok(u64::from_be_bytes(bytes))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -184,12 +278,9 @@ pub fn verify_heartbeat_with_config(
     if env.entropy.iter().all(|b| *b == 0) {
         return false;
     }
-    let Ok(nonce) = hex::decode(&env.nonce_hex) else {
+    let Some(nonce) = decode_nonce(&env.nonce_hex) else {
         return false;
     };
-    if nonce.len() != 32 {
-        return false;
-    }
     if blake3::hash(&env.entropy).as_bytes() != nonce.as_slice() {
         return false;
     }
@@ -221,12 +312,20 @@ pub struct HeartbeatValidationResult {
     pub envelope: Option<HeartbeatEnvelope>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct HeartbeatReplayKey {
+    source: PeerId,
+    schema_version: u16,
+    timestamp_ns: u64,
+    nonce: [u8; NONCE_BYTES],
+}
+
 #[derive(Debug, Clone)]
 pub struct HeartbeatReplayCache {
     capacity: usize,
     ttl_ns: u64,
-    entries: HashMap<String, u64>,
-    order: VecDeque<String>,
+    entries: HashMap<HeartbeatReplayKey, u64>,
+    order: VecDeque<HeartbeatReplayKey>,
 }
 
 impl HeartbeatReplayCache {
@@ -248,7 +347,9 @@ impl HeartbeatReplayCache {
         now_ns: u64,
     ) -> bool {
         self.prune(now_ns);
-        let key = replay_key(source, env);
+        let Some(key) = replay_key(source, env) else {
+            return false;
+        };
         if self.entries.contains_key(&key) {
             return false;
         }
@@ -295,7 +396,7 @@ pub fn validate_heartbeat_wire(
         };
     }
 
-    let Ok(env) = serde_json::from_slice::<HeartbeatEnvelope>(data) else {
+    let Ok(env) = decode_heartbeat_wire(data) else {
         return HeartbeatValidationResult {
             decision: HeartbeatValidationDecision::Reject,
             envelope: None,
@@ -322,9 +423,16 @@ pub fn validate_heartbeat_wire(
     }
 }
 
-fn replay_key(source: PeerId, env: &HeartbeatEnvelope) -> String {
-    format!(
-        "{}:{}:{}:{}",
-        source, env.schema_version, env.timestamp_ns, env.nonce_hex
-    )
+fn replay_key(source: PeerId, env: &HeartbeatEnvelope) -> Option<HeartbeatReplayKey> {
+    Some(HeartbeatReplayKey {
+        source,
+        schema_version: env.schema_version,
+        timestamp_ns: env.timestamp_ns,
+        nonce: decode_nonce(&env.nonce_hex)?,
+    })
+}
+
+fn decode_nonce(nonce_hex: &str) -> Option<[u8; NONCE_BYTES]> {
+    let decoded = hex::decode(nonce_hex).ok()?;
+    decoded.try_into().ok()
 }

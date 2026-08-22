@@ -228,6 +228,11 @@ impl ResolvedNodeConfig {
         let relay_discovery_enabled = effective.discovery.relay_discovery.enabled
             && enabled_behaviours.relay_client
             && has_relay_selection_source;
+        let should_listen = !mobile_lite
+            && effective
+                .enabled_listen_addresses()
+                .map(|addresses| !addresses.is_empty())
+                .unwrap_or(false);
 
         Self {
             profile,
@@ -250,7 +255,7 @@ impl ResolvedNodeConfig {
             should_seed_selected_relays: !effective.reserve_configured_relays
                 && has_relay_selection_source
                 && enabled_behaviours.relay_client,
-            should_listen: !effective.listen_addresses.is_empty() && !mobile_lite,
+            should_listen,
             listen_addresses: effective.listen_addresses,
             relay_peers: effective.relay_peers,
             relay_discovery_enabled,

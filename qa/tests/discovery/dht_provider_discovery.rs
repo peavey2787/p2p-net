@@ -12,6 +12,9 @@ fn dht_discovery_defaults_to_run_alongside_rendezvous() {
     assert!(cfg.discover);
     assert!(cfg.discover_with_rendezvous_peers);
     assert_eq!(cfg.refresh_interval_secs, 300);
+    assert_eq!(cfg.periodic_bootstrap_interval_secs, Some(300));
+    assert_eq!(cfg.query_parallelism, 3);
+    assert_eq!(cfg.provider_key_replicas, 3);
     assert!(cfg.should_discover(0));
     assert!(cfg.should_discover(1));
 }
@@ -47,6 +50,30 @@ fn dht_discovery_validation_rejects_inert_or_unbounded_config() {
         ..DhtDiscoveryConfig::default()
     };
     assert!(hot_loop.validate().is_err());
+
+    let zero_parallelism = DhtDiscoveryConfig {
+        query_parallelism: 0,
+        ..DhtDiscoveryConfig::default()
+    };
+    assert!(zero_parallelism.validate().is_err());
+
+    let zero_bootstrap_interval = DhtDiscoveryConfig {
+        periodic_bootstrap_interval_secs: Some(0),
+        ..DhtDiscoveryConfig::default()
+    };
+    assert!(zero_bootstrap_interval.validate().is_err());
+
+    let zero_replicas = DhtDiscoveryConfig {
+        provider_key_replicas: 0,
+        ..DhtDiscoveryConfig::default()
+    };
+    assert!(zero_replicas.validate().is_err());
+
+    let too_many_replicas = DhtDiscoveryConfig {
+        provider_key_replicas: 4,
+        ..DhtDiscoveryConfig::default()
+    };
+    assert!(too_many_replicas.validate().is_err());
 }
 
 #[test]

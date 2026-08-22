@@ -1,4 +1,5 @@
 use std::convert::Infallible;
+use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use libp2p::allow_block_list::{self, AllowedPeers, BlockedPeers};
@@ -119,6 +120,8 @@ pub struct BehaviourBuildContext<'a> {
     pub local_peer: PeerId,
     pub relay_behaviour: relay::client::Behaviour,
     pub network_id: u32,
+    pub gossipsub_heartbeat_interval_secs: u64,
+    pub ping_interval_secs: u64,
     pub relay_cfg: &'a RelayServiceConfig,
     pub connection_limits_cfg: &'a ConnectionLimitsConfig,
     pub discovery_cfg: &'a DiscoveryConfig,
@@ -131,18 +134,21 @@ pub fn build_behaviour(ctx: BehaviourBuildContext<'_>) -> MeshBehaviour {
         local_peer,
         relay_behaviour,
         network_id,
+        gossipsub_heartbeat_interval_secs,
+        ping_interval_secs,
         relay_cfg,
         connection_limits_cfg,
         discovery_cfg,
         resolved_cfg,
     } = ctx;
     let message_id_fn = |msg: &gossipsub::Message| {
-        let h = blake3::hash(&msg.data);
-        gossipsub::MessageId::from(h.to_hex().to_string())
+        let hash = blake3::hash(&msg.data);
+        gossipsub::MessageId::from(hash.as_bytes().to_vec())
     };
     let gossip_cfg = gossipsub::ConfigBuilder::default()
         .validation_mode(gossipsub::ValidationMode::Strict)
         .validate_messages()
+        .heartbeat_interval(Duration::from_secs(gossipsub_heartbeat_interval_secs))
         .message_id_fn(message_id_fn)
         .build()
         .expect("gossipsub config");
@@ -157,6 +163,16 @@ pub fn build_behaviour(ctx: BehaviourBuildContext<'_>) -> MeshBehaviour {
     let store = kad::store::MemoryStore::new(local_peer);
     let mut kad_config = kad::Config::default();
     kad_config.set_query_timeout(KADEMLIA_QUERY_TIMEOUT);
+    kad_config.set_periodic_bootstrap_interval(
+        discovery_cfg
+            .dht
+            .periodic_bootstrap_interval_secs
+            .map(Duration::from_secs),
+    );
+    kad_config.set_parallelism(
+        NonZeroUsize::new(discovery_cfg.dht.query_parallelism)
+            .expect("validated DHT query parallelism"),
+    );
     let mut kademlia = kad::Behaviour::with_config(local_peer, store, kad_config);
     let kad_mode = if behaviour_policy.kademlia_server {
         Some(kad::Mode::Server)
@@ -237,6 +253,8 @@ pub fn build_behaviour(ctx: BehaviourBuildContext<'_>) -> MeshBehaviour {
         rendezvous_client,
         rendezvous_server,
         identify,
-        ping: ping::Behaviour::new(ping::Config::new()),
+        ping: ping::Behaviour::new(
+            ping::Config::new().with_interval(Duration::from_secs(ping_interval_secs)),
+        ),
     }
 }

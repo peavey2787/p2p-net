@@ -1,18 +1,13 @@
-use std::sync::Arc;
-
 use libp2p::gossipsub::{MessageAcceptance, MessageId};
 use libp2p::{PeerId, Swarm};
-use tokio::sync::Mutex;
 
-use super::super::snapshot::NodeSnapshot;
 use crate::api::{accounted_transport_bytes, PeerSource};
 use crate::protocol::pulse::{validate_heartbeat_wire, HeartbeatValidationDecision};
 use crate::stack::MeshBehaviour;
 
-use super::super::push_pulse;
-use super::{sync_peer_connectivity_snapshot, SwarmEventContext};
+use super::SwarmEventContext;
 
-pub(crate) async fn handle_heartbeat_message(
+pub(crate) fn handle_heartbeat_message(
     swarm: &mut Swarm<MeshBehaviour>,
     peer: PeerId,
     msg_id: MessageId,
@@ -39,17 +34,14 @@ pub(crate) async fn handle_heartbeat_message(
                 .behaviour_mut()
                 .gossipsub
                 .report_message_validation_result(&msg_id, &peer, MessageAcceptance::Accept);
-            if validation.envelope.is_some() {
+            let peer_dirty = validation.envelope.is_some();
+            if peer_dirty {
                 record_heartbeat_peer(peer, ctx);
             }
-            let mut guard = ctx.snapshot.lock().await;
-            sync_peer_connectivity_snapshot(&mut guard, ctx);
-            guard.gossip_messages_accepted = guard.gossip_messages_accepted.saturating_add(1);
+            ctx.observability.gossip_accepted(peer_dirty);
             if let Some(env) = validation.envelope {
-                push_pulse(
-                    &mut guard.pulses,
-                    format!("peer heartbeat {} {}", env.peer_id, env.nonce_hex),
-                );
+                ctx.observability
+                    .pulse(format!("peer heartbeat {} {}", env.peer_id, env.nonce_hex));
             }
         }
         HeartbeatValidationDecision::IgnoreDuplicate => {
@@ -58,52 +50,44 @@ pub(crate) async fn handle_heartbeat_message(
                 .behaviour_mut()
                 .gossipsub
                 .report_message_validation_result(&msg_id, &peer, MessageAcceptance::Ignore);
-            let mut guard = ctx.snapshot.lock().await;
-            guard.gossip_messages_ignored = guard.gossip_messages_ignored.saturating_add(1);
-            push_pulse(
-                &mut guard.pulses,
-                format!("peer {peer} ignored_duplicate_heartbeat"),
-            );
+            ctx.observability.gossip_ignored();
+            ctx.observability
+                .pulse(format!("peer {peer} ignored_duplicate_heartbeat"));
         }
         HeartbeatValidationDecision::RejectOversize => {
-            reject_heartbeat(swarm, peer, &msg_id, ctx, "rejected_oversize").await;
+            reject_heartbeat(swarm, peer, &msg_id, ctx, "rejected_oversize");
         }
         HeartbeatValidationDecision::Reject => {
-            reject_heartbeat(swarm, peer, &msg_id, ctx, "rejected_heartbeat").await;
+            reject_heartbeat(swarm, peer, &msg_id, ctx, "rejected_heartbeat");
         }
     }
 }
 
 fn record_heartbeat_peer(peer: PeerId, ctx: &mut SwarmEventContext<'_>) {
-    if let Ok(namespaces) = ctx.discovery_cfg.rendezvous_namespaces(ctx.network_id) {
-        for namespace in namespaces {
-            ctx.peer_book
-                .record_namespace(peer, namespace, PeerSource::Connected);
-        }
+    for namespace in ctx.application_namespaces {
+        ctx.peer_book
+            .record_namespace(peer, namespace.clone(), PeerSource::Connected);
     }
     ctx.peer_book.record_connected(peer, None);
     ctx.relay_state.unverified_relayed_peers.remove(&peer);
 }
 
-pub(crate) async fn handle_unexpected_topic_message(
+pub(crate) fn handle_unexpected_topic_message(
     swarm: &mut Swarm<MeshBehaviour>,
     peer: PeerId,
     msg_id: MessageId,
-    snapshot: &Arc<Mutex<NodeSnapshot>>,
+    ctx: &mut SwarmEventContext<'_>,
 ) {
     swarm
         .behaviour_mut()
         .gossipsub
         .report_message_validation_result(&msg_id, &peer, MessageAcceptance::Ignore);
-    let mut guard = snapshot.lock().await;
-    guard.gossip_messages_ignored = guard.gossip_messages_ignored.saturating_add(1);
-    push_pulse(
-        &mut guard.pulses,
-        format!("peer {peer} ignored_unexpected_gossip_topic"),
-    );
+    ctx.observability.gossip_ignored();
+    ctx.observability
+        .pulse(format!("peer {peer} ignored_unexpected_gossip_topic"));
 }
 
-async fn reject_heartbeat(
+fn reject_heartbeat(
     swarm: &mut Swarm<MeshBehaviour>,
     peer: PeerId,
     msg_id: &MessageId,
@@ -115,7 +99,6 @@ async fn reject_heartbeat(
         .behaviour_mut()
         .gossipsub
         .report_message_validation_result(msg_id, &peer, MessageAcceptance::Reject);
-    let mut guard = ctx.snapshot.lock().await;
-    guard.gossip_messages_rejected = guard.gossip_messages_rejected.saturating_add(1);
-    push_pulse(&mut guard.pulses, format!("peer {peer} {reason}"));
+    ctx.observability.gossip_rejected();
+    ctx.observability.pulse(format!("peer {peer} {reason}"));
 }

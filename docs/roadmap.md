@@ -30,8 +30,8 @@ Every step must preserve these invariants:
 
 Run the canonical validation command before marking any step complete:
 
-```powershell
-.\qa\ci\run-full-validation.ps1
+```cmd
+run-full-validation.cmd
 ```
 
 ## Step 1 — Add consumer public-network policy defaults
@@ -291,7 +291,7 @@ Goal: make the consumer public fallback keep progressing after startup instead o
 Scope:
 
 - Refresh DHT provider announce/query work after public external addresses are learned.
-- Refresh DHT provider announce/query work on the runtime heartbeat so a node can publish/query after bootstrap routing improves.
+- Refresh DHT provider announce/query work with startup backoff plus connection/public-address events so a node can publish/query as bootstrap routing improves without coupling DHT work to the runtime heartbeat.
 - Treat resolved public libp2p bootstrap peers as best-effort public relay candidates when no separate relay fleet is configured, while still reporting reservation failures honestly.
 - Keep public bootstrap peers separate from trusted contacts and app peers.
 - Keep auto-connect gated by the app namespace and peer-book connection planner.

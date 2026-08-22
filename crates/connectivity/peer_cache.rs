@@ -17,5 +17,5 @@ pub use self::store::{
     load_last_addrs, load_last_addrs_with_storage, record_peer_addr_failure,
     record_peer_addr_failure_with_storage, record_seen_peer_addr,
     record_seen_peer_addr_with_expiry, record_seen_peer_addr_with_expiry_with_storage,
-    record_seen_peer_addr_with_storage,
+    record_seen_peer_addr_with_storage, PeerCacheWriteBatch,
 };

@@ -40,7 +40,8 @@ Raw contact tags must not be published by default. The namespace model hashes ap
 
 ## Announcement
 
-When `discovery.dht.enabled` and `discovery.dht.announce` are true, startup calls Kademlia `start_providing(namespace_key)` for each derived namespace, bounded by `max_namespaces_per_refresh`. Once a namespace has been announced, the runtime does not re-submit the same `start_providing` work on every heartbeat.
+When `discovery.dht.enabled` and `discovery.dht.announce` are true, startup calls Kademlia `start_providing(namespace_key)` for each derived namespace, bounded by `max_namespaces_per_refresh`. Startup refresh retries use 5/15/30/60-second backoff, recovery from zero connected peers may accelerate a pending refresh with a 5-second minimum gap, and steady-state refreshes use `refresh_interval_secs`. Ordinary additional connections do not restart the refresh timer. Already-announced namespaces are not blindly re-submitted on every application heartbeat.
+`periodic_bootstrap_interval_secs` controls libp2p Kademlia's separate routing-table bootstrap timer (`null` disables it), while `query_parallelism` bounds how many peers an iterative query waits on concurrently. `provider_key_replicas` selects one to three deterministic provider keys per namespace. Replica zero is common to every supported setting, while the production/full-node default remains three replicas. These controls are independent of namespace refresh timing.
 
 ## Discovery
 
@@ -60,7 +61,10 @@ Repeated runtime refreshes are throttled by:
 
 ```json
 {
-  "refresh_interval_secs": 300
+  "refresh_interval_secs": 300,
+  "periodic_bootstrap_interval_secs": 300,
+  "query_parallelism": 3,
+  "provider_key_replicas": 3
 }
 ```
 

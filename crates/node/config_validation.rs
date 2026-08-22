@@ -12,6 +12,14 @@ pub(crate) fn validate_node_config(cfg: &NodeConfig) -> Result<(), NetError> {
     if cfg.heartbeat_interval_secs == 0 {
         return Err(config_error("heartbeat_interval_secs must be at least 1"));
     }
+    if cfg.gossipsub_heartbeat_interval_secs == 0 {
+        return Err(config_error(
+            "gossipsub_heartbeat_interval_secs must be at least 1",
+        ));
+    }
+    if cfg.ping_interval_secs == 0 {
+        return Err(config_error("ping_interval_secs must be at least 1"));
+    }
     if cfg.identity_key_path.trim().is_empty() {
         return Err(config_error("identity_key_path must not be empty"));
     }

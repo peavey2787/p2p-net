@@ -29,7 +29,7 @@ docs/validation/    Validation docs
 docs/project/       Project/audit notes
 docs/future-work/   Deferred ideas and long-term proposals
 docs/roadmap.md      Active roadmap, when one exists
-qa/ci/              Canonical validation scripts and CI helpers
+qa/ci/              Validation policy/config helpers used by the root launchers
 qa/tests/           Domain-grouped global/system/invariant integration tests
 qa/fuzz/            Fuzz targets
 qa/tools/           Internal QA utilities
@@ -40,26 +40,26 @@ external/           Local third-party crate patches
 
 ## Run all stable tests and checks
 
-Use the single full-validation script from the crate root:
+Use the single full-validation launcher for your OS from the crate root. On Windows, double-click `run-full-validation.cmd`; on Linux, `run-full-validation.sh` is executable and can be launched directly from a file manager/terminal:
 
-```powershell
-.\qa\ci\run-full-validation.ps1
+```cmd
+run-full-validation.cmd
 ```
 
-It cleans stale build artifacts, refreshes the dependency lockfile, auto-formats with `cargo fmt`, then runs tests, dashboard-feature tests, clippy, `cargo audit`, `cargo deny`, and ignored load/soak tests. It uses isolated validation target directories to avoid stale/incomplete `rlib` artifacts on Windows. It uses the stable Rust toolchain pinned by `rust-toolchain.toml`, rejects nightly/beta/dev rustc builds, and installs missing stable-compatible audit/deny tools unless `-NoInstallTools` is used.
+It cleans stale build artifacts, refreshes the dependency lockfile, auto-formats with `cargo fmt`, then runs tests, dashboard-feature tests, clippy, `cargo audit`, `cargo deny`, and ignored load/soak tests. It uses isolated validation target directories to avoid stale/incomplete `rlib` artifacts on Windows. It uses the stable Rust toolchain pinned by `rust-toolchain.toml`, rejects nightly/beta/dev rustc builds, and installs missing stable-compatible audit/deny tools unless `--no-install-tools` is used.
 
 Useful options:
 
-```powershell
-.\qa\ci\run-full-validation.ps1 -SkipIgnored
-.\qa\ci\run-full-validation.ps1 -NoInstallTools
-.\qa\ci\run-full-validation.ps1 -NoClean
+```cmd
+run-full-validation.cmd --skip-ignored
+run-full-validation.cmd --no-install-tools
+run-full-validation.cmd --no-clean
 ```
 
-Linux/macOS equivalent:
+Linux equivalent:
 
 ```bash
-./qa/ci/run-full-validation.sh
+./run-full-validation.sh
 ```
 
 Fuzz targets are included under `qa/fuzz/`, but they are not run by the stable one-file validation script. Additional validation and hostile-network notes are in `docs/validation/VALIDATION.md`.
@@ -106,19 +106,23 @@ let peer_metrics = handle.get_metrics(Some(peer_id)).await?;
 
 ## Start a node
 
-Generate a config:
+Generate the example's full-node config:
 
 ```powershell
-cargo run --features dashboard --example p2p_node -- --write-default-config p2p-node.json
+cargo run --release --features dashboard --example p2p_node -- --write-default-config p2p-node.json
 ```
 
 Run with the config:
 
 ```powershell
-cargo run --features dashboard --example p2p_node -- --config p2p-node.json
+cargo run --release --features dashboard --example p2p_node -- --config p2p-node.json
 ```
 
-Press `q` or `Esc` to stop the dashboard node cleanly.
+The standalone example is deliberately production-shaped rather than throttled: it selects the `full` profile, runs a Kademlia server, keeps all configured inbound transports available, uses the normal 5-second Gossipsub heartbeat and 15-second Ping cadence, uses the normal three-way DHT query parallelism/provider-key replication, and retains the standard production connection-safety policy. Developers can copy the generated JSON and selectively change roles, listeners, limits, or discovery policy for their deployment. Runtime optimizations are implemented in hot paths instead of by silently reducing protocol capability: public Kademlia request events bypass app-side bookkeeping, DHT/provider observability is coalesced, duplicate Identify/public-address work is suppressed, peer-cache writes are deduplicated and batched, and recovery refreshes cannot form a discovery-to-connection feedback loop. Native WebRTC-direct also bounds and expires unverified pre-handshake UDP state, cleans failed/cancelled ICE mux connections, and closes peer connections on drop so public listener churn cannot retain transport state indefinitely.
+
+Press `q` or `Esc`, use Ctrl-C, or close the console window to stop the dashboard node cleanly. Windows console close/logoff/shutdown and Unix SIGTERM/SIGHUP are handled, and node shutdown has a one-second fail-safe before its runtime task is aborted.
+
+Run and ship optimized release builds. Debug-mode libp2p/crypto/network code is substantially more CPU-intensive and is intended for development diagnostics only.
 
 ## Default connectivity model
 
@@ -163,6 +167,7 @@ Important fields:
 - `profile`: high-level node role selection: `auto`, `full`, `lite`, `relay`, `mediator`, `rendezvous`, `bootstrap`, or `mobile_lite`.
 - `identity_key_path`: stable private node identity; keep this file private and back it up according to `docs/spec/IDENTITY_KEY_BACKUP_ROTATION.md`.
 - `listen_addresses`: local TCP/QUIC/WebSocket/WebRTC-direct listen multiaddrs. Use concrete `/ip4` or `/ip6` listen addresses, not DNS names.
+- `listeners`: per-transport inbound listener switches. Set `websocket` and/or `webrtc_direct` to `false` when those inbound transports are not needed; outbound dial support remains available.
 - `bootstrap_peers`: trusted `/p2p/<PeerId>` bootstrap multiaddrs. `/dns`, `/dns4`, `/dns6`, and `/dnsaddr` dial addresses are supported by default.
 - `dnsaddr`: `/dnsaddr` DoH policy. Defaults to bounded Cloudflare DoH for simple operation; set `doh_endpoint` to an internal/self-hosted DoH resolver for production, or set `enabled` to `false` to reject `/dnsaddr` in configured peers. See `docs/impl/DNSADDR_DOH.md`.
 - `relay_peers`: operator-pinned relay or mediator peers to dial and reserve through.
@@ -178,6 +183,7 @@ Important fields:
 - `discovery.rendezvous`: enable rendezvous client/server registration/discovery.
 - `connection_limits`: global, per-peer, and per-IP connection caps.
 - `message_security`: heartbeat size, timestamp, replay, and reputation settings.
+- Heartbeat gossip uses the compact binary `p2p-net/heartbeat/v2` wire format; the former JSON heartbeat wire is intentionally version-separated.
 - `mediator`: first-class DCUtR mediator policy. `profile = "mediator"` enables the underlying relay server capability intentionally for lite/mobile peers. See `docs/impl/MEDIATOR.md`.
 - `relay.enabled`: opt-in generic relay server mode. Defaults to `false`.
 - `relay.allow_peers` / `relay.deny_peers`: connection-level relay-node ACLs; deny wins.
@@ -209,7 +215,7 @@ The crate is intended to be validation-clean under the stable validation script 
 
 ## Manual checks
 
-Normally, do not run the individual commands manually. Use `.\qa\ci\run-full-validation.ps1`; it is the canonical one-file validation runner for formatting, tests, clippy, security audit, dependency policy, and ignored load/soak tests.
+Normally, do not run the individual commands manually. Use `run-full-validation.cmd` on Windows or `./run-full-validation.sh` on Linux; these are the canonical root-level one-file validation runners for formatting, tests, clippy, security audit, dependency policy, and ignored load/soak tests.
 
 - `docs/impl/EVENT_HANDLING.md` documents the single-responsibility swarm event split.
 - `docs/impl/BEHAVIOUR_POLICY.md` documents profile-driven behaviour construction.
@@ -228,4 +234,4 @@ Normally, do not run the individual commands manually. Use `.\qa\ci\run-full-val
 - `docs/impl/PEER_BOOK_IMPLEMENTATION.md` documents peer-book update paths and observability.
 - `docs/impl/PUBLIC_FALLBACK_IMPLEMENTATION.md` documents the startup wiring for public fallback.
 - `docs/impl/API_IMPLEMENTATION.md` documents API command routing and message delivery.
-- `qa/tests/hygiene/codebase_hygiene.rs` guards against stale transitional docs, grouped test registration, and profile-decision drift outside the resolver.
+- `qa/tests/hygiene/codebase_hygiene.rs` guards repository/layout and profile-decision hygiene, while `qa/tests/hygiene/codebase_architecture_hygiene.rs` guards focused module ownership and complete, unique test registration.

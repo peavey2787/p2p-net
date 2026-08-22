@@ -1,6 +1,6 @@
 use p2p_net::{
-    validate_heartbeat_wire, verify_heartbeat_with_config, HeartbeatEnvelope, HeartbeatReplayCache,
-    HeartbeatValidationDecision, MessageSecurityConfig,
+    encode_heartbeat_wire, validate_heartbeat_wire, verify_heartbeat_with_config, HeartbeatEnvelope,
+    HeartbeatReplayCache, HeartbeatValidationDecision, MessageSecurityConfig,
 };
 
 const NS_PER_SEC: u64 = 1_000_000_000;
@@ -13,7 +13,7 @@ fn invalid_heartbeat_is_rejected() {
     let mut env = HeartbeatEnvelope::new(peer);
     env.entropy = vec![0u8; 32];
     env.nonce_hex = blake3::hash(&env.entropy).to_hex().to_string();
-    let data = serde_json::to_vec(&env).unwrap();
+    let data = encode_heartbeat_wire(&env).unwrap();
 
     let result = validate_heartbeat_wire(peer, &data, env.timestamp_ns, &cfg, &mut cache);
     assert_eq!(result.decision, HeartbeatValidationDecision::Reject);
@@ -26,7 +26,7 @@ fn spoofed_peer_id_heartbeat_is_rejected() {
     let cfg = MessageSecurityConfig::default();
     let mut cache = HeartbeatReplayCache::new(&cfg);
     let env = HeartbeatEnvelope::new(claimed);
-    let data = serde_json::to_vec(&env).unwrap();
+    let data = encode_heartbeat_wire(&env).unwrap();
 
     let result = validate_heartbeat_wire(source, &data, env.timestamp_ns, &cfg, &mut cache);
     assert_eq!(result.decision, HeartbeatValidationDecision::Reject);
@@ -67,7 +67,7 @@ fn duplicate_heartbeat_is_ignored() {
     let cfg = MessageSecurityConfig::default();
     let mut cache = HeartbeatReplayCache::new(&cfg);
     let env = HeartbeatEnvelope::new(peer);
-    let data = serde_json::to_vec(&env).unwrap();
+    let data = encode_heartbeat_wire(&env).unwrap();
 
     let first = validate_heartbeat_wire(peer, &data, env.timestamp_ns, &cfg, &mut cache);
     let second = validate_heartbeat_wire(peer, &data, env.timestamp_ns, &cfg, &mut cache);
@@ -80,7 +80,7 @@ fn duplicate_heartbeat_is_ignored() {
 }
 
 #[test]
-fn oversized_heartbeat_is_rejected_before_json_parse() {
+fn oversized_heartbeat_is_rejected_before_binary_parse() {
     let peer = libp2p::PeerId::random();
     let cfg = MessageSecurityConfig {
         max_heartbeat_wire_bytes: 8,
@@ -101,7 +101,7 @@ fn wrong_schema_version_is_rejected() {
     let mut cache = HeartbeatReplayCache::new(&cfg);
     let mut env = HeartbeatEnvelope::new(peer);
     env.schema_version = 999;
-    let data = serde_json::to_vec(&env).unwrap();
+    let data = encode_heartbeat_wire(&env).unwrap();
 
     let result = validate_heartbeat_wire(peer, &data, env.timestamp_ns, &cfg, &mut cache);
     assert_eq!(result.decision, HeartbeatValidationDecision::Reject);

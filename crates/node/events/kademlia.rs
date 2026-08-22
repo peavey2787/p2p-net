@@ -1,16 +1,14 @@
 use crate::api::PeerSource;
 use crate::connectivity::dht::on_kademlia_event;
-use crate::connectivity::peer_cache;
 use crate::connectivity::relay::is_p2p_circuit_addr;
 
 use super::super::dial::{auto_dial_dht_provider, AutoDialOutcome};
-use super::super::push_pulse;
-use super::{sync_peer_connectivity_snapshot, SwarmEventContext};
+use super::SwarmEventContext;
 use crate::stack::{add_peer_address_to_discovery, allow_dcutr_peer, MeshBehaviour};
 use libp2p::{Multiaddr, PeerId, Swarm};
 use std::collections::HashSet;
 
-const APPLICATION_DIAL_OUTGOING_HEADROOM: u32 = 8;
+const APPLICATION_DIAL_REQUIRED_HEADROOM: u32 = 1;
 
 #[derive(Debug, Clone, Copy)]
 struct AutoDialCandidate {
@@ -49,7 +47,11 @@ fn record_dht_provider_peers(
             ctx.peer_book.record_connected(*provider, None);
             ctx.relay_state.unverified_relayed_peers.remove(provider);
         }
-        if *provider != ctx.local_peer {
+        let has_known_addr = ctx
+            .peer_book
+            .record(provider)
+            .is_some_and(|record| !record.addresses.is_empty());
+        if *provider != ctx.local_peer && !swarm.is_connected(provider) && !has_known_addr {
             ctx.dht_state
                 .start_provider_addr_lookup_if_due(swarm, *provider);
         }
@@ -142,7 +144,7 @@ where
         relay_preferred |= is_p2p_circuit_addr(&addr);
         ctx.peer_book
             .record_addr(*peer, addr.clone(), PeerSource::DhtProvider);
-        peer_cache::record_seen_peer_addr_with_storage(ctx.discovery_cfg, peer, &addr, ctx.storage);
+        ctx.peer_cache_writes.record_seen(*peer, addr.clone());
     }
     if relay_preferred {
         ctx.peer_book.record_relay_preferred(*peer, true);
@@ -184,7 +186,7 @@ fn maybe_auto_dial_dht_providers(
         };
         if released > 0 {
             pulses.push(format!(
-                "dht provider auto-connect released {released} unrelated outbound DHT peer(s) for application dial headroom target={peer}"
+                "dht provider auto-connect released {released} unrelated outbound DHT peer(s) because the outbound cap blocked application dial target={peer}"
             ));
         }
         let outcome = auto_dial_dht_provider(
@@ -225,7 +227,7 @@ fn release_outbound_dht_infrastructure_for_app_dial(
 ) -> usize {
     let to_release = ctx
         .connection_caps
-        .outgoing_connections_to_release(APPLICATION_DIAL_OUTGOING_HEADROOM);
+        .outgoing_connections_to_release(APPLICATION_DIAL_REQUIRED_HEADROOM);
     if to_release == 0 {
         return 0;
     }
@@ -250,45 +252,36 @@ fn release_outbound_dht_infrastructure_for_app_dial(
     victims.len()
 }
 
-pub(crate) async fn handle_event(
+pub(crate) fn handle_event(
     swarm: &mut Swarm<MeshBehaviour>,
     ev: &libp2p::kad::Event,
     ctx: &mut SwarmEventContext<'_>,
 ) {
+    // libp2p has already serviced inbound Kademlia requests before emitting the
+    // event. They do not alter p2p-net provider/app state, so keep the full
+    // server capability while avoiding application-side bookkeeping per request.
+    if matches!(
+        ev,
+        libp2p::kad::Event::InboundRequest { .. }
+            | libp2p::kad::Event::ModeChanged { .. }
+            | libp2p::kad::Event::UnroutablePeer { .. }
+    ) {
+        return;
+    }
+
     let mut auto_dial_candidates = record_dht_provider_peers(ev, swarm, ctx);
     auto_dial_candidates.extend(record_kademlia_provider_addrs(ev, swarm, ctx));
+    let peer_connectivity_changed = !auto_dial_candidates.is_empty();
     let auto_dial_pulses = maybe_auto_dial_dht_providers(auto_dial_candidates, swarm, ctx);
 
-    let Some(line) = on_kademlia_event(swarm, ev, ctx.dht_state) else {
-        if !auto_dial_pulses.is_empty() {
-            let mut guard = ctx.snapshot.lock().await;
-            sync_dht_snapshot(&mut guard, ctx);
-            for pulse in auto_dial_pulses {
-                push_pulse(&mut guard.pulses, pulse);
-            }
-        }
-        return;
-    };
-
-    let mut guard = ctx.snapshot.lock().await;
-    sync_dht_snapshot(&mut guard, ctx);
-    push_pulse(&mut guard.pulses, line);
-    for pulse in auto_dial_pulses {
-        push_pulse(&mut guard.pulses, pulse);
+    if let Some(line) = on_kademlia_event(swarm, ev, ctx.dht_state) {
+        ctx.observability.dht_dirty();
+        ctx.observability.pulse(line);
     }
-}
-
-fn sync_dht_snapshot(
-    snapshot: &mut super::super::snapshot::NodeSnapshot,
-    ctx: &SwarmEventContext<'_>,
-) {
-    snapshot.dht_provider_announce_attempts = ctx.dht_state.announce_attempts;
-    snapshot.dht_provider_announce_failures = ctx.dht_state.announce_failures;
-    snapshot.dht_provider_namespaces_announced = ctx.dht_state.namespaces_announced.len();
-    snapshot.dht_provider_queries = ctx.dht_state.provider_queries;
-    snapshot.dht_provider_query_failures = ctx.dht_state.provider_query_failures;
-    snapshot.dht_provider_records_found = ctx.dht_state.provider_records_found;
-    snapshot.dht_provider_queries_finished = ctx.dht_state.provider_queries_finished;
-    snapshot.dht_provider_peers_discovered = ctx.dht_state.provider_peer_count();
-    sync_peer_connectivity_snapshot(snapshot, ctx);
+    if peer_connectivity_changed {
+        ctx.observability.peer_connectivity_dirty();
+    }
+    for pulse in auto_dial_pulses {
+        ctx.observability.pulse(pulse);
+    }
 }

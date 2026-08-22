@@ -12,7 +12,6 @@ use libp2p::kad::{self, QueryId};
 use libp2p::swarm::Swarm;
 use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 use crate::connectivity::discovery::DiscoveryConfig;
 use crate::stack::MeshBehaviour;
@@ -22,14 +21,11 @@ const PROVIDER_ADDR_LOOKUP_COOLDOWN_SECS: u64 = 30;
 const AUTO_CONNECT_RETRY_COOLDOWN_SECS: u64 = 5;
 const AUTO_CONNECT_RETRY_WINDOW_SECS: u64 = 300;
 const MAX_AUTO_CONNECT_ATTEMPTS_PER_WINDOW: u32 = 8;
-const DHT_PROVIDER_KEY_REPLICAS: u8 = 3;
-const DHT_PROVIDER_ANCHOR_PREFIX_BYTES: usize = 2;
-const DHT_PROVIDER_ANCHOR_MAX_ATTEMPTS: u32 = 1 << 20;
-const DHT_PROVIDER_ANCHOR_CONTEXT: &str = "p2p-net.dht.provider.anchor.v1";
-const MULTIHASH_SHA2_256_CODE: u8 = 0x12;
-const SHA2_256_DIGEST_BYTES: u8 = 32;
 
+mod keys;
 mod state;
+pub use keys::dht_record_key;
+use keys::dht_provider_keys;
 pub use state::DhtProviderState;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -46,6 +42,14 @@ pub struct DhtDiscoveryConfig {
     pub discover_with_rendezvous_peers: bool,
     /// Minimum seconds between periodic DHT namespace refreshes.
     pub refresh_interval_secs: u64,
+    /// Optional libp2p Kademlia routing-table bootstrap cadence. `None` disables
+    /// the built-in periodic bootstrap; explicit startup/event refreshes remain.
+    pub periodic_bootstrap_interval_secs: Option<u64>,
+    /// Maximum peers an iterative Kademlia query waits on concurrently.
+    pub query_parallelism: usize,
+    /// Redundant provider keys used per namespace. One retains interoperability
+    /// through replica zero while reducing announce/query and key-derivation work.
+    pub provider_key_replicas: usize,
     /// Bound startup work when many app tags are configured.
     pub max_namespaces_per_refresh: usize,
 }
@@ -58,6 +62,9 @@ impl Default for DhtDiscoveryConfig {
             discover: true,
             discover_with_rendezvous_peers: true,
             refresh_interval_secs: 300,
+            periodic_bootstrap_interval_secs: Some(300),
+            query_parallelism: 3,
+            provider_key_replicas: 3,
             max_namespaces_per_refresh: 16,
         }
     }
@@ -73,6 +80,21 @@ impl DhtDiscoveryConfig {
         if self.max_namespaces_per_refresh == 0 {
             return Err(config_error(
                 "discovery.dht.max_namespaces_per_refresh must be at least 1",
+            ));
+        }
+        if self.query_parallelism == 0 {
+            return Err(config_error(
+                "discovery.dht.query_parallelism must be at least 1",
+            ));
+        }
+        if !(1..=3).contains(&self.provider_key_replicas) {
+            return Err(config_error(
+                "discovery.dht.provider_key_replicas must be between 1 and 3",
+            ));
+        }
+        if self.periodic_bootstrap_interval_secs == Some(0) {
+            return Err(config_error(
+                "discovery.dht.periodic_bootstrap_interval_secs must be null or at least 1",
             ));
         }
         if self.refresh_interval_secs == 0 {
@@ -100,114 +122,6 @@ pub struct DhtNamespacePlan {
     pub errors: Vec<String>,
 }
 
-pub fn dht_record_key(namespace: &str) -> kad::RecordKey {
-    provider_multihash_key(namespace.as_bytes())
-}
-
-fn dht_record_replica_key(namespace: &str, replica: u8) -> kad::RecordKey {
-    if replica == 0 {
-        dht_record_key(namespace)
-    } else {
-        provider_multihash_key(format!("{namespace}/provider-replica/{replica}").as_bytes())
-    }
-}
-
-fn dht_record_replica_tracking_key(namespace: &str, replica: u8) -> String {
-    if replica == 0 {
-        namespace.to_string()
-    } else {
-        format!("{namespace}:provider-replica:{replica}")
-    }
-}
-
-fn dht_provider_keys(
-    namespace: &str,
-    discovery_cfg: &DiscoveryConfig,
-) -> Vec<(String, kad::RecordKey)> {
-    let public_anchors = if discovery_cfg.public_bootstrap.mode.is_enabled() {
-        discovery_cfg
-            .public_bootstrap
-            .bootstrap_seed_peers
-            .iter()
-            .filter_map(|addr| {
-                addr.rsplit_once("/p2p/")
-                    .and_then(|(_, peer)| peer.parse::<PeerId>().ok())
-            })
-            .take(usize::from(DHT_PROVIDER_KEY_REPLICAS))
-            .collect::<Vec<_>>()
-    } else {
-        Vec::new()
-    };
-
-    if !public_anchors.is_empty() {
-        return public_anchors
-            .into_iter()
-            .enumerate()
-            .map(|(replica, anchor)| {
-                (
-                    format!("{namespace}:provider-anchor:{replica}"),
-                    anchored_provider_key(namespace, &anchor, replica as u8),
-                )
-            })
-            .collect();
-    }
-
-    (0..DHT_PROVIDER_KEY_REPLICAS)
-        .map(|replica| {
-            (
-                dht_record_replica_tracking_key(namespace, replica),
-                dht_record_replica_key(namespace, replica),
-            )
-        })
-        .collect()
-}
-
-fn anchored_provider_key(namespace: &str, anchor: &PeerId, replica: u8) -> kad::RecordKey {
-    let anchor_bytes = anchor.to_bytes();
-    let target = Sha256::digest(&anchor_bytes);
-    let mut material = Vec::with_capacity(
-        DHT_PROVIDER_ANCHOR_CONTEXT.len()
-            + namespace.len()
-            + anchor_bytes.len()
-            + std::mem::size_of::<u32>()
-            + 2,
-    );
-    material.extend_from_slice(DHT_PROVIDER_ANCHOR_CONTEXT.as_bytes());
-    material.push(0);
-    material.extend_from_slice(namespace.as_bytes());
-    material.push(replica);
-    material.extend_from_slice(&anchor_bytes);
-    let counter_offset = material.len();
-    material.extend_from_slice(&0_u32.to_be_bytes());
-
-    for counter in 0..DHT_PROVIDER_ANCHOR_MAX_ATTEMPTS {
-        material[counter_offset..].copy_from_slice(&counter.to_be_bytes());
-        let digest = Sha256::digest(&material);
-        let mut candidate = [0_u8; 34];
-        candidate[0] = MULTIHASH_SHA2_256_CODE;
-        candidate[1] = SHA2_256_DIGEST_BYTES;
-        candidate[2..].copy_from_slice(&digest);
-        let location = Sha256::digest(candidate);
-        if location[..DHT_PROVIDER_ANCHOR_PREFIX_BYTES]
-            == target[..DHT_PROVIDER_ANCHOR_PREFIX_BYTES]
-        {
-            return kad::RecordKey::new(&candidate);
-        }
-    }
-    dht_record_replica_key(namespace, replica)
-}
-
-fn provider_multihash_key(material: impl AsRef<[u8]>) -> kad::RecordKey {
-    let digest = Sha256::digest(material.as_ref());
-    let mut key = Vec::with_capacity(2 + digest.len());
-    // Public IPFS/libp2p DHT implementations commonly validate provider keys
-    // as content multihashes.
-    key.push(MULTIHASH_SHA2_256_CODE);
-    key.push(SHA2_256_DIGEST_BYTES);
-    key.extend_from_slice(&digest);
-    kad::RecordKey::new(&key)
-}
-
 pub fn start_dht_namespace_discovery(
     swarm: &mut Swarm<MeshBehaviour>,
     network_id: u32,
@@ -222,6 +136,29 @@ pub fn start_dht_namespace_discovery(
         rendezvous_peer_count,
         state,
         discovery_cfg.dht.refresh_interval_secs,
+    )
+}
+
+/// Force one namespace refresh after a material reachability change such as
+/// learning a new public external address. This intentionally resets only the
+/// announce/query refresh timestamps; query bookkeeping and discovered peers
+/// remain intact.
+pub(crate) fn start_dht_namespace_discovery_immediate(
+    swarm: &mut Swarm<MeshBehaviour>,
+    network_id: u32,
+    discovery_cfg: &DiscoveryConfig,
+    rendezvous_peer_count: usize,
+    state: &mut DhtProviderState,
+) -> DhtNamespacePlan {
+    state.provider_announce_started_unix_secs.clear();
+    state.provider_query_started_unix_secs.clear();
+    start_dht_namespace_discovery_with_interval(
+        swarm,
+        network_id,
+        discovery_cfg,
+        rendezvous_peer_count,
+        state,
+        1,
     )
 }
 
@@ -252,15 +189,15 @@ pub fn start_dht_namespace_discovery_with_interval(
         }
     };
     plan.namespace_count = namespaces.len();
+    let remote_provider_connected = state
+        .discovered_provider_peers
+        .keys()
+        .any(|peer| peer != swarm.local_peer_id() && swarm.is_connected(peer));
 
     for namespace in namespaces
         .into_iter()
         .take(dht_cfg.max_namespaces_per_refresh)
     {
-        let remote_provider_connected = state
-            .discovered_provider_peers
-            .keys()
-            .any(|peer| peer != swarm.local_peer_id() && swarm.is_connected(peer));
         let query_refresh_interval = if remote_provider_connected {
             dht_cfg.refresh_interval_secs.max(1)
         } else {

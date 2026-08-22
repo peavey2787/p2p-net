@@ -12,7 +12,7 @@ This pass reorganized the repository to match the modular baseline:
 - Validation docs under `docs/validation/`.
 - Project/audit notes under `docs/project/`.
 - Deferred work under `docs/future-work/`.
-- CI and master validation scripts under `qa/ci/`.
+- Root-level Windows/Linux full-validation launchers, with CI policy/config helpers under `qa/ci/`.
 - Domain-grouped global/system/invariant tests under `qa/tests/`.
 - Fuzzing under `qa/fuzz/`.
 - QA utilities under `qa/tools/`.
@@ -30,4 +30,4 @@ This pass reorganized the repository to match the modular baseline:
 
 ## Tooling limitation
 
-The sandbox used for this edit does not include `cargo`, `rustc`, or `rustfmt`, so Rust compilation, formatting, clippy, audit, deny, and soak tests must be verified by running `qa/ci/run-full-validation.ps1` or `qa/ci/run-full-validation.sh` on a machine with the Rust toolchain installed.
+The sandbox used for this edit does not include `cargo`, `rustc`, or `rustfmt`, so Rust compilation, formatting, clippy, audit, deny, and soak tests must be verified by running `run-full-validation.cmd` or `run-full-validation.sh` on a machine with the Rust toolchain installed.

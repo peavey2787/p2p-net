@@ -172,10 +172,10 @@ fn validate_resolved_config(
         ));
     }
 
-    if behaviours.relay_server && raw.listen_addresses.is_empty() {
+    if behaviours.relay_server && raw.enabled_listen_addresses()?.is_empty() {
         return Err(config_error_at(
             "<capability-resolver>",
-            "relay server capability requires at least one listen address",
+            "relay server capability requires at least one enabled listen address",
         ));
     }
 

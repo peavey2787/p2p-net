@@ -18,6 +18,7 @@ mod snapshot;
 mod startup;
 
 use std::collections::VecDeque;
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
 use libp2p::gossipsub::IdentTopic;
@@ -36,7 +37,7 @@ use crate::stack::{
 };
 
 pub use capabilities::{apply_resolved_capabilities, resolve_node_config};
-pub use config::NodeConfig;
+pub use config::{ListenerConfig, NodeConfig};
 pub use environment::{
     EnvironmentConfig, EnvironmentReport, NatKind, NetworkReachability, PlatformKind,
 };
@@ -166,6 +167,7 @@ pub async fn start_node_with_platform(
         &mut dht_state,
     );
 
+    let snapshot_revision = Arc::new(AtomicU64::new(1));
     let snapshot = Arc::new(Mutex::new(NodeSnapshot {
         network_id: cfg.network_id,
         network_label: network_label(cfg.network_id),
@@ -406,6 +408,7 @@ pub async fn start_node_with_platform(
         local_peer,
         heartbeat_topic,
         snapshot: Arc::clone(&snapshot),
+        snapshot_revision: Arc::clone(&snapshot_revision),
         storage,
         rendezvous_peers,
         relay_reservation_plan,
@@ -421,6 +424,7 @@ pub async fn start_node_with_platform(
     Ok(NodeHandle {
         peer_id: local_peer,
         snapshot,
+        snapshot_revision,
         command_tx,
         messages_tx,
         shutdown_tx,

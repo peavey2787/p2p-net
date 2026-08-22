@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -11,11 +12,13 @@ use crate::common::error::NetError;
 use super::snapshot::NodeSnapshot;
 
 const NODE_COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
+const NODE_SHUTDOWN_GRACE: Duration = Duration::from_secs(1);
 
 #[derive(Clone)]
 pub struct NodeHandle {
     pub peer_id: PeerId,
     pub snapshot: Arc<Mutex<NodeSnapshot>>,
+    pub(crate) snapshot_revision: Arc<AtomicU64>,
     pub(crate) command_tx: mpsc::Sender<NodeCommand>,
     pub(crate) messages_tx: broadcast::Sender<AppMessage>,
     pub(crate) shutdown_tx: mpsc::Sender<()>,
@@ -23,6 +26,12 @@ pub struct NodeHandle {
 }
 
 impl NodeHandle {
+    /// Monotonic dashboard/state revision. Readers can poll this inexpensive
+    /// counter before locking/cloning the full snapshot.
+    pub fn snapshot_revision(&self) -> u64 {
+        self.snapshot_revision.load(Ordering::Relaxed)
+    }
+
     /// Dial a concrete peer multiaddr. The address should include `/p2p/<PeerId>`
     /// when the remote peer identity is known.
     pub async fn connect_peer(&self, addr: Multiaddr) -> Result<(), NetError> {
@@ -93,14 +102,17 @@ impl NodeHandle {
 
     /// Request shutdown and wait for the swarm task to exit.
     pub async fn shutdown(&self) {
-        let _ = self.shutdown_tx.send(()).await;
+        // Shutdown must never wait for room in the signal channel. This is
+        // especially important for console-close/logoff handlers, where the OS
+        // gives the process a short cleanup window before terminating it.
+        let _ = self.shutdown_tx.try_send(());
         if let Some(task) = self.task.lock().await.take() {
             let mut task = task;
             tokio::select! {
                 result = &mut task => {
                     let _ = result;
                 }
-                _ = tokio::time::sleep(Duration::from_secs(5)) => {
+                _ = tokio::time::sleep(NODE_SHUTDOWN_GRACE) => {
                     task.abort();
                     let _ = task.await;
                 }

@@ -1,3 +1,4 @@
+use std::collections::{HashSet, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use libp2p::{Multiaddr, PeerId};
@@ -10,6 +11,82 @@ use super::addr_policy::{
 use super::model::{CachedPeerAddr, CachedPeerIdentity, PeerCacheFile, CACHE_VERSION};
 use crate::connectivity::discovery::DiscoveryConfig;
 use crate::platform::{DesktopPlatformRuntime, NodeStorage};
+
+const MAX_PENDING_CACHE_MUTATIONS: usize = 4096;
+
+#[derive(Debug)]
+enum PeerCacheMutation {
+    Seen {
+        peer: PeerId,
+        addr: Multiaddr,
+        expires_unix_secs: Option<u64>,
+    },
+    Failure { peer: PeerId },
+}
+
+/// Runtime-owned, best-effort peer-cache write coalescer. Hot discovery/event
+/// paths enqueue mutations and the node flushes them periodically, so a burst of
+/// DHT/Identify/Rendezvous activity performs one cache read/parse/write cycle
+/// instead of one full JSON rewrite per discovered address.
+#[derive(Debug, Default)]
+pub struct PeerCacheWriteBatch {
+    pending: VecDeque<PeerCacheMutation>,
+    pending_seen: HashSet<(PeerId, Multiaddr, Option<u64>)>,
+}
+
+impl PeerCacheWriteBatch {
+    pub fn record_seen(&mut self, peer: PeerId, addr: Multiaddr) {
+        self.record_seen_with_expiry(peer, addr, None);
+    }
+
+    pub fn record_seen_with_expiry(
+        &mut self,
+        peer: PeerId,
+        addr: Multiaddr,
+        expires_unix_secs: Option<u64>,
+    ) {
+        let key = (peer, addr.clone(), expires_unix_secs);
+        if !self.pending_seen.insert(key) {
+            return;
+        }
+        self.push(PeerCacheMutation::Seen {
+            peer,
+            addr,
+            expires_unix_secs,
+        });
+    }
+
+    pub fn record_failure(&mut self, peer: PeerId) {
+        self.push(PeerCacheMutation::Failure { peer });
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.pending.is_empty()
+    }
+
+    pub fn flush(&mut self, cfg: &DiscoveryConfig, storage: &dyn NodeStorage) {
+        if self.pending.is_empty() {
+            return;
+        }
+        let mutations = std::mem::take(&mut self.pending);
+        self.pending_seen.clear();
+        apply_mutations_with_storage(cfg, mutations, storage);
+    }
+
+    fn push(&mut self, mutation: PeerCacheMutation) {
+        if self.pending.len() >= MAX_PENDING_CACHE_MUTATIONS {
+            if let Some(PeerCacheMutation::Seen {
+                peer,
+                addr,
+                expires_unix_secs,
+            }) = self.pending.pop_front()
+            {
+                self.pending_seen.remove(&(peer, addr, expires_unix_secs));
+            }
+        }
+        self.pending.push_back(mutation);
+    }
+}
 
 pub fn load_last_addrs(cfg: &DiscoveryConfig, limit: usize) -> Vec<Multiaddr> {
     load_last_addrs_with_storage(cfg, limit, &DesktopPlatformRuntime::default())
@@ -102,20 +179,9 @@ pub fn record_peer_addr_failure_with_storage(
     peer: &PeerId,
     storage: &dyn NodeStorage,
 ) {
-    let now = now_unix_secs();
-    let file = read_cache_file_with_storage(cfg, storage).unwrap_or_default();
-    let identities = valid_identities_from_file(cfg, &file, now);
-    let mut entries = valid_dialable_entries_from_file(cfg, &file, now);
-    let peer_s = peer.to_string();
-    for entry in &mut entries {
-        if entry.peer_id == peer_s {
-            entry.failures = entry.failures.saturating_add(1);
-        }
-    }
-    entries.retain(|entry| {
-        cfg.peer_cache_max_failures == 0 || entry.failures < cfg.peer_cache_max_failures
-    });
-    write_entries_with_storage(&cfg.peer_cache_path, identities, entries, storage);
+    let mut batch = PeerCacheWriteBatch::default();
+    batch.record_failure(*peer);
+    batch.flush(cfg, storage);
 }
 
 fn record_seen_peer_addr_inner(
@@ -125,43 +191,67 @@ fn record_seen_peer_addr_inner(
     expires_unix_secs: Option<u64>,
     storage: &dyn NodeStorage,
 ) {
+    let mut batch = PeerCacheWriteBatch::default();
+    batch.record_seen_with_expiry(*peer, addr.clone(), expires_unix_secs);
+    batch.flush(cfg, storage);
+}
+
+fn apply_mutations_with_storage(
+    cfg: &DiscoveryConfig,
+    mutations: VecDeque<PeerCacheMutation>,
+    storage: &dyn NodeStorage,
+) {
     let now = now_unix_secs();
     let file = read_cache_file_with_storage(cfg, storage).unwrap_or_default();
     let mut identities = valid_identities_from_file(cfg, &file, now);
-    upsert_identity(&mut identities, peer, now);
+    let mut entries = valid_dialable_entries_from_file(cfg, &file, now);
 
-    let Some(cache_addr) = normalize_peer_addr(peer, addr) else {
-        let entries = valid_dialable_entries_from_file(cfg, &file, now);
-        write_entries_with_storage(&cfg.peer_cache_path, identities, entries, storage);
-        return;
-    };
-    let Some(addr_kind) = classify_dialable_addr(&cache_addr) else {
-        let entries = valid_dialable_entries_from_file(cfg, &file, now);
-        write_entries_with_storage(&cfg.peer_cache_path, identities, entries, storage);
-        return;
-    };
-    if !is_persistable_dialable_addr_kind(cfg, addr_kind) {
-        let entries = valid_dialable_entries_from_file(cfg, &file, now);
-        write_entries_with_storage(&cfg.peer_cache_path, identities, entries, storage);
-        return;
+    for mutation in mutations {
+        match mutation {
+            PeerCacheMutation::Seen { peer, addr, expires_unix_secs } => {
+                upsert_identity(&mut identities, &peer, now);
+                let Some(cache_addr) = normalize_peer_addr(&peer, &addr) else {
+                    continue;
+                };
+                let Some(addr_kind) = classify_dialable_addr(&cache_addr) else {
+                    continue;
+                };
+                if !is_persistable_dialable_addr_kind(cfg, addr_kind) {
+                    continue;
+                }
+
+                let addr_s = cache_addr.to_string();
+                let peer_s = peer.to_string();
+                entries.retain(|entry| entry.addr != addr_s && entry.peer_id != peer_s);
+                entries.insert(
+                    0,
+                    CachedPeerAddr {
+                        peer_id: peer_s,
+                        addr: addr_s,
+                        last_seen_unix_secs: now,
+                        failures: 0,
+                        addr_kind,
+                        expires_unix_secs: expires_unix_secs
+                            .or_else(|| inferred_expiry_secs(cfg, addr_kind, now)),
+                    },
+                );
+            }
+            PeerCacheMutation::Failure { peer } => {
+                let peer_s = peer.to_string();
+                for entry in &mut entries {
+                    if entry.peer_id == peer_s {
+                        entry.failures = entry.failures.saturating_add(1);
+                    }
+                }
+                entries.retain(|entry| {
+                    cfg.peer_cache_max_failures == 0
+                        || entry.failures < cfg.peer_cache_max_failures
+                });
+            }
+        }
     }
 
-    let mut entries = valid_dialable_entries_from_file(cfg, &file, now);
-    let addr_s = cache_addr.to_string();
-    let peer_s = peer.to_string();
-    entries.retain(|entry| entry.addr != addr_s && entry.peer_id != peer_s);
-    entries.insert(
-        0,
-        CachedPeerAddr {
-            peer_id: peer_s,
-            addr: addr_s,
-            last_seen_unix_secs: now,
-            failures: 0,
-            addr_kind,
-            expires_unix_secs: expires_unix_secs
-                .or_else(|| inferred_expiry_secs(cfg, addr_kind, now)),
-        },
-    );
+    identities.truncate(cfg.peer_cache_max_entries);
     entries.truncate(cfg.peer_cache_max_entries);
     write_entries_with_storage(&cfg.peer_cache_path, identities, entries, storage);
 }
@@ -193,7 +283,7 @@ fn write_entries_with_storage(
         entries,
         addrs: Vec::new(),
     };
-    if let Ok(text) = serde_json::to_string_pretty(&payload) {
+    if let Ok(text) = serde_json::to_string(&payload) {
         let _ = storage.write_public(path, text.as_bytes());
     }
 }

@@ -88,3 +88,54 @@ fn local_addrs_can_be_persisted_when_explicitly_configured() {
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].addr_kind, CachedDialAddrKind::LocalSession);
 }
+
+#[test]
+fn batched_peer_cache_flush_reads_and_writes_storage_once() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct CountingStorage {
+        value: Mutex<Option<Vec<u8>>>,
+        reads: AtomicUsize,
+        writes: AtomicUsize,
+    }
+
+    impl crate::platform::NodeStorage for CountingStorage {
+        fn read(&self, _key: &str) -> Result<Option<Vec<u8>>, crate::NetError> {
+            self.reads.fetch_add(1, Ordering::Relaxed);
+            Ok(self.value.lock().expect("storage lock").clone())
+        }
+
+        fn write_secret(&self, key: &str, value: &[u8]) -> Result<(), crate::NetError> {
+            self.write_public(key, value)
+        }
+
+        fn write_public(&self, _key: &str, value: &[u8]) -> Result<(), crate::NetError> {
+            self.writes.fetch_add(1, Ordering::Relaxed);
+            *self.value.lock().expect("storage lock") = Some(value.to_vec());
+            Ok(())
+        }
+
+        fn delete(&self, _key: &str) -> Result<(), crate::NetError> {
+            *self.value.lock().expect("storage lock") = None;
+            Ok(())
+        }
+    }
+
+    let cfg = DiscoveryConfig::default();
+    let storage = CountingStorage::default();
+    let mut batch = PeerCacheWriteBatch::default();
+    for octet in 10..13 {
+        let peer = PeerId::random();
+        let addr = format!("/ip4/203.0.113.{octet}/tcp/4001")
+            .parse::<Multiaddr>()
+            .expect("multiaddr");
+        batch.record_seen(peer, addr);
+    }
+
+    batch.flush(&cfg, &storage);
+
+    assert_eq!(storage.reads.load(Ordering::Relaxed), 1);
+    assert_eq!(storage.writes.load(Ordering::Relaxed), 1);
+}

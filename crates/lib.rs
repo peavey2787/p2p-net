@@ -53,7 +53,7 @@ pub use connectivity::namespace::{
     build_discovery_namespace, discovery_tag_hash_hex, DiscoveryNamespace,
     DiscoveryNamespaceConfig, DiscoveryNamespacePrivacy, DISCOVERY_NAMESPACE_PREFIX,
 };
-pub use connectivity::peer_book::{PeerBook, PeerRecord};
+pub use connectivity::peer_book::{PeerBook, PeerRecord, DEFAULT_MAX_PEER_BOOK_RECORDS};
 pub use connectivity::public_fallback::{
     PublicBootstrapConfig, PublicFallbackDecision, PublicFallbackMode,
     DEFAULT_PUBLIC_BOOTSTRAP_SEED_PEERS, DEFAULT_PUBLIC_RELAY_PEERS,
@@ -76,14 +76,16 @@ pub use libp2p::{Multiaddr, PeerId};
 pub use node::{
     apply_resolved_capabilities, resolve_node_config, snapshot_to_json,
     snapshot_to_prometheus_metrics, start_node, start_node_with_platform, BehaviourSet,
-    EnvironmentConfig, EnvironmentReport, NatKind, NetworkReachability, NodeConfig, NodeHandle,
+    EnvironmentConfig, EnvironmentReport, ListenerConfig, NatKind, NetworkReachability, NodeConfig,
+    NodeHandle,
     NodeProfile, NodeRole, NodeSnapshot, PlatformKind, PublicIpProbeConfig, ResolvedNodeConfig,
 };
 pub use platform::{
     DesktopPlatformRuntime, MemoryNodeStorage, MobilePlatformRuntime, NodeStorage, PlatformRuntime,
 };
 pub use protocol::pulse::{
-    heartbeat_topic, validate_heartbeat_wire, verify_heartbeat, verify_heartbeat_with_config,
+    encode_heartbeat_wire, heartbeat_topic, validate_heartbeat_wire, verify_heartbeat,
+    verify_heartbeat_with_config,
     HeartbeatEnvelope, HeartbeatReplayCache, HeartbeatValidationDecision,
     HeartbeatValidationResult, MessageSecurityConfig, ReputationConfig,
 };
