@@ -50,7 +50,9 @@ async fn relay_reservation_spam_does_not_panic() {
     let relay_cfg = relay_server_config("relay-spam-server");
     let relay_key_path = relay_cfg.identity_key_path.clone();
     let relay_cache_path = relay_cfg.discovery.peer_cache_path.clone();
-    let relay = start_node(relay_cfg).await.expect("start local relay server");
+    let relay = start_node(relay_cfg)
+        .await
+        .expect("start local relay server");
     let (relay_addr, _) = wait_for_tcp_dial_addr(&relay).await;
 
     let mut clients = Vec::new();
@@ -87,7 +89,9 @@ async fn circuit_open_close_spam_does_not_hang() {
     let target_cfg = test_config("open-close-target");
     let target_key_path = target_cfg.identity_key_path.clone();
     let target_cache_path = target_cfg.discovery.peer_cache_path.clone();
-    let target = start_node(target_cfg).await.expect("start local churn target");
+    let target = start_node(target_cfg)
+        .await
+        .expect("start local churn target");
     let (target_addr, target_peer_id) = wait_for_tcp_dial_addr(&target).await;
 
     let mut failed_iteration = None;
