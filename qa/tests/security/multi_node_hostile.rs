@@ -298,7 +298,13 @@ async fn wait_for_peer_connection(handle: &NodeHandle, peer_id: &PeerId) -> bool
 async fn wait_for_relay_acceptance(handle: &NodeHandle) -> bool {
     tokio::time::timeout(RELAY_ACTIVITY_TIMEOUT, async {
         loop {
-            if handle.snapshot.lock().await.relay_reservations_accepted_total > 0 {
+            if handle
+                .snapshot
+                .lock()
+                .await
+                .relay_reservations_accepted_total
+                > 0
+            {
                 return;
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
@@ -308,10 +314,7 @@ async fn wait_for_relay_acceptance(handle: &NodeHandle) -> bool {
     .is_ok()
 }
 
-async fn wait_for_hostile_relay_defense(
-    handle: &NodeHandle,
-    baseline: &NodeSnapshot,
-) -> bool {
+async fn wait_for_hostile_relay_defense(handle: &NodeHandle, baseline: &NodeSnapshot) -> bool {
     tokio::time::timeout(RELAY_ACTIVITY_TIMEOUT, async {
         loop {
             let snapshot = handle.snapshot.lock().await;
