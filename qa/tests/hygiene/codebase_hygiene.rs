@@ -212,6 +212,20 @@ fn repository_layout_matches_modular_baseline() {
         toolchain.contains("channel = \"1.98.0\""),
         "rust-toolchain.toml must pin the exact production Rust release"
     );
+    let audit_config =
+        fs::read_to_string(root.join("qa/ci/audit.toml")).expect("cargo-audit config");
+    for required in [
+        "deny = [\"unsound\"]",
+        "format = \"terminal\"",
+        "quiet = false",
+        "show_tree = true",
+    ] {
+        assert!(
+            audit_config.contains(required),
+            "qa/ci/audit.toml must include cargo-audit 0.22.2 output field: {required}"
+        );
+    }
+
     let manifest = fs::read_to_string(root.join("Cargo.toml")).expect("root Cargo.toml");
     let lock = fs::read_to_string(root.join("Cargo.lock")).expect("committed Cargo.lock");
     assert!(

@@ -119,6 +119,7 @@ The test is registered in `Cargo.toml`, so `run-full-validation.cmd` and `run-fu
 ## Manual audit and deny commands
 
 `cargo-audit` reads repository audit configuration from `.cargo/audit.toml` in the installed version this project validates against. The canonical validation scripts keep `qa/ci/audit.toml` as the source file and stage it to `.cargo/audit.toml` only while `cargo audit` runs.
+The pinned `cargo-audit 0.22.2` output schema is kept explicit in that file (`format`, `quiet`, and `show_tree`) so a partial `[output]` table cannot fail deserialization late in validation.
 
 The canonical launchers pin `cargo-deny 0.20.2` and retain a capability probe for the two CLI layouts seen across supported/local installations:
 

@@ -6,3 +6,6 @@ informational_warnings = ["unmaintained", "unsound"]
 # Unmaintained-only notices remain visible maintenance debt. Any RustSec
 # unsoundness advisory is a release blocker across the entire dependency graph.
 deny = ["unsound"]
+format = "terminal"
+quiet = false
+show_tree = true
