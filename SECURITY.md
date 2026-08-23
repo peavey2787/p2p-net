@@ -24,6 +24,7 @@ Production defaults retain full-node capabilities. Resource hardening is impleme
 
 - Rust is pinned by `rust-toolchain.toml`.
 - `Cargo.lock` is committed and validated with `--locked`.
+- Manifest-backed security floors prevent lock regeneration from reintroducing patched `event-listener` (<5.4.2, RUSTSEC-2026-0221) or `h2` (<0.4.16, RUSTSEC-2026-0258) releases.
 - `cargo-audit` and `cargo-deny` versions are pinned by the root validation launchers.
 - Third-party GitHub Actions are pinned to immutable commit SHAs.
 - Dependency refresh is an explicit maintenance operation followed by full validation; production CI never refreshes dependencies implicitly.

@@ -202,6 +202,10 @@ either = "1"
 # This crate is already transitive; the direct security floor makes Cargo.lock
 # reproducible without relying on a hand-edited transitive package entry.
 event-listener = ">=5.4.2, <6"
+# RUSTSEC-2026-0258 affects h2 <=0.4.15. Keep the patched transitive
+# HTTP/2 implementation in the manifest constraints so lock regeneration cannot
+# silently resolve back to a vulnerable release.
+h2 = ">=0.4.16, <0.5"
 libp2p = { version = "0.56", default-features = false, features = [
     "tokio",
     "tcp",

@@ -242,6 +242,14 @@ fn repository_layout_matches_modular_baseline() {
         locked_package_version(&lock, "event-listener") >= Some((5, 4, 2)),
         "event-listener must stay at or above 5.4.2 to exclude RUSTSEC-2026-0221"
     );
+    assert!(
+        manifest.contains("h2 = \">=0.4.16, <0.5\""),
+        "Cargo.toml must keep an explicit h2 security floor so lock regeneration cannot reintroduce RUSTSEC-2026-0258"
+    );
+    assert!(
+        locked_package_version(&lock, "h2") >= Some((0, 4, 16)),
+        "h2 must stay at or above 0.4.16 to exclude RUSTSEC-2026-0258"
+    );
 
     let nightly = fs::read_to_string(root.join(".github/workflows/security-nightly.yml"))
         .expect("nightly security workflow");
