@@ -110,6 +110,8 @@ fn relay_responsibilities_live_in_focused_modules() {
         fs::read_to_string(root.join("crates/connectivity/relay.rs")).expect("relay mod");
     let relay_config =
         fs::read_to_string(root.join("crates/connectivity/relay/config.rs")).expect("relay config");
+    let relay_policy =
+        fs::read_to_string(root.join("crates/connectivity/relay/policy.rs")).expect("relay policy");
     let relay_schedule = fs::read_to_string(root.join("crates/connectivity/relay/schedule.rs"))
         .expect("relay schedule");
     let relay_state =
@@ -120,6 +122,7 @@ fn relay_responsibilities_live_in_focused_modules() {
     assert!(
         relay_mod.contains("mod address;")
             && relay_mod.contains("mod config;")
+            && relay_mod.contains("mod policy;")
             && relay_mod.contains("mod schedule;")
             && relay_mod.contains("mod state;"),
         "relay facade should declare focused relay modules"
@@ -131,6 +134,12 @@ fn relay_responsibilities_live_in_focused_modules() {
         "relay/config.rs should own relay service configuration only"
     );
     assert!(
+        relay_policy.contains("pub fn classify_relay_denial")
+            && !relay_policy.contains("pub struct RelayState")
+            && !relay_policy.contains("pub struct RelayServiceConfig"),
+        "relay/policy.rs should own relay runtime classification policy only"
+    );
+    assert!(
         relay_schedule.contains("pub struct RelaySchedule")
             && relay_schedule.contains("pub struct RelayWindow")
             && !relay_schedule.contains("pub struct RelayServiceConfig"),
@@ -140,7 +149,8 @@ fn relay_responsibilities_live_in_focused_modules() {
         relay_state.contains("pub struct RelayState")
             && relay_state.contains("pub struct RelayReservationPlan")
             && relay_state.contains("pub enum RelayServiceHealth")
-            && !relay_state.contains("pub struct RelayServiceConfig"),
+            && !relay_state.contains("pub struct RelayServiceConfig")
+            && !relay_state.contains("pub fn classify_relay_denial"),
         "relay/state.rs should own relay runtime state only"
     );
     assert!(
