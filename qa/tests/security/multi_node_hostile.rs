@@ -136,9 +136,10 @@ async fn long_running_soak_node_stays_responsive() {
             .await
             .unwrap_or_else(|_| panic!("soak responsiveness probe {sample} timed out"))
             .unwrap_or_else(|err| panic!("soak responsiveness probe {sample} failed: {err}"));
-        tokio::time::timeout(Duration::from_secs(2), handle.snapshot.lock())
+        let snapshot_guard = tokio::time::timeout(Duration::from_secs(2), handle.snapshot.lock())
             .await
             .unwrap_or_else(|_| panic!("soak snapshot probe {sample} timed out"));
+        drop(snapshot_guard);
     }
 
     let snap = handle.snapshot.lock().await.clone();
