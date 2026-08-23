@@ -226,8 +226,7 @@ fn repository_layout_matches_modular_baseline() {
             "qa/ci/audit.toml must keep the exact temporary unmaintained-debt policy and cargo-audit 0.22.2 output fields: {required}"
         );
     }
-    let deny_config =
-        fs::read_to_string(root.join("qa/ci/deny.toml")).expect("cargo-deny config");
+    let deny_config = fs::read_to_string(root.join("qa/ci/deny.toml")).expect("cargo-deny config");
     for required in [
         "unmaintained = \"all\"",
         "unsound = \"all\"",
