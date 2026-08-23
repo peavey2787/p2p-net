@@ -111,8 +111,12 @@ pub fn reserve_selected_relays(
             add_peer_address_to_discovery(swarm, peer, relay_addr.clone());
         }
 
-        let _ = swarm.dial(relay_addr.clone());
-
+        // The relay client transport owns the reservation connection. Calling
+        // `swarm.dial` here as well creates a redundant direct connection to
+        // the same relay. Under per-IP connection caps a burst of those direct
+        // dials can consume every slot before the reservation listeners connect,
+        // starving all Circuit Relay v2 RESERVE requests. `listen_on` on the
+        // `/p2p-circuit` address performs the required relay connection itself.
         let Some(listen_addr) = relay_reservation_addr(relay_addr) else {
             plan.errors.push(format!(
                 "relay peer address cannot be converted to reservation address: {relay_addr}"
