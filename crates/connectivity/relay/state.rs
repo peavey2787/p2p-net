@@ -37,7 +37,10 @@ pub struct RelayState {
     pub reservation_attempted: bool,
     pub server_enabled: bool,
     pub health: RelayServiceHealth,
+    /// Currently active inbound reservations. Decremented when a reservation closes.
     pub accepted_reservations: usize,
+    /// Cumulative non-renewal reservation acceptances since node start.
+    pub accepted_reservations_total: usize,
     pub active_circuits: usize,
     pub denied_reservations: usize,
     pub denied_circuits: usize,
@@ -80,6 +83,18 @@ pub struct RelayReservationPlan {
 }
 
 impl RelayState {
+    pub(crate) fn record_reservation_accepted(&mut self, renewed: bool) {
+        if renewed {
+            return;
+        }
+        self.accepted_reservations = self.accepted_reservations.saturating_add(1);
+        self.accepted_reservations_total = self.accepted_reservations_total.saturating_add(1);
+    }
+
+    pub(crate) fn record_reservation_closed(&mut self) {
+        self.accepted_reservations = self.accepted_reservations.saturating_sub(1);
+    }
+
     /// Bound node-level DCUtR retry history; the behaviour has its own bound too.
     ///
     /// This intentionally does not keep a second ordering queue. The retry maps

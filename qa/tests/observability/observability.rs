@@ -24,6 +24,7 @@ fn snapshot_json_includes_accurate_relay_fields() {
         mediator_abuse_rate_limit_events: 3,
         relay_service_health: RelayServiceHealth::Enabled,
         relay_reservations_accepted: 2,
+        relay_reservations_accepted_total: 12,
         relay_client_reservations: 3,
         relay_discovery_enabled: true,
         relay_discovery_selected_relays: vec!["/ip4/127.0.0.1/tcp/4001/p2p/relay".to_string()],
@@ -108,6 +109,7 @@ fn snapshot_json_includes_accurate_relay_fields() {
     assert_eq!(json["mediator_abuse_rate_limit_events"], 3);
     assert_eq!(json["relay_service_health"], "enabled");
     assert_eq!(json["relay_reservations_accepted"], 2);
+    assert_eq!(json["relay_reservations_accepted_total"], 12);
     assert_eq!(json["relay_client_reservations"], 3);
     assert_eq!(json["relay_discovery_enabled"].as_bool(), Some(true));
     assert_eq!(json["relay_discovery_candidate_count"], 3);
@@ -228,6 +230,7 @@ fn prometheus_metrics_exports_operator_counters() {
         mediator_denied_circuits: 2,
         mediator_abuse_rate_limit_events: 3,
         relay_reservations_accepted: 2,
+        relay_reservations_accepted_total: 12,
         relay_client_reservations: 3,
         relay_discovery_enabled: true,
         relay_discovery_selected_relays: vec!["/ip4/127.0.0.1/tcp/4001/p2p/relay".to_string()],
@@ -300,6 +303,7 @@ fn prometheus_metrics_exports_operator_counters() {
     assert!(metrics.contains("p2p_mediator_denied_circuits 2\n"));
     assert!(metrics.contains("p2p_mediator_abuse_rate_limit_events 3\n"));
     assert!(metrics.contains("p2p_relay_reservations_accepted 2\n"));
+    assert!(metrics.contains("p2p_relay_reservations_accepted_total 12\n"));
     assert!(metrics.contains("p2p_relay_client_reservations 3\n"));
     assert!(metrics.contains("p2p_relay_discovery_enabled 1\n"));
     assert!(metrics.contains("p2p_relay_discovery_selected_relays 1\n"));
@@ -352,6 +356,7 @@ fn relay_state_updates_snapshot_counters_without_mixing_meanings() {
         server_enabled: true,
         health: RelayServiceHealth::AtCapacity,
         accepted_reservations: 2,
+        accepted_reservations_total: 11,
         active_circuits: 4,
         denied_reservations: 3,
         denied_circuits: 5,
@@ -384,6 +389,7 @@ fn relay_state_updates_snapshot_counters_without_mixing_meanings() {
     assert!(snap.relay_server_enabled);
     assert_eq!(snap.relay_service_health, RelayServiceHealth::AtCapacity);
     assert_eq!(snap.relay_reservations_accepted, 2);
+    assert_eq!(snap.relay_reservations_accepted_total, 11);
     assert_eq!(snap.relay_client_reservations, 1);
     assert_eq!(snap.relay_discovery_candidate_count, 3);
     assert_eq!(snap.relay_discovery_public_candidates, 1);

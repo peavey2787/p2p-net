@@ -125,6 +125,10 @@ pub(super) fn snapshot_metric_values(s: &NodeSnapshot) -> Vec<(&'static str, Str
             "p2p_relay_reservations_accepted",
             s.relay_reservations_accepted,
         ),
+        metric(
+            "p2p_relay_reservations_accepted_total",
+            s.relay_reservations_accepted_total,
+        ),
         metric("p2p_relay_client_reservations", s.relay_client_reservations),
         metric("p2p_relay_active_circuits", s.relay_active_circuits),
         metric("p2p_relay_denied_requests", s.relay_denied_requests),

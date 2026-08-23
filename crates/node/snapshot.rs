@@ -92,7 +92,10 @@ pub struct NodeSnapshot {
     pub relay_service_health: RelayServiceHealth,
     /// ACL scope is connection-level until relay-only hooks are available.
     pub relay_acl_scope: String,
+    /// Active relay-server reservations. Kept for API compatibility.
     pub relay_reservations_accepted: usize,
+    /// Cumulative non-renewal relay-server reservations accepted since node start.
+    pub relay_reservations_accepted_total: usize,
     /// Active circuits currently served by this node as a relay server.
     pub relay_active_circuits: usize,
     pub relay_denied_requests: usize,
@@ -182,6 +185,7 @@ impl NodeSnapshot {
                 .saturating_add(relay_state.at_capacity_events);
         }
         self.relay_reservations_accepted = relay_state.accepted_reservations;
+        self.relay_reservations_accepted_total = relay_state.accepted_reservations_total;
         self.relay_client_reservations = relay_state.relay_client_reservations.len();
         self.relay_client_reservation_attempts = relay_state.relay_client_reservation_attempts;
         self.relay_client_reservation_failures = relay_state.relay_client_reservation_failures;

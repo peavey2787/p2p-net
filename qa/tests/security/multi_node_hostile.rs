@@ -4,7 +4,7 @@ use std::time::Duration;
 use libp2p::PeerId;
 use p2p_net::{
     start_node, DhtDiscoveryConfig, DiscoveryConfig, NodeConfig, NodeHandle, NodeProfile,
-    PublicBootstrapConfig, PublicIpProbeConfig, RelayServiceConfig, RendezvousConfig,
+    NodeSnapshot, PublicBootstrapConfig, PublicIpProbeConfig, RelayServiceConfig, RendezvousConfig,
 };
 
 const LISTEN_TIMEOUT: Duration = Duration::from_secs(15);
@@ -56,7 +56,26 @@ async fn relay_reservation_spam_does_not_panic() {
     let (relay_addr, _) = wait_for_tcp_dial_addr(&relay).await;
 
     let mut clients = Vec::new();
-    for i in 0..16u32 {
+
+    // Establish one real reservation before applying the hostile burst. This keeps
+    // the test honest: connection-level abuse limits may reject later clients
+    // before the relay protocol sees them, but the relay path itself must work.
+    let control_cfg = NodeConfig {
+        relay_peers: vec![relay_addr.clone()],
+        reserve_configured_relays: true,
+        ..test_config("relay-spam-client-0")
+    };
+    let control_key_path = control_cfg.identity_key_path.clone();
+    let control_cache_path = control_cfg.discovery.peer_cache_path.clone();
+    let control = start_node(control_cfg)
+        .await
+        .expect("start relay control client");
+    clients.push((control, control_key_path, control_cache_path));
+
+    let control_accepted = wait_for_relay_acceptance(&relay).await;
+    let baseline = relay.snapshot.lock().await.clone();
+
+    for i in 1..16u32 {
         let client_cfg = NodeConfig {
             relay_peers: vec![relay_addr.clone()],
             reserve_configured_relays: true,
@@ -68,7 +87,11 @@ async fn relay_reservation_spam_does_not_panic() {
         clients.push((handle, key_path, cache_path));
     }
 
-    let saw_relay_activity = wait_for_relay_activity(&relay).await;
+    let saw_relay_activity = wait_for_hostile_relay_defense(&relay, &baseline).await;
+    let relay_responsive = tokio::time::timeout(Duration::from_secs(2), relay.get_peers())
+        .await
+        .is_ok_and(|result| result.is_ok());
+    let relay_snapshot = relay.snapshot.lock().await.clone();
 
     for (handle, key_path, cache_path) in clients {
         handle.shutdown().await;
@@ -78,8 +101,36 @@ async fn relay_reservation_spam_does_not_panic() {
     cleanup_files(&relay_key_path, &relay_cache_path);
 
     assert!(
+        control_accepted,
+        "local relay never accepted the control reservation before the hostile burst; \
+accepted_total={} denied={} server_errors={} pulses={:?}",
+        baseline.relay_reservations_accepted_total,
+        baseline.relay_denied_reservations,
+        baseline.relay_server_errors,
+        baseline.pulses,
+    );
+    assert!(
         saw_relay_activity,
-        "local relay never observed reservation activity from the hostile client burst"
+        "local relay observed no defensive-state change from the hostile client burst; \
+baseline accepted_total={} denied={} rate_limited={} at_capacity={} server_errors={} cap_disconnects={}; \
+after accepted_total={} denied={} rate_limited={} at_capacity={} server_errors={} cap_disconnects={} pulses={:?}",
+        baseline.relay_reservations_accepted_total,
+        baseline.relay_denied_reservations,
+        baseline.relay_rate_limited_events,
+        baseline.relay_at_capacity_events,
+        baseline.relay_server_errors,
+        baseline.connection_cap_disconnects,
+        relay_snapshot.relay_reservations_accepted_total,
+        relay_snapshot.relay_denied_reservations,
+        relay_snapshot.relay_rate_limited_events,
+        relay_snapshot.relay_at_capacity_events,
+        relay_snapshot.relay_server_errors,
+        relay_snapshot.connection_cap_disconnects,
+        relay_snapshot.pulses,
+    );
+    assert!(
+        relay_responsive,
+        "local relay stopped responding to API commands during the hostile reservation burst"
     );
 }
 
@@ -244,16 +295,34 @@ async fn wait_for_peer_connection(handle: &NodeHandle, peer_id: &PeerId) -> bool
     .is_ok()
 }
 
-async fn wait_for_relay_activity(handle: &NodeHandle) -> bool {
+async fn wait_for_relay_acceptance(handle: &NodeHandle) -> bool {
+    tokio::time::timeout(RELAY_ACTIVITY_TIMEOUT, async {
+        loop {
+            if handle.snapshot.lock().await.relay_reservations_accepted_total > 0 {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await
+    .is_ok()
+}
+
+async fn wait_for_hostile_relay_defense(
+    handle: &NodeHandle,
+    baseline: &NodeSnapshot,
+) -> bool {
     tokio::time::timeout(RELAY_ACTIVITY_TIMEOUT, async {
         loop {
             let snapshot = handle.snapshot.lock().await;
-            let activity = snapshot
-                .relay_reservations_accepted
-                .saturating_add(snapshot.relay_denied_reservations)
-                .saturating_add(snapshot.relay_rate_limited_events)
-                .saturating_add(snapshot.relay_server_errors);
-            if activity > 0 {
+            let changed = snapshot.relay_reservations_accepted_total
+                > baseline.relay_reservations_accepted_total
+                || snapshot.relay_denied_reservations > baseline.relay_denied_reservations
+                || snapshot.relay_rate_limited_events > baseline.relay_rate_limited_events
+                || snapshot.relay_at_capacity_events > baseline.relay_at_capacity_events
+                || snapshot.relay_server_errors > baseline.relay_server_errors
+                || snapshot.connection_cap_disconnects > baseline.connection_cap_disconnects;
+            if changed {
                 return;
             }
             drop(snapshot);

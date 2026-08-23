@@ -18,3 +18,24 @@ fn dcutr_retry_history_is_bounded() {
         MAX_TRACKED_DCUTR_PEERS
     );
 }
+
+#[test]
+fn reservation_acceptance_total_is_monotonic_while_active_count_tracks_lifetime() {
+    let mut state = RelayState::default();
+
+    state.record_reservation_accepted(false);
+    assert_eq!(state.accepted_reservations, 1);
+    assert_eq!(state.accepted_reservations_total, 1);
+
+    state.record_reservation_accepted(true);
+    assert_eq!(state.accepted_reservations, 1);
+    assert_eq!(state.accepted_reservations_total, 1);
+
+    state.record_reservation_closed();
+    assert_eq!(state.accepted_reservations, 0);
+    assert_eq!(state.accepted_reservations_total, 1);
+
+    state.record_reservation_closed();
+    assert_eq!(state.accepted_reservations, 0);
+    assert_eq!(state.accepted_reservations_total, 1);
+}

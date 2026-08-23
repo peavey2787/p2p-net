@@ -64,10 +64,7 @@ pub(crate) async fn handle_event(
             src_peer_id,
             renewed,
         } => {
-            if !renewed {
-                relay_state.accepted_reservations =
-                    relay_state.accepted_reservations.saturating_add(1);
-            }
+            relay_state.record_reservation_accepted(*renewed);
             relay_state.health = RelayServiceHealth::Enabled;
             format!("relay_server reservation accepted src={src_peer_id} renewed={renewed}")
         }
@@ -81,7 +78,7 @@ pub(crate) async fn handle_event(
         }
         relay::Event::ReservationClosed { src_peer_id }
         | relay::Event::ReservationTimedOut { src_peer_id } => {
-            relay_state.accepted_reservations = relay_state.accepted_reservations.saturating_sub(1);
+            relay_state.record_reservation_closed();
             format!("relay_server reservation closed src={src_peer_id}")
         }
         relay::Event::CircuitReqAccepted {

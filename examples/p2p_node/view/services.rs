@@ -37,6 +37,11 @@ pub(super) fn append_services(lines: &mut Vec<Line>, snap: &NodeSnapshot, width:
     push_bool(&mut relay, snap.mediator_enabled);
     relay.push("  server_res=", Tone::Muted);
     relay.push(snap.relay_reservations_accepted.to_string(), Tone::Text);
+    relay.push("  accepted=", Tone::Muted);
+    relay.push(
+        snap.relay_reservations_accepted_total.to_string(),
+        Tone::Text,
+    );
     relay.push("  client_res=", Tone::Muted);
     relay.push(snap.relay_client_reservations.to_string(), Tone::Text);
     relay.push("  attempts=", Tone::Muted);
