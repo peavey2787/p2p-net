@@ -48,6 +48,8 @@ run-full-validation.cmd
 
 It cleans stale build artifacts, verifies the committed dependency lockfile with `--locked`, checks formatting without mutating source, then runs tests, dashboard-feature tests, clippy, `cargo audit`, and `cargo deny`. Three intentionally long hostile/load/soak tests are deferred so they run once at the end, with the one-minute soak test last. The full runner has no skip option for those tests: `run-full-validation` means all registered tests run. It uses isolated validation target directories to avoid stale/incomplete `rlib` artifacts on Windows. Rust is pinned to 1.98.0, audit/deny tool releases are pinned, and missing exact tool versions are installed unless `--no-install-tools` is used.
 
+On an MSVC Rust host, the Windows launcher also initializes the installed Visual Studio C++ developer environment before Cargo can link anything. It verifies that the x64 Universal CRT (`ucrt.lib`) is installed and performs a tiny `rustc` link smoke test up front, so an incomplete Build Tools/Windows SDK installation fails immediately with an actionable preflight error instead of surfacing halfway through Clippy.
+
 Useful options:
 
 ```cmd

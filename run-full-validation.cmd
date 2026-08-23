@@ -76,6 +76,79 @@ if errorlevel 1 (
 )
 echo Pinned Rust toolchain confirmed: !RUST_VERSION!
 
+for /f "tokens=2" %%H in ('rustc -vV ^| findstr /B /C:"host:"') do set "RUST_HOST=%%H"
+if /I "!RUST_HOST!"=="x86_64-pc-windows-msvc" (
+  echo.
+  echo ==^> Windows MSVC toolchain preflight
+  set "VS_INSTALL="
+  set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+  if exist "!VSWHERE!" (
+    for /f "usebackq delims=" %%I in (`"!VSWHERE!" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
+      if not defined VS_INSTALL set "VS_INSTALL=%%I"
+    )
+  )
+  if not defined VS_INSTALL (
+    for %%V in (18 2022) do (
+      for %%E in (BuildTools Community Professional Enterprise) do (
+        if not defined VS_INSTALL if exist "%ProgramFiles(x86)%\Microsoft Visual Studio\%%V\%%E\Common7\Tools\VsDevCmd.bat" set "VS_INSTALL=%ProgramFiles(x86)%\Microsoft Visual Studio\%%V\%%E"
+        if not defined VS_INSTALL if exist "%ProgramFiles%\Microsoft Visual Studio\%%V\%%E\Common7\Tools\VsDevCmd.bat" set "VS_INSTALL=%ProgramFiles%\Microsoft Visual Studio\%%V\%%E"
+      )
+    )
+  )
+  if not defined VS_INSTALL (
+    echo Visual Studio C++ Build Tools were not found.
+    echo Install the Desktop development with C++ workload, including the x64/x86 MSVC tools and Windows SDK.
+    set "FAILED_STEP=Windows MSVC toolchain preflight"
+    goto failed
+  )
+  if not exist "!VS_INSTALL!\Common7\Tools\VsDevCmd.bat" (
+    echo VsDevCmd.bat was not found under !VS_INSTALL!.
+    set "FAILED_STEP=Windows MSVC toolchain preflight"
+    goto failed
+  )
+  call "!VS_INSTALL!\Common7\Tools\VsDevCmd.bat" -no_logo -arch=amd64 -host_arch=amd64
+  if errorlevel 1 (
+    echo Visual Studio developer environment initialization failed.
+    set "FAILED_STEP=Windows MSVC toolchain preflight"
+    goto failed
+  )
+  set "UCRT_LIB="
+  if defined UniversalCRTSdkDir if defined UCRTVersion set "UCRT_LIB=!UniversalCRTSdkDir!Lib\!UCRTVersion!\ucrt\x64\ucrt.lib"
+  if defined UCRT_LIB if not exist "!UCRT_LIB!" set "UCRT_LIB="
+  if not defined UCRT_LIB if exist "%ProgramFiles(x86)%\Windows Kits\10\Lib" (
+    for /f "delims=" %%U in ('where /R "%ProgramFiles(x86)%\Windows Kits\10\Lib" ucrt.lib 2^>nul ^| findstr /I /L /E /C:"\ucrt\x64\ucrt.lib"') do (
+      if not defined UCRT_LIB set "UCRT_LIB=%%U"
+    )
+  )
+  if not defined UCRT_LIB (
+    echo Windows Universal CRT SDK is missing: x64 ucrt.lib was not found.
+    echo In Visual Studio Installer, modify Build Tools and install Windows Universal CRT SDK plus a Windows 11 SDK.
+    set "FAILED_STEP=Windows MSVC toolchain preflight"
+    goto failed
+  )
+  echo UCRT: !UCRT_LIB!
+  set "MSVC_SMOKE_DIR=%TEMP%\p2p-net-msvc-link-!RANDOM!-!RANDOM!"
+  if exist "!MSVC_SMOKE_DIR!" rmdir /S /Q "!MSVC_SMOKE_DIR!"
+  mkdir "!MSVC_SMOKE_DIR!"
+  if errorlevel 1 (
+    echo Failed to create temporary MSVC linker preflight directory.
+    set "FAILED_STEP=Windows MSVC toolchain preflight"
+    goto failed
+  )
+  >"!MSVC_SMOKE_DIR!\main.rs" echo fn main() {}
+  rustc --crate-name p2p_net_msvc_smoke "!MSVC_SMOKE_DIR!\main.rs" -o "!MSVC_SMOKE_DIR!\smoke.exe" >"!MSVC_SMOKE_DIR!\link.log" 2>&1
+  if errorlevel 1 (
+    type "!MSVC_SMOKE_DIR!\link.log"
+    rmdir /S /Q "!MSVC_SMOKE_DIR!"
+    echo Windows MSVC link preflight failed before validation started.
+    echo Repair Build Tools so VsDevCmd provides the MSVC linker, Windows SDK, and Universal CRT libraries.
+    set "FAILED_STEP=Windows MSVC toolchain preflight"
+    goto failed
+  )
+  rmdir /S /Q "!MSVC_SMOKE_DIR!"
+  echo MSVC linker and Universal CRT preflight passed.
+)
+
 if "%NO_CLEAN%"=="0" (
   echo.
   echo ==^> Clean validation artifacts

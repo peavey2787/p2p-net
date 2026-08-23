@@ -167,6 +167,14 @@ fn repository_layout_matches_modular_baseline() {
         !windows.to_ascii_lowercase().contains("call :"),
         "Windows validation must not rely on CALL :label subroutines"
     );
+    assert!(
+        windows.contains("vswhere.exe")
+            && windows.contains("VsDevCmd.bat")
+            && windows.contains("Microsoft.VisualStudio.Component.VC.Tools.x86.x64")
+            && windows.contains("ucrt.lib")
+            && windows.contains("p2p_net_msvc_smoke"),
+        "Windows validation must initialize and smoke-test the MSVC/Universal CRT toolchain before Cargo linking"
+    );
 
     let workflow =
         fs::read_to_string(root.join(".github/workflows/ci.yml")).expect("GitHub Actions workflow");

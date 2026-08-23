@@ -38,6 +38,7 @@ Defaults:
 - Exact `cargo-audit 0.22.2` and `cargo-deny 0.20.2` releases are installed automatically unless `--no-install-tools` is used.
 - `Cargo.lock` is committed and must already match `Cargo.toml`; production validation fails rather than regenerating it.
 - `rust-toolchain.toml` pins Rust `1.98.0`, and the launchers fail closed if a different compiler is active.
+- On `x86_64-pc-windows-msvc`, `run-full-validation.cmd` locates Visual Studio Build Tools with the installed `vswhere.exe`, initializes `VsDevCmd.bat`, verifies an x64 `ucrt.lib`, and compiles a temporary Rust link smoke test before cleaning or running Cargo validation. If that preflight reports a missing Universal CRT, repair/modify Visual Studio Build Tools and install the **Windows Universal CRT SDK** plus a **Windows 11 SDK** before rerunning.
 - Fuzz targets are included under `qa/fuzz/`. The scheduled security workflow uses pinned `nightly-2026-08-20` and `cargo-fuzz 0.13.2` to build and run all targets.
 - GitHub Actions checkout is pinned to an immutable commit SHA and uses read-only repository permissions with credential persistence disabled.
 
