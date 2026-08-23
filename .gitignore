@@ -186,3 +186,6 @@ p2p-node.json
 p2p-node-panic.log
 /.-identity-key
 /.-peer-cache.json
+
+# Canonical release outputs
+/dist/

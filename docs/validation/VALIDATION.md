@@ -69,6 +69,36 @@ sudo ./qa/tools/netem-linux.sh lo stop
 
 `netem-linux.sh` requires Linux `tc` and root privileges. Windows should skip netem tests.
 
+## Canonical reproducible release builds
+
+The root `build-release.cmd` and `build-release.sh` launchers are the canonical Windows and Linux release gates. They do not replace `run-full-validation`; they invoke the complete validation runner first and provide no skip-validation option. Official release builds require a clean Git worktree.
+
+Windows:
+
+```cmd
+build-release.cmd
+```
+
+Linux:
+
+```bash
+./build-release.sh
+```
+
+Both runners:
+
+- bind `SOURCE_DATE_EPOCH` to the current Git commit timestamp
+- verify the exact Rust 1.98.0 toolchain and committed lockfile
+- create two detached clean Git worktrees for the same commit
+- build the production `p2p_node` example with `--release --locked --offline --features dashboard` in two separate clean target directories
+- disable incremental compilation and normalize source, target, Cargo-home, and Rustup-home paths through encoded rustflags
+- compare the two resulting binaries and fail closed on any SHA-256 mismatch
+- write only the verified artifact plus deterministic build metadata/checksums to `dist/<target-triple>/`
+
+Windows imports the same Visual Studio Build Tools environment used by the validation preflight and requests MSVC `/Brepro` linking. Linux requests a deterministic SHA-1 ELF build ID. These runners prove repeatability across two independent clean source/build directories on the current host. Cross-host byte identity additionally depends on matching native linker, SDK, and system-library inputs, which are recorded operational requirements rather than silently assumed.
+
+`--no-install-tools` is forwarded to the full validation gate when operators require pre-provisioned audit tools. `--no-pause` keeps both release runners non-interactive for automation. There is intentionally no `--no-clean` or skip-validation mode for an official release build.
+
 ## Event split validation
 
 `event_responsibility` verifies that swarm event handling remains split by responsibility and that the dispatcher does not regain moved relay/DCUtR/gossip handlers.

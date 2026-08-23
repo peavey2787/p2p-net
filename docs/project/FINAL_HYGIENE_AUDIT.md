@@ -87,6 +87,8 @@ The root layout is organized and not nested:
 Cargo.toml
 Cargo.lock
 README.md
+build-release.cmd
+build-release.sh
 run-full-validation.cmd
 run-full-validation.sh
 crates/
@@ -111,6 +113,8 @@ qa/tests/runtime/
 qa/tests/security/
 ```
 
+Canonical release implementation helpers live under `qa/release/`, while the user-facing Windows/Linux release launchers stay at the repository root.
+
 ## DRY result
 
 Centralized helper checks:
@@ -125,7 +129,7 @@ No `#[allow(...)]` cleanup suppressions were added.
 
 ## Added regression coverage
 
-Step 9 added `qa/tests/hygiene/final_hygiene_audit.rs` and registered it in `Cargo.toml`.
+Step 9 added `qa/tests/hygiene/final_hygiene_audit.rs` and registered it in `Cargo.toml`. Canonical release reproducibility is separately guarded by `qa/tests/hygiene/release_reproducibility.rs`, which requires the root Windows/Linux release launchers to retain clean-worktree, full-validation, two-worktree, deterministic-link, and checksum-verification behavior.
 
 That test locks in the cleanup by checking:
 

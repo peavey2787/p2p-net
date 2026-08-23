@@ -118,6 +118,10 @@ path = "qa/tests/hygiene/codebase_architecture_hygiene.rs"
 name = "final_hygiene_audit"
 path = "qa/tests/hygiene/final_hygiene_audit.rs"
 
+[[test]]
+name = "release_reproducibility"
+path = "qa/tests/hygiene/release_reproducibility.rs"
+
 # observability integration tests
 [[test]]
 name = "observability"

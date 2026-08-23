@@ -128,6 +128,20 @@ Press `q` or `Esc`, use Ctrl-C, or close the console window to stop the dashboar
 
 Run and ship optimized release builds. Debug-mode libp2p/crypto/network code is substantially more CPU-intensive and is intended for development diagnostics only.
 
+### Canonical reproducible release builds
+
+After the full validation gate is green, use the root release runner for the host platform:
+
+```cmd
+build-release.cmd
+```
+
+```bash
+./build-release.sh
+```
+
+The release runners refuse a dirty Git worktree, run the complete production validation gate, pin the release to the current commit timestamp through `SOURCE_DATE_EPOCH`, build `p2p_node` twice from two independent detached worktrees with separate clean target directories, normalize build paths, disable incremental compilation, and fail unless the two release binaries have identical SHA-256 output. Windows also enables MSVC `/Brepro`; Linux uses a deterministic SHA-1 ELF build ID. After the proof succeeds, the canonical binary, `BUILD-MANIFEST.txt`, and `SHA256SUMS.txt` are written under `dist/<target-triple>/`. The proof establishes byte-for-byte reproducibility for the declared source/toolchain on the current host environment; reproducing on another machine also requires an equivalent linker, SDK/system-library environment.
+
 ## Default connectivity model
 
 Normal app mode uses public fallback by default:
