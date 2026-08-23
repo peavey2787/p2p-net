@@ -135,7 +135,7 @@ if /I "!RUST_HOST!"=="x86_64-pc-windows-msvc" (
     set "FAILED_STEP=Windows MSVC toolchain preflight"
     goto failed
   )
-  >"!MSVC_SMOKE_DIR!\main.rs" echo fn main() {}
+  >"!MSVC_SMOKE_DIR!\main.rs" echo fn main^(^) {}
   rustc --crate-name p2p_net_msvc_smoke "!MSVC_SMOKE_DIR!\main.rs" -o "!MSVC_SMOKE_DIR!\smoke.exe" >"!MSVC_SMOKE_DIR!\link.log" 2>&1
   if errorlevel 1 (
     type "!MSVC_SMOKE_DIR!\link.log"
