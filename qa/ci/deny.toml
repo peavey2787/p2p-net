@@ -5,10 +5,14 @@ all-features = true
 version = 2
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
-unmaintained = "workspace"
+unmaintained = "all"
 unsound = "all"
 yanked = "deny"
-ignore = []
+unused-ignored-advisory = "deny"
+ignore = [
+    { id = "RUSTSEC-2025-0141", reason = "Temporary transitive bincode 1.3.3 via webrtc-dtls 0.11/webrtc 0.12; remove when the matching released libp2p-webrtc 0.10+ family is adopted" },
+    { id = "RUSTSEC-2024-0436", reason = "Temporary transitive paste 1.0.15 via if-watch/netlink-packet-core 0.8; remove when a maintained if-watch release adopts netlink-packet-core 0.9+" },
+]
 
 [licenses]
 version = 2

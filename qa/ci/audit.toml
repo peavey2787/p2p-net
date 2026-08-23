@@ -1,11 +1,15 @@
 [advisories]
-ignore = []
+# Temporary, exact exceptions for two transitive unmaintained advisories whose
+# maintained upstream replacement paths are not released through our supported
+# dependency families yet. New unmaintained advisories are release blockers.
+ignore = ["RUSTSEC-2025-0141", "RUSTSEC-2024-0436"]
 informational_warnings = ["unmaintained", "unsound"]
 
 [output]
-# Unmaintained-only notices remain visible maintenance debt. Any RustSec
-# unsoundness advisory is a release blocker across the entire dependency graph.
-deny = ["unsound"]
+# Vulnerabilities fail independently. Treat informational unsoundness and every
+# unmaintained advisory except the two explicit temporary exceptions above as
+# release blockers.
+deny = ["unmaintained", "unsound"]
 format = "terminal"
 quiet = false
 show_tree = true

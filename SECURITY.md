@@ -28,7 +28,16 @@ Production defaults retain full-node capabilities. Resource hardening is impleme
 - `cargo-audit` and `cargo-deny` versions are pinned by the root validation launchers.
 - Third-party GitHub Actions are pinned to immutable commit SHAs.
 - Dependency refresh is an explicit maintenance operation followed by full validation; production CI never refreshes dependencies implicitly.
-- Known-unsound dependencies are release blockers. Unmaintained-only transitive notices must be tracked and removed when an API-compatible maintained path is available.
+- Known-unsound dependencies are release blockers. Unmaintained dependencies are also release blockers except for the two exact temporary transitive exceptions below. No blanket unmaintained allowance is permitted.
+
+### Temporary unmaintained transitive debt
+
+Two RustSec unmaintained advisories are temporarily allowlisted because their maintained upstream exit paths are not yet available through the supported released dependency families:
+
+- `RUSTSEC-2025-0141` / `bincode 1.3.3`: currently enters through `webrtc-dtls 0.11` / `webrtc 0.12`. Migrate with the matching released `libp2p-webrtc 0.10+` family that carries the upstream WebRTC 0.17 negotiation changes. At that migration, require `cargo tree -i bincode` to return no package and add a manifest-backed `rkyv >=0.8.18, <0.9` security floor if `rkyv` remains in the resolved WebRTC stack.
+- `RUSTSEC-2024-0436` / `paste 1.0.15`: currently enters through `if-watch` and the Linux netlink 0.8 family. Remove it when a maintained `if-watch` release adopts `netlink-packet-core 0.9+`; validate Linux interface churn, address add/remove, TCP/QUIC rebinding, and long-running network-change behavior. Require `cargo tree -i paste` to return no package.
+
+Both advisory IDs are explicitly ignored rather than treating all unmaintained crates as warnings. `cargo-audit` denies every other unmaintained advisory, while `cargo-deny` uses `unmaintained = "all"` and fails if either temporary ignore becomes unused. Therefore once an upstream migration removes either crate, validation intentionally fails until its stale exception is deleted; after both exceptions are removed, all unmaintained dependencies are hard release failures automatically.
 
 ## Reporting security issues
 

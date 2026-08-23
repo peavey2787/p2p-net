@@ -215,16 +215,36 @@ fn repository_layout_matches_modular_baseline() {
     let audit_config =
         fs::read_to_string(root.join("qa/ci/audit.toml")).expect("cargo-audit config");
     for required in [
-        "deny = [\"unsound\"]",
+        "ignore = [\"RUSTSEC-2025-0141\", \"RUSTSEC-2024-0436\"]",
+        "deny = [\"unmaintained\", \"unsound\"]",
         "format = \"terminal\"",
         "quiet = false",
         "show_tree = true",
     ] {
         assert!(
             audit_config.contains(required),
-            "qa/ci/audit.toml must include cargo-audit 0.22.2 output field: {required}"
+            "qa/ci/audit.toml must keep the exact temporary unmaintained-debt policy and cargo-audit 0.22.2 output fields: {required}"
         );
     }
+    let deny_config =
+        fs::read_to_string(root.join("qa/ci/deny.toml")).expect("cargo-deny config");
+    for required in [
+        "unmaintained = \"all\"",
+        "unsound = \"all\"",
+        "unused-ignored-advisory = \"deny\"",
+        "id = \"RUSTSEC-2025-0141\"",
+        "id = \"RUSTSEC-2024-0436\"",
+    ] {
+        assert!(
+            deny_config.contains(required),
+            "qa/ci/deny.toml must reject new unmaintained/unsound advisories and keep only tracked temporary debt: {required}"
+        );
+    }
+    assert_eq!(
+        deny_config.matches("id = \"RUSTSEC-").count(),
+        2,
+        "cargo-deny may temporarily ignore only the two documented unmaintained transitive advisories"
+    );
 
     let manifest = fs::read_to_string(root.join("Cargo.toml")).expect("root Cargo.toml");
     let lock = fs::read_to_string(root.join("Cargo.lock")).expect("committed Cargo.lock");
@@ -249,6 +269,16 @@ fn repository_layout_matches_modular_baseline() {
     assert!(
         locked_package_version(&lock, "h2") >= Some((0, 4, 16)),
         "h2 must stay at or above 0.4.16 to exclude RUSTSEC-2026-0258"
+    );
+    assert_eq!(
+        locked_package_version(&lock, "bincode"),
+        Some((1, 3, 3)),
+        "when bincode leaves the graph, remove RUSTSEC-2025-0141 from both advisory exception lists in the same change"
+    );
+    assert_eq!(
+        locked_package_version(&lock, "paste"),
+        Some((1, 0, 15)),
+        "when paste leaves the graph, remove RUSTSEC-2024-0436 from both advisory exception lists in the same change"
     );
 
     let nightly = fs::read_to_string(root.join(".github/workflows/security-nightly.yml"))
