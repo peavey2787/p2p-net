@@ -180,7 +180,7 @@ Review the resulting `Cargo.lock` diff and RustSec/license/source changes, then 
 
 ## Scheduled security validation
 
-`.github/workflows/security-nightly.yml` repeats the complete validation suite, including the deferred hostile/load/soak tests, and runs bounded libFuzzer campaigns for heartbeat, config, peer cache, application-message, DNSADDR TXT, peer-multiaddr, and WebRTC STUN parsing. Fuzz commands execute from the repository root with `--fuzz-dir qa/fuzz`; using only `working-directory: qa/fuzz` is intentionally forbidden because `cargo-fuzz` otherwise falls back to the root crate's nonexistent `fuzz/Cargo.toml`. The cross-platform push/PR matrix also runs the complete validation launcher; the nightly job adds repeated coverage plus fuzzing rather than relying on skipped tests.
+`.github/workflows/security-monthly.yml` repeats the complete validation suite, including the deferred hostile/load/soak tests, and runs bounded libFuzzer campaigns for heartbeat, config, peer cache, application-message, DNSADDR TXT, peer-multiaddr, and WebRTC STUN parsing. Fuzz commands execute from the repository root with `--fuzz-dir qa/fuzz`; using only `working-directory: qa/fuzz` is intentionally forbidden because `cargo-fuzz` otherwise falls back to the root crate's nonexistent `fuzz/Cargo.toml`. The cross-platform push/PR matrix also runs the complete validation launcher; the monthly job adds periodic coverage plus fuzzing rather than relying on skipped tests.
 
 ## Public fallback checks
 

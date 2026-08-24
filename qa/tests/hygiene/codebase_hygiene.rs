@@ -280,8 +280,18 @@ fn repository_layout_matches_modular_baseline() {
         "when paste leaves the graph, remove RUSTSEC-2024-0436 from both advisory exception lists in the same change"
     );
 
-    let nightly = fs::read_to_string(root.join(".github/workflows/security-nightly.yml"))
-        .expect("nightly security workflow");
+    let monthly = fs::read_to_string(root.join(".github/workflows/security-monthly.yml"))
+        .expect("monthly security workflow");
+    assert!(
+        monthly.contains("name: p2p-net-security-monthly")
+            && monthly.contains("cron: '23 4 1 * *'")
+            && monthly.contains("workflow_dispatch:"),
+        "heavy security validation must run once per month and remain manually dispatchable"
+    );
+    assert!(
+        !monthly.contains("cron: '23 4 * * *'"),
+        "heavy security validation must not regress to a nightly schedule"
+    );
     for target in [
         "heartbeat_wire",
         "node_config_json",
@@ -292,26 +302,26 @@ fn repository_layout_matches_modular_baseline() {
         "webrtc_stun",
     ] {
         assert!(
-            nightly.contains(target),
-            "nightly fuzz workflow must run {target}"
+            monthly.contains(target),
+            "monthly fuzz workflow must run {target}"
         );
     }
     assert!(
-        nightly.contains("nightly-2026-08-20") && nightly.contains("cargo-fuzz --version 0.13.2"),
-        "nightly fuzzing must use pinned toolchain/tool versions"
+        monthly.contains("nightly-2026-08-20") && monthly.contains("cargo-fuzz --version 0.13.2"),
+        "monthly fuzzing must use pinned toolchain/tool versions"
     );
     assert!(
-        nightly.contains("fuzz build --fuzz-dir qa/fuzz")
-            && nightly.contains("fuzz run --fuzz-dir qa/fuzz"),
-        "nightly fuzzing must explicitly select the nested qa/fuzz harness"
+        monthly.contains("fuzz build --fuzz-dir qa/fuzz")
+            && monthly.contains("fuzz run --fuzz-dir qa/fuzz"),
+        "monthly fuzzing must explicitly select the nested qa/fuzz harness"
     );
     assert!(
-        !nightly.contains("working-directory: qa/fuzz"),
+        !monthly.contains("working-directory: qa/fuzz"),
         "working-directory alone is insufficient for cargo-fuzz nested-harness discovery; use --fuzz-dir qa/fuzz"
     );
     assert!(
-        nightly.contains("test -f qa/fuzz/Cargo.toml"),
-        "nightly fuzzing must fail early if the expected fuzz manifest is missing"
+        monthly.contains("test -f qa/fuzz/Cargo.toml"),
+        "monthly fuzzing must fail early if the expected fuzz manifest is missing"
     );
 }
 

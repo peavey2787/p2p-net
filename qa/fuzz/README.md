@@ -1,6 +1,6 @@
 # Fuzzing
 
-`qa/fuzz/` is intentionally separate from the stable workspace and is exercised by the scheduled `p2p-net-security-nightly` workflow with a pinned nightly toolchain and `cargo-fuzz` release.
+`qa/fuzz/` is intentionally separate from the stable workspace and is exercised by the scheduled `p2p-net-security-monthly` workflow with a pinned nightly toolchain and `cargo-fuzz` release.
 
 Current targets cover the principal untrusted parsing surfaces:
 
