@@ -39,7 +39,7 @@ Defaults:
 - `Cargo.lock` is committed and must already match `Cargo.toml`; production validation fails rather than regenerating it.
 - `rust-toolchain.toml` pins Rust `1.98.0`, and the launchers fail closed if a different compiler is active.
 - On `x86_64-pc-windows-msvc`, `run-full-validation.cmd` locates Visual Studio Build Tools with the installed `vswhere.exe`, initializes `VsDevCmd.bat`, verifies an x64 `ucrt.lib`, and compiles a temporary Rust link smoke test before cleaning or running Cargo validation. If that preflight reports a missing Universal CRT, repair/modify Visual Studio Build Tools and install the **Windows Universal CRT SDK** plus a **Windows 11 SDK** before rerunning.
-- Fuzz targets are included under `qa/fuzz/`. The scheduled security workflow uses pinned `nightly-2026-08-20` and `cargo-fuzz 0.13.2` to build and run all targets.
+- Fuzz targets are included under `qa/fuzz/`. The scheduled security workflow uses pinned `nightly-2026-08-20` and `cargo-fuzz 0.13.2`, invoking every fuzz command from the repository root with `--fuzz-dir qa/fuzz` so the nested harness is resolved explicitly.
 - GitHub Actions checkout is pinned to an immutable commit SHA and uses read-only repository permissions with credential persistence disabled.
 
 The three `#[ignore]` markers on `multi_node_hostile` are scheduling markers, not omissions. They keep the normal `cargo test --workspace` phase from running the expensive tests twice. The canonical launchers always execute each deferred test explicitly after Clippy/audit/deny, with the one-minute soak test last. The hostile relay and connection-churn tests create their own loopback peers, so they no longer silently return when external environment variables are missing.
@@ -180,7 +180,7 @@ Review the resulting `Cargo.lock` diff and RustSec/license/source changes, then 
 
 ## Scheduled security validation
 
-`.github/workflows/security-nightly.yml` repeats the complete validation suite, including the deferred hostile/load/soak tests, and runs bounded libFuzzer campaigns for heartbeat, config, peer cache, application-message, DNSADDR TXT, peer-multiaddr, and WebRTC STUN parsing. The cross-platform push/PR matrix also runs the complete validation launcher; the nightly job adds repeated coverage plus fuzzing rather than relying on skipped tests.
+`.github/workflows/security-nightly.yml` repeats the complete validation suite, including the deferred hostile/load/soak tests, and runs bounded libFuzzer campaigns for heartbeat, config, peer cache, application-message, DNSADDR TXT, peer-multiaddr, and WebRTC STUN parsing. Fuzz commands execute from the repository root with `--fuzz-dir qa/fuzz`; using only `working-directory: qa/fuzz` is intentionally forbidden because `cargo-fuzz` otherwise falls back to the root crate's nonexistent `fuzz/Cargo.toml`. The cross-platform push/PR matrix also runs the complete validation launcher; the nightly job adds repeated coverage plus fuzzing rather than relying on skipped tests.
 
 ## Public fallback checks
 

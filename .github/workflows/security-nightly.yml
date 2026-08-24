@@ -34,15 +34,16 @@ jobs:
         run: |
           rustup toolchain install nightly-2026-08-20 --profile minimal
           cargo +nightly-2026-08-20 install cargo-fuzz --version 0.13.2 --locked
+      - name: Verify fuzz harness layout
+        shell: bash
+        run: test -f qa/fuzz/Cargo.toml
       - name: Build fuzz targets
-        working-directory: qa/fuzz
-        run: cargo +nightly-2026-08-20 fuzz build
+        run: cargo +nightly-2026-08-20 fuzz build --fuzz-dir qa/fuzz
       - name: Run bounded fuzz campaigns
-        working-directory: qa/fuzz
         shell: bash
         run: |
           set -euo pipefail
           for target in heartbeat_wire node_config_json peer_cache_json app_message dnsaddr_txt peer_multiaddr webrtc_stun; do
             echo "==> fuzz ${target}"
-            cargo +nightly-2026-08-20 fuzz run "${target}" -- -max_total_time=60 -timeout=10
+            cargo +nightly-2026-08-20 fuzz run --fuzz-dir qa/fuzz "${target}" -- -max_total_time=60 -timeout=10
           done

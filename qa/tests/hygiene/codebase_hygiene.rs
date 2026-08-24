@@ -300,6 +300,19 @@ fn repository_layout_matches_modular_baseline() {
         nightly.contains("nightly-2026-08-20") && nightly.contains("cargo-fuzz --version 0.13.2"),
         "nightly fuzzing must use pinned toolchain/tool versions"
     );
+    assert!(
+        nightly.contains("fuzz build --fuzz-dir qa/fuzz")
+            && nightly.contains("fuzz run --fuzz-dir qa/fuzz"),
+        "nightly fuzzing must explicitly select the nested qa/fuzz harness"
+    );
+    assert!(
+        !nightly.contains("working-directory: qa/fuzz"),
+        "working-directory alone is insufficient for cargo-fuzz nested-harness discovery; use --fuzz-dir qa/fuzz"
+    );
+    assert!(
+        nightly.contains("test -f qa/fuzz/Cargo.toml"),
+        "nightly fuzzing must fail early if the expected fuzz manifest is missing"
+    );
 }
 
 #[test]

@@ -17,8 +17,10 @@ Local example:
 ```bash
 rustup toolchain install nightly-2026-08-20 --profile minimal
 cargo +nightly-2026-08-20 install cargo-fuzz --version 0.13.2 --locked
-cd qa/fuzz
-cargo +nightly-2026-08-20 fuzz run app_message
+cargo +nightly-2026-08-20 fuzz build --fuzz-dir qa/fuzz
+cargo +nightly-2026-08-20 fuzz run --fuzz-dir qa/fuzz app_message
 ```
+
+The fuzz crate lives under `qa/fuzz/`, so every `cargo fuzz` invocation is run from the repository root with `--fuzz-dir qa/fuzz`. This is required because `cargo-fuzz` otherwise resolves its default harness as `<crate>/fuzz`, even if the shell working directory is changed to the nested fuzz package.
 
 The scheduled CI campaign builds every target and runs each for a bounded interval. Longer campaigns should be run before protocol/parser releases and whenever transport parsing changes.
