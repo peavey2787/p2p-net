@@ -326,8 +326,10 @@ async fn wait_for_relay_reservation(relay: &NodeHandle, client: &NodeHandle) -> 
                 .await
                 .relay_reservations_accepted_total
                 > 0;
-            let client_reserved = client.snapshot.lock().await.relay_client_reservations > 0;
-            if relay_accepted && client_reserved {
+            let client_snapshot = client.snapshot.lock().await.clone();
+            let client_requested = client_snapshot.relay_client_reservation_attempts > 0;
+            let client_failed = client_snapshot.relay_client_reservation_failures > 0;
+            if relay_accepted && client_requested && !client_failed {
                 return;
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
