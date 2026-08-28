@@ -243,7 +243,6 @@ fn available_udp_port() -> u16 {
     socket.local_addr().expect("local UDP address").port()
 }
 
-
 fn github_hosted_macos_runner() -> bool {
     cfg!(target_os = "macos")
         && std::env::var_os("GITHUB_ACTIONS").as_deref() == Some(std::ffi::OsStr::new("true"))
