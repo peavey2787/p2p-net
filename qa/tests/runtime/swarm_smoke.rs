@@ -38,6 +38,17 @@ async fn persistent_key_produces_same_peer_id_across_restarts() {
 
 #[tokio::test]
 async fn same_lan_nodes_auto_connect_without_manual_dial_within_60s() {
+    // GitHub-hosted macOS runners do not grant Local Network access to the
+    // runner process, so multicast LAN discovery cannot be exercised there.
+    // Keep this production-path test active everywhere else, including local
+    // and self-hosted macOS runners where the OS can grant that permission.
+    if github_hosted_macos_runner() {
+        eprintln!(
+            "skipping same-LAN multicast smoke test: GitHub-hosted macOS runners do not provide Local Network access"
+        );
+        return;
+    }
+
     let network_id = 77_001;
     let lan_port = available_udp_port();
     let mut alice_cfg = test_node_config("lan-auto-alice");
@@ -230,6 +241,14 @@ fn with_peer_id(mut addr: Multiaddr, peer: PeerId) -> Multiaddr {
 fn available_udp_port() -> u16 {
     let socket = std::net::UdpSocket::bind(("127.0.0.1", 0)).expect("bind ephemeral UDP port");
     socket.local_addr().expect("local UDP address").port()
+}
+
+
+fn github_hosted_macos_runner() -> bool {
+    cfg!(target_os = "macos")
+        && std::env::var_os("GITHUB_ACTIONS").as_deref() == Some(std::ffi::OsStr::new("true"))
+        && std::env::var_os("RUNNER_ENVIRONMENT").as_deref()
+            == Some(std::ffi::OsStr::new("github-hosted"))
 }
 
 fn cleanup_file(path: &str) {
