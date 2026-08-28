@@ -1,20 +1,41 @@
+[workspace]
+members = ["apps/android/native"]
+exclude = ["qa/fuzz", "external/libp2p-webrtc"]
+resolver = "2"
+
 [package]
 name = "p2p-net"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.98"
 license = "BUSL-1.1"
 description = "Shared libp2p node core with six app primitives, discovery, heartbeat gossip, NAT traversal, DCUtR, relay mediation, platform adapters, and binding helpers."
-publish = false
+readme = "README.md"
+keywords = ["libp2p", "p2p", "networking", "webrtc", "nat-traversal"]
+categories = ["network-programming", "asynchronous"]
+repository = "https://github.com/peavey2787/p2p-net"
+homepage = "https://github.com/peavey2787/p2p-net"
+documentation = "https://docs.rs/p2p-net"
+publish = true
+exclude = [
+    ".cargo/**",
+    "external/libp2p-dns/**",
+    "external/libp2p-mdns-placeholder/**",
+    "external/libp2p-webrtc/**",
+]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = ["dns"]
-# DNS is enabled by default through p2p-net's own bounded startup resolver plus
-# a local no-Hickory libp2p-dns compatibility patch required by WebSocket.
-# /dnsaddr is resolved before configured/cached dials through p2p-net's
-# operator-configurable DoH path; the transport adapter rejects /dnsaddr so
-# there is no hidden hard-coded third-party resolver.
-# LAN multicast discovery/mDNS is intentionally not included.
-dns = ["libp2p/dns"]
+# DNS is enabled by default through p2p-net's own bounded resolver. /dns,
+# /dns4, /dns6 and /dnsaddr are resolved before dialing, including manual
+# connect_peer calls. We intentionally do not enable libp2p's Hickory-backed
+# dns/mdns features, which keeps the published dependency graph self-contained
+# and avoids a hidden resolver policy.
+dns = []
 dashboard = ["dep:crossterm", "tokio/signal"]
 webrtc-oob-probe = ["dep:webrtc"]
 
@@ -28,7 +49,7 @@ path = "crates/lib.rs"
 
 [[example]]
 name = "p2p_node"
-path = "examples/p2p_node.rs"
+path = "apps/windows/p2p_node.rs"
 required-features = ["dashboard"]
 test = false
 bench = false
@@ -121,6 +142,14 @@ path = "qa/tests/hygiene/final_hygiene_audit.rs"
 [[test]]
 name = "release_reproducibility"
 path = "qa/tests/hygiene/release_reproducibility.rs"
+
+[[test]]
+name = "platform_app_architecture"
+path = "qa/tests/hygiene/platform_app_architecture.rs"
+
+[[test]]
+name = "platform_app_windows"
+path = "qa/tests/hygiene/platform_app_windows.rs"
 
 # observability integration tests
 [[test]]
@@ -216,7 +245,6 @@ libp2p = { version = "0.56", default-features = false, features = [
     "noise",
     "yamux",
     "quic",
-    "websocket",
     "gossipsub",
     "kad",
     "identify",
@@ -228,6 +256,7 @@ libp2p = { version = "0.56", default-features = false, features = [
     "macros",
 ] }
 libp2p-rendezvous = "0.17.1"
+libp2p-websocket = "0.45.1"
 crossterm = { version = "0.28", optional = true, features = ["event-stream"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -238,21 +267,10 @@ tracing = "0.1"
 blake3 = "1"
 rand = "0.8"
 sha2 = "0.10"
+socket2 = { version = "0.6", features = ["all"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 webrtc = { version = "0.12.0", optional = true }
-libp2p-webrtc = { version = "0.9.0-alpha.1", features = ["tokio"] }
+libp2p-webrtc = { package = "p2p-net-webrtc", version = "0.1.0", path = "external/libp2p-webrtc", features = ["tokio"] }
 
 [dev-dependencies]
 base64 = "0.22"
-
-[patch.crates-io]
-
-# rust-libp2p's WebSocket builder expects libp2p-dns when WebSocket support
-# is compiled. Patch libp2p-dns to a local no-Hickory adapter. Patch disallowed mDNS
-# to a no-op placeholder so the rejected Hickory DNS parser/resolver line cannot
-# enter Cargo.lock through optional metadata. p2p-net /dnsaddr support lives in
-# crates/connectivity/dns.rs.
-libp2p-dns = { path = "external/libp2p-dns" }
-libp2p-dcutr = { path = "external/libp2p-dcutr" }
-libp2p-mdns = { path = "external/libp2p-mdns-placeholder" }
-libp2p-webrtc = { path = "external/libp2p-webrtc" }
