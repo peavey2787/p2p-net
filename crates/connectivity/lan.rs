@@ -364,8 +364,8 @@ mod tests {
     use super::*;
 
     #[cfg(target_os = "macos")]
-    #[test]
-    fn macos_allows_multiple_lan_discovery_sockets_on_same_port() {
+    #[tokio::test]
+    async fn macos_allows_multiple_lan_discovery_sockets_on_same_port() {
         let probe = std::net::UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).expect("bind probe");
         let port = probe.local_addr().expect("probe addr").port();
         drop(probe);
