@@ -13,18 +13,13 @@ use crate::common::error::NetError;
 use crate::connectivity::webrtc::WEBRTC_DIRECT_TRANSPORT;
 use crate::{NodeConfig, ResolvedNodeConfig};
 
-// Keep idle expiry safely beyond the configured Ping cadence. Otherwise a
-// low-frequency keepalive policy can continuously tear down healthy idle
-// connections just before their next ping, causing rediscovery/redial churn.
-const MIN_SWARM_IDLE_CONNECTION_TIMEOUT_SECS: u64 = 30;
-const SWARM_IDLE_TIMEOUT_PING_MULTIPLIER: u64 = 2;
+// Ping intentionally does not keep rust-libp2p swarm connections alive. Application
+// heartbeats are the keepalive signal for compatible peers, so keep the swarm idle
+// window above the 30-second application heartbeat cadence with a 15-second margin.
+const SWARM_IDLE_CONNECTION_TIMEOUT_SECS: u64 = 45;
 
-fn swarm_idle_connection_timeout(ping_interval_secs: u64) -> Duration {
-    Duration::from_secs(
-        ping_interval_secs
-            .saturating_mul(SWARM_IDLE_TIMEOUT_PING_MULTIPLIER)
-            .max(MIN_SWARM_IDLE_CONNECTION_TIMEOUT_SECS),
-    )
+fn swarm_idle_connection_timeout() -> Duration {
+    Duration::from_secs(SWARM_IDLE_CONNECTION_TIMEOUT_SECS)
 }
 
 #[derive(Debug, Clone)]
@@ -159,8 +154,7 @@ pub async fn build_swarm(
         })
         .map_err(|e| NetError::Build(e.to_string()))?
         .with_swarm_config(|swarm_cfg| {
-            swarm_cfg
-                .with_idle_connection_timeout(swarm_idle_connection_timeout(cfg.ping_interval_secs))
+            swarm_cfg.with_idle_connection_timeout(swarm_idle_connection_timeout())
         })
         .build();
 
@@ -175,4 +169,18 @@ pub async fn build_swarm(
     }
 
     Ok((swarm, TransportPlan { active }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn swarm_idle_timeout_is_fixed_at_45_seconds() {
+        assert_eq!(
+            swarm_idle_connection_timeout(),
+            Duration::from_secs(SWARM_IDLE_CONNECTION_TIMEOUT_SECS)
+        );
+        assert_eq!(SWARM_IDLE_CONNECTION_TIMEOUT_SECS, 45);
+    }
 }

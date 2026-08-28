@@ -2,8 +2,9 @@ use std::time::Duration;
 
 use libp2p::multiaddr::Protocol;
 use p2p_net::{
-    start_node, DhtDiscoveryConfig, DiscoveryConfig, Multiaddr, NodeConfig, NodeHandle, PeerId,
-    PublicBootstrapConfig, PublicIpProbeConfig, RendezvousConfig,
+    relay_dial_addr_for_peer, relay_reservation_addr, start_node, DcutrPolicy, DhtDiscoveryConfig,
+    DiscoveryConfig, Multiaddr, NodeConfig, NodeHandle, NodeProfile, PeerId, PublicBootstrapConfig,
+    PublicIpProbeConfig, RelayServiceConfig, RendezvousConfig,
 };
 
 #[tokio::test]
@@ -82,6 +83,111 @@ async fn same_lan_nodes_auto_connect_without_manual_dial_within_60s() {
     cleanup_file(&alice_cache);
     cleanup_file(&bob_key);
     cleanup_file(&bob_cache);
+}
+
+#[tokio::test]
+async fn relayed_application_peer_stays_connected_beyond_old_idle_timeout() {
+    const STABILITY_WINDOW: Duration = Duration::from_secs(50);
+
+    let mut relay_cfg = test_node_config("relay-keepalive-server");
+    relay_cfg.profile = NodeProfile::Relay;
+    relay_cfg.discovery.lan.enabled = false;
+    relay_cfg.listen_addresses = vec!["/ip4/127.0.0.1/tcp/0".to_string()];
+    relay_cfg.relay = RelayServiceConfig {
+        enabled: true,
+        max_circuit_duration_secs: 120,
+        ..RelayServiceConfig::default()
+    };
+    let relay_key = relay_cfg.identity_key_path.clone();
+    let relay_cache = relay_cfg.discovery.peer_cache_path.clone();
+    let relay = start_node(relay_cfg).await.expect("start local relay server");
+    let relay_addr = wait_for_tcp_listen_addr(&relay)
+        .await
+        .map(|addr| with_peer_id(addr, relay.peer_id))
+        .expect("relay should expose a TCP listen address");
+
+    let mut bob_cfg = test_node_config("relay-keepalive-bob");
+    bob_cfg.profile = NodeProfile::Lite;
+    bob_cfg.discovery.lan.enabled = false;
+    bob_cfg.relay_peers = vec![relay_addr.to_string()];
+    bob_cfg.dcutr = DcutrPolicy {
+        enabled: false,
+        keep_relay_fallback: true,
+        ..DcutrPolicy::default()
+    };
+    let bob_key = bob_cfg.identity_key_path.clone();
+    let bob_cache = bob_cfg.discovery.peer_cache_path.clone();
+    let bob = start_node(bob_cfg).await.expect("start relayed bob node");
+    wait_for_relay_reservation(&bob)
+        .await
+        .expect("bob should reserve the local relay");
+
+    let reservation_addr = relay_reservation_addr(&relay_addr).expect("relay reservation address");
+    let bob_relay_addr = relay_dial_addr_for_peer(&reservation_addr, bob.peer_id)
+        .expect("relay reservation should produce a dialable target address");
+
+    let mut alice_cfg = test_node_config("relay-keepalive-alice");
+    alice_cfg.profile = NodeProfile::Lite;
+    alice_cfg.discovery.lan.enabled = false;
+    alice_cfg.dcutr = DcutrPolicy {
+        enabled: false,
+        keep_relay_fallback: true,
+        ..DcutrPolicy::default()
+    };
+    let alice_key = alice_cfg.identity_key_path.clone();
+    let alice_cache = alice_cfg.discovery.peer_cache_path.clone();
+    let alice = start_node(alice_cfg).await.expect("start relayed alice node");
+
+    alice
+        .connect_peer(bob_relay_addr)
+        .await
+        .expect("alice should dial bob through the relay");
+    wait_for_both_connected(&alice, bob.peer_id, &bob, alice.peer_id)
+        .await
+        .expect("both application peers should report the relayed connection");
+
+    let fallback_before = alice.snapshot.lock().await.dcutr_relay_fallbacks;
+    assert!(fallback_before > 0, "alice should be connected through relay fallback");
+
+    assert_connection_stays_up(&alice, bob.peer_id, &bob, alice.peer_id, STABILITY_WINDOW)
+        .await
+        .expect(
+            "relayed application connection should survive beyond the old 30-second idle timeout",
+        );
+
+    let fallback_after = alice.snapshot.lock().await.dcutr_relay_fallbacks;
+    assert_eq!(
+        fallback_after, fallback_before,
+        "stable relay connection must not disconnect and re-establish during the keepalive window"
+    );
+
+    let alice_metrics = alice
+        .get_metrics(None)
+        .await
+        .expect("alice metrics query should succeed");
+    let bob_metrics = bob
+        .get_metrics(None)
+        .await
+        .expect("bob metrics query should succeed");
+    for (name, metrics) in [("alice", alice_metrics), ("bob", bob_metrics)] {
+        let heartbeat = metrics
+            .bandwidth
+            .topic_stats
+            .get("heartbeat")
+            .unwrap_or_else(|| panic!("{name} should account application keepalive heartbeats"));
+        assert!(heartbeat.bytes_sent > 0, "{name} should send keepalive heartbeats");
+        assert!(heartbeat.bytes_recv > 0, "{name} should receive keepalive heartbeats");
+    }
+
+    alice.shutdown().await;
+    bob.shutdown().await;
+    relay.shutdown().await;
+    cleanup_file(&alice_key);
+    cleanup_file(&alice_cache);
+    cleanup_file(&bob_key);
+    cleanup_file(&bob_cache);
+    cleanup_file(&relay_key);
+    cleanup_file(&relay_cache);
 }
 
 #[tokio::test]
@@ -172,6 +278,62 @@ fn test_node_config(prefix: &str) -> NodeConfig {
     }
 }
 
+async fn wait_for_tcp_listen_addr(handle: &NodeHandle) -> Option<Multiaddr> {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        loop {
+            let snapshot = handle.snapshot.lock().await;
+            if let Some(addr) = snapshot
+                .local_listen_addresses
+                .iter()
+                .find(|addr| addr.starts_with("/ip4/127.0.0.1/tcp/") && !addr.contains("/ws"))
+                .and_then(|addr| addr.parse::<Multiaddr>().ok())
+            {
+                return Some(addr);
+            }
+            drop(snapshot);
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+async fn wait_for_relay_reservation(handle: &NodeHandle) -> Result<(), String> {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        loop {
+            if handle.snapshot.lock().await.relay_client_reservations > 0 {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await
+    .map_err(|_| "timed out waiting for relay reservation".to_string())
+}
+
+async fn assert_connection_stays_up(
+    first: &NodeHandle,
+    first_peer: PeerId,
+    second: &NodeHandle,
+    second_peer: PeerId,
+    duration: Duration,
+) -> Result<(), String> {
+    let deadline = tokio::time::Instant::now() + duration;
+    while tokio::time::Instant::now() < deadline {
+        if !peer_connected(first, first_peer).await?
+            || !peer_connected(second, second_peer).await?
+        {
+            return Err(format!(
+                "application connection dropped before {}s keepalive window completed",
+                duration.as_secs()
+            ));
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    Ok(())
+}
+
 async fn wait_for_webrtc_direct_listen_addr(handle: &NodeHandle) -> Option<Multiaddr> {
     tokio::time::timeout(Duration::from_secs(60), async {
         loop {
@@ -213,7 +375,7 @@ async fn wait_for_both_connected(
     .await
     .map_err(|_| {
         format!(
-            "timed out waiting for {first_peer} and {second_peer} to connect over native webrtc-direct"
+            "timed out waiting for application peers {first_peer} and {second_peer} to connect"
         )
     })?
 }

@@ -254,6 +254,8 @@ fn crates_io_release_has_no_root_patch_dependency() {
                 .any(|line| line == "!/.cargo/config.toml"),
         "release-critical .cargo/config.toml must not be hidden by the generic dot-directory ignore rule"
     );
+    assert!(manifest.contains("name = \"p2p-net\""));
+    assert!(manifest.contains("version = \"0.1.1\""));
     assert!(manifest.contains("package = \"p2p-net-webrtc\""));
     assert!(manifest.contains("version = \"0.1.0\""));
     assert!(manifest.contains("members = [\"apps/android/native\"]"));
@@ -286,7 +288,7 @@ fn crates_io_release_has_no_root_patch_dependency() {
             "metadata --locked",
             "package",
             "p2p-net-webrtc-0.1.0.crate",
-            "p2p-net-0.1.0.crate",
+            "p2p-net-0.1.1.crate",
             "[patch.crates-io]",
             "path",
             "SHA256SUMS.txt",

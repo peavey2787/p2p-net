@@ -11,6 +11,7 @@ use crate::common::error::NetError;
 use crate::connectivity::dht::{
     start_dht_namespace_discovery_immediate, DhtNamespacePlan, DhtProviderState,
 };
+use crate::connectivity::peer_book::PeerBook;
 use crate::protocol::pulse::{collect_local_heartbeat, encode_heartbeat_wire};
 use crate::stack::{add_external_address_candidate, MeshBehaviour};
 
@@ -24,21 +25,49 @@ pub(crate) struct PublishedHeartbeat {
     pub(crate) pulse: String,
 }
 
+/// Keep verified application peers in Gossipsub's explicit-peer set so the
+/// signed application heartbeat is forwarded to them even when they are not
+/// selected for the normal mesh. Normal application traffic remains unchanged.
+pub(crate) fn refresh_application_keepalive_peers(
+    swarm: &mut Swarm<MeshBehaviour>,
+    peer_book: &PeerBook,
+    application_namespaces: &[String],
+) -> usize {
+    let peers = swarm
+        .connected_peers()
+        .copied()
+        .filter(|peer| peer_book.has_application_namespace(peer, application_namespaces))
+        .collect::<Vec<_>>();
+    for peer in &peers {
+        swarm.behaviour_mut().gossipsub.add_explicit_peer(peer);
+    }
+    peers.len()
+}
+
 pub(crate) fn publish_heartbeat(
     swarm: &mut Swarm<MeshBehaviour>,
     local_peer: PeerId,
     topic: &IdentTopic,
+    keepalive_peers: usize,
 ) -> Result<PublishedHeartbeat, NetError> {
     let env = collect_local_heartbeat(local_peer)?;
     let payload = encode_heartbeat_wire(&env)?;
     let accounted_bytes = accounted_transport_bytes(payload.len());
-    let _ = swarm
+    swarm
         .behaviour_mut()
         .gossipsub
-        .publish(topic.clone(), payload);
+        .publish(topic.clone(), payload)
+        .map_err(|err| {
+            NetError::Heartbeat(format!(
+                "application keepalive heartbeat publish failed for {keepalive_peers} peer(s): {err:?}"
+            ))
+        })?;
     Ok(PublishedHeartbeat {
         accounted_bytes,
-        pulse: format!("local heartbeat {} {}", env.peer_id, env.nonce_hex),
+        pulse: format!(
+            "local heartbeat {} {} keepalive_peers={keepalive_peers}",
+            env.peer_id, env.nonce_hex
+        ),
     })
 }
 

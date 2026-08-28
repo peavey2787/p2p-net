@@ -314,9 +314,23 @@ pub(crate) async fn handle_swarm_event(
         SwarmEvent::ConnectionClosed {
             peer_id,
             connection_id,
-            ..
+            endpoint,
+            num_established,
+            cause,
         } => {
-            connection::handle_connection_closed(peer_id, connection_id, swarm, ctx).await;
+            connection::handle_connection_closed(
+                connection::ClosedConnection {
+                    peer_id,
+                    connection_id,
+                    relayed_endpoint: endpoint.is_relayed(),
+                    remaining_established: num_established,
+                    endpoint_debug: format!("{endpoint:?}"),
+                    cause_debug: format!("{cause:?}"),
+                },
+                swarm,
+                ctx,
+            )
+            .await;
         }
         SwarmEvent::IncomingConnectionError { error, peer_id, .. } => {
             connection::handle_incoming_connection_error(

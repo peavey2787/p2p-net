@@ -39,16 +39,16 @@ CARGO_TARGET_DIR="$PACKAGE_TARGET_DIR" cargo +1.98.0 package \
 
 printf '\n==> Locate normalized crates.io payloads\n'
 SUPPORT_CRATE="$PACKAGE_TARGET_DIR/package/p2p-net-webrtc-0.1.0.crate"
-ROOT_CRATE="$PACKAGE_TARGET_DIR/package/p2p-net-0.1.0.crate"
+ROOT_CRATE="$PACKAGE_TARGET_DIR/package/p2p-net-0.1.1.crate"
 [[ -f "$SUPPORT_CRATE" ]] || { echo "ERROR: missing packaged companion crate: $SUPPORT_CRATE" >&2; exit 1; }
 [[ -f "$ROOT_CRATE" ]] || { echo "ERROR: missing packaged root crate: $ROOT_CRATE" >&2; exit 1; }
 
 ROOT_ARCHIVE_ENTRIES="$(tar -tf "$ROOT_CRATE")"
 for forbidden_entry in \
-  'p2p-net-0.1.0/.cargo/' \
-  'p2p-net-0.1.0/external/libp2p-dns/' \
-  'p2p-net-0.1.0/external/libp2p-mdns-placeholder/' \
-  'p2p-net-0.1.0/external/libp2p-webrtc/'
+  'p2p-net-0.1.1/.cargo/' \
+  'p2p-net-0.1.1/external/libp2p-dns/' \
+  'p2p-net-0.1.1/external/libp2p-mdns-placeholder/' \
+  'p2p-net-0.1.1/external/libp2p-webrtc/'
 do
   if grep -Fq "$forbidden_entry" <<<"$ROOT_ARCHIVE_ENTRIES"; then
     echo "ERROR: packaged p2p-net unexpectedly contains workspace-only entry: $forbidden_entry" >&2
@@ -56,7 +56,7 @@ do
   fi
 done
 
-NORMALIZED_ROOT="$(tar -xOf "$ROOT_CRATE" p2p-net-0.1.0/Cargo.toml)"
+NORMALIZED_ROOT="$(tar -xOf "$ROOT_CRATE" p2p-net-0.1.1/Cargo.toml)"
 if normalized_manifest_has_path_dependency <<<"$NORMALIZED_ROOT"; then
   echo "ERROR: packaged p2p-net still contains a path dependency" >&2
   exit 1
@@ -91,7 +91,7 @@ trap cleanup_smoke EXIT
 mkdir -p "$SMOKE_ROOT/unpacked" "$SMOKE_ROOT/consumer/src"
 tar -xf "$SUPPORT_CRATE" -C "$SMOKE_ROOT/unpacked"
 tar -xf "$ROOT_CRATE" -C "$SMOKE_ROOT/unpacked"
-ROOT_PACKAGE_DIR="$SMOKE_ROOT/unpacked/p2p-net-0.1.0"
+ROOT_PACKAGE_DIR="$SMOKE_ROOT/unpacked/p2p-net-0.1.1"
 SUPPORT_PACKAGE_DIR="$SMOKE_ROOT/unpacked/p2p-net-webrtc-0.1.0"
 cat > "$SMOKE_ROOT/consumer/Cargo.toml" <<EOF
 [package]
@@ -125,10 +125,10 @@ cargo +1.98.0 check --manifest-path "$SMOKE_ROOT/consumer/Cargo.toml" --locked
 DIST_DIR="$ROOT_DIR/dist/crates"
 mkdir -p "$DIST_DIR"
 cp "$SUPPORT_CRATE" "$DIST_DIR/p2p-net-webrtc-0.1.0.crate"
-cp "$ROOT_CRATE" "$DIST_DIR/p2p-net-0.1.0.crate"
+cp "$ROOT_CRATE" "$DIST_DIR/p2p-net-0.1.1.crate"
 (
   cd "$DIST_DIR"
-  sha256sum p2p-net-webrtc-0.1.0.crate p2p-net-0.1.0.crate > SHA256SUMS.txt
+  sha256sum p2p-net-webrtc-0.1.0.crate p2p-net-0.1.1.crate > SHA256SUMS.txt
 )
 cat > "$DIST_DIR/PUBLISH-ORDER.txt" <<'EOF'
 1. cargo +1.98.0 publish --dry-run --manifest-path external/libp2p-webrtc/Cargo.toml --registry crates-io

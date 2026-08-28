@@ -41,11 +41,11 @@ external/           Publishable hardened companion transport source
 
 ## Use p2p-net from crates.io
 
-After `p2p-net` 0.1.0 is published, downstream Rust applications only need the root crate:
+For `p2p-net` 0.1.1 and later, downstream Rust applications only need the root crate:
 
 ```toml
 [dependencies]
-p2p-net = "0.1.0"
+p2p-net = "0.1.1"
 ```
 
 Then use the high-level async API from your application's existing executor:

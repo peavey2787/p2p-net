@@ -65,8 +65,8 @@ fn crates_io_manifest_is_publishable_without_manifest_patches() {
     );
     let root_block = lockfile
         .split("[[package]]")
-        .find(|block| block.contains("name = \"p2p-net\"") && block.contains("version = \"0.1.0\""))
-        .expect("Cargo.lock missing p2p-net 0.1.0");
+        .find(|block| block.contains("name = \"p2p-net\"") && block.contains("version = \"0.1.1\""))
+        .expect("Cargo.lock missing p2p-net 0.1.1");
     assert!(
         root_block.contains("\"libp2p-websocket\""),
         "p2p-net must retain its direct libp2p-websocket lock dependency"

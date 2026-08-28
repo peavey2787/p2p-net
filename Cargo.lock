@@ -2416,7 +2416,7 @@ dependencies = [
 
 [[package]]
 name = "p2p-net"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64",
  "blake3",
@@ -2444,7 +2444,7 @@ dependencies = [
 
 [[package]]
 name = "p2p-net-android-native"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64",
  "p2p-net",

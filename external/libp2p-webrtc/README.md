@@ -11,5 +11,5 @@ and an explicit SRTP profile policy that excludes the known-problematic
 AES-256-GCM path in the audited `webrtc` 0.12 generation.
 
 Application developers normally do **not** depend on this crate directly. Add
-`p2p-net = "0.1.0"` to the application's `Cargo.toml`; Cargo resolves this
+`p2p-net = "0.1.1"` to the application's `Cargo.toml`; Cargo resolves this
 companion automatically.

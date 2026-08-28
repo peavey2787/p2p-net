@@ -5,7 +5,7 @@ resolver = "2"
 
 [package]
 name = "p2p-net"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.98"
 license = "BUSL-1.1"

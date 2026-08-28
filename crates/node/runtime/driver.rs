@@ -113,6 +113,7 @@ pub(super) async fn run_node_runtime(ctx: NodeRuntimeContext) {
                     &mut swarm,
                     local_peer,
                     &heartbeat_topic,
+                    &application_namespaces,
                     &snapshot,
                     &mut runtime_state,
                     started_at,

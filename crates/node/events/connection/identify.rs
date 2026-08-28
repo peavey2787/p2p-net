@@ -37,6 +37,10 @@ pub(crate) async fn handle_identify_observed_addr(
         }
         ctx.peer_book.record_connected(*peer_id, None);
         ctx.relay_state.unverified_relayed_peers.remove(peer_id);
+        swarm
+            .behaviour_mut()
+            .gossipsub
+            .add_explicit_peer(peer_id);
         crate::stack::allow_dcutr_peer(swarm, *peer_id);
     }
     // Identify can be one of the busiest paths while public DHT queries are

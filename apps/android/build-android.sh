@@ -125,8 +125,8 @@ if [[ "$APK_HASH_A" != "$APK_HASH_B" || "$AAB_HASH_A" != "$AAB_HASH_B" || "$APK_
 fi
 
 mkdir -p "$DIST_DIR"
-DIST_APK="$DIST_DIR/p2p-net-android-0.1.0-release-unsigned.apk"
-DIST_AAB="$DIST_DIR/p2p-net-android-0.1.0-release.aab"
+DIST_APK="$DIST_DIR/p2p-net-android-0.1.1-release-unsigned.apk"
+DIST_AAB="$DIST_DIR/p2p-net-android-0.1.1-release.aab"
 cp "$APK_B" "$DIST_APK"
 cp "$AAB_B" "$DIST_AAB"
 printf '%s  %s\n%s  %s\n' \
@@ -134,7 +134,7 @@ printf '%s  %s\n%s  %s\n' \
   "$AAB_HASH_B" "$(basename "$DIST_AAB")" > "$DIST_DIR/SHA256SUMS.txt"
 cat > "$DIST_DIR/BUILD-MANIFEST.txt" <<EOF
 p2p-net Android reproducible release
-version=0.1.0
+version=0.1.1
 rust=1.98.0
 cargo_ndk=4.1.2
 gradle=9.5.0

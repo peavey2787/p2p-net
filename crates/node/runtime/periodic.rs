@@ -13,7 +13,9 @@ use crate::stack::MeshBehaviour;
 use super::super::config::NodeConfig;
 use super::super::events;
 use super::super::runtime_maintenance;
-use super::super::runtime_tasks::{apply_dht_refresh_snapshot, publish_heartbeat};
+use super::super::runtime_tasks::{
+    apply_dht_refresh_snapshot, publish_heartbeat, refresh_application_keepalive_peers,
+};
 use super::super::snapshot::NodeSnapshot;
 use super::RuntimeState;
 
@@ -22,6 +24,7 @@ pub(super) async fn tick_runtime(
     swarm: &mut Swarm<MeshBehaviour>,
     local_peer: PeerId,
     heartbeat_topic: &IdentTopic,
+    application_namespaces: &[String],
     snapshot: &Arc<Mutex<NodeSnapshot>>,
     runtime_state: &mut RuntimeState,
     started_at: std::time::Instant,
@@ -46,13 +49,24 @@ pub(super) async fn tick_runtime(
         &mut runtime_state.dht_state,
         &mut runtime_state.auto_dial_stats,
     ));
-    if let Ok(published) = publish_heartbeat(swarm, local_peer, heartbeat_topic) {
-        runtime_state.metrics.bandwidth.record_sent(
-            None,
-            Some("heartbeat"),
-            published.accounted_bytes,
-        );
-        pulses.push(published.pulse);
+    let keepalive_peers = refresh_application_keepalive_peers(
+        swarm,
+        &runtime_state.peer_book,
+        application_namespaces,
+    );
+    match publish_heartbeat(swarm, local_peer, heartbeat_topic, keepalive_peers) {
+        Ok(published) => {
+            runtime_state.metrics.bandwidth.record_sent(
+                None,
+                Some("heartbeat"),
+                published.accounted_bytes,
+            );
+            pulses.push(published.pulse);
+        }
+        Err(err) if keepalive_peers > 0 => {
+            pulses.push(format!("application keepalive heartbeat error: {err}"));
+        }
+        Err(_) => {}
     }
 
     runtime_state.metrics.compute.execution_cycles_estimated = runtime_state

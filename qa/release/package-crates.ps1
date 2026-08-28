@@ -154,7 +154,7 @@ try {
     Set-PackageProgress 2 "Locate normalized crates.io payloads"
     Write-Host "==> [2/$PackageProgressPhases] Locate normalized crates.io payloads"
     $supportCrate = Join-Path $PackageTargetDir "package\p2p-net-webrtc-0.1.0.crate"
-    $rootCrate = Join-Path $PackageTargetDir "package\p2p-net-0.1.0.crate"
+    $rootCrate = Join-Path $PackageTargetDir "package\p2p-net-0.1.1.crate"
     foreach ($crate in @($supportCrate, $rootCrate)) {
         if (-not (Test-Path $crate -PathType Leaf)) { throw "Missing packaged crate: $crate" }
     }
@@ -167,17 +167,17 @@ try {
 
     $rootArchiveEntries = Invoke-Checked "tar.exe" @("-tf", $rootCrate) "inspect packaged p2p-net file list"
     foreach ($forbiddenEntry in @(
-        "p2p-net-0.1.0/.cargo/",
-        "p2p-net-0.1.0/external/libp2p-dns/",
-        "p2p-net-0.1.0/external/libp2p-mdns-placeholder/",
-        "p2p-net-0.1.0/external/libp2p-webrtc/"
+        "p2p-net-0.1.1/.cargo/",
+        "p2p-net-0.1.1/external/libp2p-dns/",
+        "p2p-net-0.1.1/external/libp2p-mdns-placeholder/",
+        "p2p-net-0.1.1/external/libp2p-webrtc/"
     )) {
         if (($rootArchiveEntries -split "`r?`n") | Where-Object { $_.StartsWith($forbiddenEntry) }) {
             throw "Packaged p2p-net unexpectedly contains workspace-only entry: $forbiddenEntry"
         }
     }
 
-    $normalizedRoot = Invoke-Checked "tar.exe" @("-xOf", $rootCrate, "p2p-net-0.1.0/Cargo.toml") "inspect packaged p2p-net Cargo.toml"
+    $normalizedRoot = Invoke-Checked "tar.exe" @("-xOf", $rootCrate, "p2p-net-0.1.1/Cargo.toml") "inspect packaged p2p-net Cargo.toml"
     if (Test-NormalizedManifestHasPathDependency $normalizedRoot) { throw "Packaged p2p-net still contains a dependency path" }
     if ($normalizedRoot.Contains("[patch.crates-io]")) { throw "Packaged p2p-net still contains [patch.crates-io]" }
     if ($normalizedRoot.Contains("[workspace]")) { throw "Packaged p2p-net unexpectedly retains the repository workspace table" }
@@ -204,7 +204,7 @@ try {
         New-Item -ItemType Directory -Force -Path $unpacked, $consumerSrc | Out-Null
         Invoke-Checked "tar.exe" @("-xf", $supportCrate, "-C", $unpacked) "extract packaged p2p-net-webrtc" | Out-Null
         Invoke-Checked "tar.exe" @("-xf", $rootCrate, "-C", $unpacked) "extract packaged p2p-net" | Out-Null
-        $rootPackageDir = (Join-Path $unpacked "p2p-net-0.1.0").Replace('\', '/')
+        $rootPackageDir = (Join-Path $unpacked "p2p-net-0.1.1").Replace('\', '/')
         $supportPackageDir = (Join-Path $unpacked "p2p-net-webrtc-0.1.0").Replace('\', '/')
         $consumerManifest = @"
 [package]
@@ -246,7 +246,7 @@ fn main() {
     Write-Host "==> [5/$PackageProgressPhases] Write crates.io release artifacts"
     New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
     $distSupport = Join-Path $DistDir "p2p-net-webrtc-0.1.0.crate"
-    $distRoot = Join-Path $DistDir "p2p-net-0.1.0.crate"
+    $distRoot = Join-Path $DistDir "p2p-net-0.1.1.crate"
     Copy-Item $supportCrate $distSupport -Force
     Copy-Item $rootCrate $distRoot -Force
     $supportHash = (Get-FileHash $distSupport -Algorithm SHA256).Hash.ToLowerInvariant()

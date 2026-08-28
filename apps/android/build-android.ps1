@@ -415,8 +415,8 @@ if ($Variant -eq "Release") {
 
         $distDir = Join-Path $RepoRoot "dist\android"
         New-Item -ItemType Directory -Force -Path $distDir | Out-Null
-        $distApk = Join-Path $distDir "p2p-net-android-0.1.0-release-unsigned.apk"
-        $distAab = Join-Path $distDir "p2p-net-android-0.1.0-release.aab"
+        $distApk = Join-Path $distDir "p2p-net-android-0.1.1-release-unsigned.apk"
+        $distAab = Join-Path $distDir "p2p-net-android-0.1.1-release.aab"
         Copy-Item $buildB.Apk $distApk -Force
         Copy-Item $buildB.Aab $distAab -Force
 
@@ -426,7 +426,7 @@ if ($Variant -eq "Release") {
         ) | Set-Content -Path (Join-Path $distDir "SHA256SUMS.txt") -Encoding ascii
         @(
             "p2p-net Android reproducible release",
-            "version=0.1.0",
+            "version=0.1.1",
             "rust=1.98.0",
             "cargo_ndk=4.1.2",
             "gradle=9.5.0",
