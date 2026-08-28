@@ -317,10 +317,7 @@ async fn wait_for_tcp_listen_addr(handle: &NodeHandle) -> Option<Multiaddr> {
     .flatten()
 }
 
-async fn wait_for_relay_reservation(
-    relay: &NodeHandle,
-    client: &NodeHandle,
-) -> Result<(), String> {
+async fn wait_for_relay_reservation(relay: &NodeHandle, client: &NodeHandle) -> Result<(), String> {
     let result = tokio::time::timeout(Duration::from_secs(60), async {
         loop {
             let relay_accepted = relay
