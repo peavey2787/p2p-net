@@ -97,11 +97,6 @@ impl LanDiscoverySocket {
     pub fn bind(cfg: &LanDiscoveryConfig) -> io::Result<Self> {
         let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(SocketProtocol::UDP))?;
         socket.set_reuse_address(true)?;
-        // macOS needs SO_REUSEPORT for independent multicast listeners that
-        // share the configured LAN discovery port. Without it, a second node
-        // can start while never receiving the other node's discovery beacons.
-        #[cfg(target_os = "macos")]
-        socket.set_reuse_port(true)?;
         socket.set_broadcast(true)?;
         socket.set_multicast_loop_v4(true)?;
         socket.set_nonblocking(true)?;
@@ -362,25 +357,6 @@ fn is_official_android_emulator_guest(ip: Ipv4Addr) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[cfg(target_os = "macos")]
-    #[tokio::test]
-    async fn macos_allows_multiple_lan_discovery_sockets_on_same_port() {
-        let probe = std::net::UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).expect("bind probe");
-        let port = probe.local_addr().expect("probe addr").port();
-        drop(probe);
-
-        let cfg = LanDiscoveryConfig {
-            enabled: true,
-            port,
-            announce_interval_secs: 1,
-        };
-
-        let first = LanDiscoverySocket::bind(&cfg).expect("bind first LAN discovery socket");
-        let second = LanDiscoverySocket::bind(&cfg)
-            .expect("macOS LAN discovery must permit multiple listeners on the shared port");
-        drop((first, second));
-    }
 
     #[test]
     fn wildcard_listener_is_bound_to_beacon_source_and_peer() {
