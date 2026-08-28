@@ -100,7 +100,9 @@ async fn relayed_application_peer_stays_connected_beyond_old_idle_timeout() {
     };
     let relay_key = relay_cfg.identity_key_path.clone();
     let relay_cache = relay_cfg.discovery.peer_cache_path.clone();
-    let relay = start_node(relay_cfg).await.expect("start local relay server");
+    let relay = start_node(relay_cfg)
+        .await
+        .expect("start local relay server");
     let relay_addr = wait_for_tcp_listen_addr(&relay)
         .await
         .map(|addr| with_peer_id(addr, relay.peer_id))
@@ -136,7 +138,9 @@ async fn relayed_application_peer_stays_connected_beyond_old_idle_timeout() {
     };
     let alice_key = alice_cfg.identity_key_path.clone();
     let alice_cache = alice_cfg.discovery.peer_cache_path.clone();
-    let alice = start_node(alice_cfg).await.expect("start relayed alice node");
+    let alice = start_node(alice_cfg)
+        .await
+        .expect("start relayed alice node");
 
     alice
         .connect_peer(bob_relay_addr)
@@ -147,7 +151,10 @@ async fn relayed_application_peer_stays_connected_beyond_old_idle_timeout() {
         .expect("both application peers should report the relayed connection");
 
     let fallback_before = alice.snapshot.lock().await.dcutr_relay_fallbacks;
-    assert!(fallback_before > 0, "alice should be connected through relay fallback");
+    assert!(
+        fallback_before > 0,
+        "alice should be connected through relay fallback"
+    );
 
     assert_connection_stays_up(&alice, bob.peer_id, &bob, alice.peer_id, STABILITY_WINDOW)
         .await
@@ -175,8 +182,14 @@ async fn relayed_application_peer_stays_connected_beyond_old_idle_timeout() {
             .topic_stats
             .get("heartbeat")
             .unwrap_or_else(|| panic!("{name} should account application keepalive heartbeats"));
-        assert!(heartbeat.bytes_sent > 0, "{name} should send keepalive heartbeats");
-        assert!(heartbeat.bytes_recv > 0, "{name} should receive keepalive heartbeats");
+        assert!(
+            heartbeat.bytes_sent > 0,
+            "{name} should send keepalive heartbeats"
+        );
+        assert!(
+            heartbeat.bytes_recv > 0,
+            "{name} should receive keepalive heartbeats"
+        );
     }
 
     alice.shutdown().await;
@@ -321,8 +334,7 @@ async fn assert_connection_stays_up(
 ) -> Result<(), String> {
     let deadline = tokio::time::Instant::now() + duration;
     while tokio::time::Instant::now() < deadline {
-        if !peer_connected(first, first_peer).await?
-            || !peer_connected(second, second_peer).await?
+        if !peer_connected(first, first_peer).await? || !peer_connected(second, second_peer).await?
         {
             return Err(format!(
                 "application connection dropped before {}s keepalive window completed",
@@ -374,9 +386,7 @@ async fn wait_for_both_connected(
     })
     .await
     .map_err(|_| {
-        format!(
-            "timed out waiting for application peers {first_peer} and {second_peer} to connect"
-        )
+        format!("timed out waiting for application peers {first_peer} and {second_peer} to connect")
     })?
 }
 

@@ -60,10 +60,7 @@ pub(crate) fn handle_heartbeat_message(
                 record_heartbeat_peer(author, ctx);
                 let author_connected = swarm.connected_peers().any(|peer| peer == &author);
                 if author_connected {
-                    swarm
-                        .behaviour_mut()
-                        .gossipsub
-                        .add_explicit_peer(&author);
+                    swarm.behaviour_mut().gossipsub.add_explicit_peer(&author);
                 }
             }
             ctx.observability.gossip_accepted(peer_dirty);
