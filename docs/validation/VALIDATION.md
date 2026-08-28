@@ -14,7 +14,7 @@ Bash:
 ./run-full-validation.sh
 ```
 
-The script runs stable validation with DNS enabled by default through p2p-net's own startup resolver. Configured and cached `/dns`, `/dns4`, `/dns6`, and `/dnsaddr` peer addresses are resolved before dialing. Because WebSocket support in rust-libp2p 0.56 expects `libp2p-dns`, p2p-net patches that adapter to a local no-Hickory implementation and patches disallowed mDNS to a local no-op placeholder. Hickory DNS packages are rejected from `Cargo.lock`. `/dnsaddr` uses the configurable bounded DoH policy documented in `docs/impl/DNSADDR_DOH.md`.
+The script runs stable validation with DNS enabled by default through p2p-net's own resolver. Configured, cached, and manual `/dns`, `/dns4`, `/dns6`, and `/dnsaddr` peer addresses are resolved before dialing. The published crate does not enable rust-libp2p's Hickory-backed DNS or mDNS features and requires no downstream or root-manifest Cargo patch; the source workspace uses only the lock-resolution config patches described below, and Hickory DNS packages remain rejected from the committed `Cargo.lock`. `/dnsaddr` uses the configurable bounded DoH policy documented in `docs/impl/DNSADDR_DOH.md`.
 
 The script remains the canonical one-command runner after the profile/environment refactor. Unit tests such as `environment_detection`, `capability_resolver`, `mediator_role`, `event_responsibility`, `behaviour_policy`, `relay_discovery`, `dcutr_policy`, `platform_runtime`, `bindings`, `dashboard_rendering`, `codebase_hygiene`, and `codebase_architecture_hygiene` are picked up by `cargo test --workspace`, so you do not need separate commands. The dashboard rendering gate also checks narrow/wide bounds, event wrapping, counter separation, and terminal-control/bidi neutralization for peer-derived text.
 
@@ -49,6 +49,7 @@ Windows CMD options:
 ```cmd
 run-full-validation.cmd --no-install-tools
 run-full-validation.cmd --no-clean
+run-full-validation.cmd --from clippy
 ```
 
 Bash options:
@@ -56,7 +57,12 @@ Bash options:
 ```bash
 ./run-full-validation.sh --no-install-tools
 ./run-full-validation.sh --no-clean
+./run-full-validation.sh --from clippy
 ```
+
+`--from <stage>` is an explicit local resume mode. Valid stages are `lockfile`, `format`, `dependency-graph`, `tests`, `dashboard`, `clippy`, `audit`, and `deny`. A resumed run still performs the pinned Rust/toolchain preflight, automatically preserves `target/full-validation` instead of cleaning it, starts at the requested validation stage, and then runs every later stage including all three deferred hostile/load/soak tests. It is intended for continuing a validation run after fixing a failure; it assumes all skipped stages already passed for the source tree being continued. CI and reproducible release gates do not use resume mode.
+
+The root validation launchers automatically wrap themselves with the evidence recorder under `qa/evidence/`. Every invocation writes a complete transcript and manifest under `qa/evidence/runs/` before returning its exit code. Evidence generation is not an optional operator step and does not depend on preserving the console window.
 
 
 Linux packet-loss/latency simulation:
@@ -71,7 +77,7 @@ sudo ./qa/tools/netem-linux.sh lo stop
 
 ## Canonical reproducible release builds
 
-The root `build-release.cmd` and `build-release.sh` launchers are the canonical Windows and Linux release gates. They do not replace `run-full-validation`; they invoke the complete validation runner first and provide no skip-validation option. Official release builds require a clean Git worktree.
+The root `build-release.cmd` and `build-release.sh` launchers are the canonical Windows and Linux release gates. They do not require a clean Git worktree: the runner snapshots the exact current tracked modifications plus non-ignored untracked files into a synthetic detached Git commit, then performs validation and both reproducibility builds from that immutable snapshot. Validation is evidence-backed rather than terminal-backed. A matching durable full-validation record under `qa/evidence/` is reused automatically; if none matches the release-input fingerprint, the complete validation runner executes inside a detached validation worktree from the frozen snapshot located outside the repository tree, then copies its machine-captured evidence back to the ignored evidence store.
 
 Windows:
 
@@ -87,17 +93,32 @@ Linux:
 
 Both runners:
 
-- bind `SOURCE_DATE_EPOCH` to the current Git commit timestamp
-- verify the exact Rust 1.98.0 toolchain and committed lockfile
-- create two detached clean Git worktrees for the same commit
+- capture the exact current source snapshot with an alternate Git index without changing the user's branch or staging area
+- bind `SOURCE_DATE_EPOCH` to the base Git commit timestamp
+- verify the exact Rust 1.98.0 toolchain and locked dependency graph
+- require a matching full-validation evidence record for the release-input SHA-256, running full validation automatically in a detached snapshot worktree when one is not already available
+- fail if validation modifies any tracked file in that frozen snapshot while ignoring disposable untracked validation output for release identity
+- create two additional detached clean Git worktrees for the same synthetic source-snapshot commit
 - build the production `p2p_node` example with `--release --locked --offline --features dashboard` in two separate clean target directories
 - disable incremental compilation and normalize source, target, Cargo-home, and Rustup-home paths through encoded rustflags
 - compare the two resulting binaries and fail closed on any SHA-256 mismatch
-- write only the verified artifact plus deterministic build metadata/checksums to `dist/<target-triple>/`
+- write the verified artifact, build manifest, source manifest, release-input manifest, validation evidence, and checksums to `dist/<target-triple>/`
 
 Windows imports the same Visual Studio Build Tools environment used by the validation preflight and requests MSVC `/Brepro` linking. Linux requests a deterministic SHA-1 ELF build ID. These runners prove repeatability across two independent clean source/build directories on the current host. Cross-host byte identity additionally depends on matching native linker, SDK, and system-library inputs, which are recorded operational requirements rather than silently assumed.
 
-`--no-install-tools` is forwarded to the full validation gate when operators require pre-provisioned audit tools. `--no-pause` keeps both release runners non-interactive for automation. There is intentionally no `--no-clean` or skip-validation mode for an official release build.
+`--no-install-tools` is forwarded when a validation run is needed. `--no-pause` keeps both release runners non-interactive for automation. `--force-validation` discards the evidence-reuse optimization and performs a new complete validation run. There is no unaudited skip-validation mode: a release always requires a passing full-validation evidence manifest whose release-input fingerprint matches the code snapshot being built.
+
+Every validation run now writes durable evidence beneath `qa/evidence/runs/` automatically, including the complete transcript, result manifest, Git status, release-input inventory/fingerprint, lockfile hash, toolchain identities, and PASS/FAIL marker. Generated run directories are Git-ignored so evidence collection itself never dirties the source tree. Historical records for runs whose terminal output was not captured may live under `qa/evidence/attestations/`, but they must identify themselves as user-attested and must not fabricate a missing transcript.
+
+### Crates.io package qualification
+
+`package-crates.cmd` and `package-crates.sh` qualify the publishable package boundary without making the companion part of the production workspace lock graph. They first require `cargo metadata --locked` to accept the committed production workspace, package `p2p-net-webrtc`, and then package the root `p2p-net` crate with a command-line-only `[patch.crates-io]` override that maps the unpublished registry name `p2p-net-webrtc` to the local audited companion source. Cargo configuration patches are local build overrides and are not serialized into the normalized crate manifest. The runners therefore inspect both normalized manifests to reject repository-relative dependency `path` entries, `[patch.crates-io]`, a retained workspace table, or embedded companion source, then unpack both `.crate` payloads into a temporary downstream consumer. That consumer independently patches the normalized registry dependency to the packaged companion and compiles the public API. The resulting `.crate` payloads and SHA-256 checksums are written to `dist/crates/`. Publication is deliberately sequential: dry-run and publish `p2p-net-webrtc` first, wait for crates.io to index version 0.1.0, then dry-run and publish `p2p-net`. Downstream applications depend only on `p2p-net = "0.1.0"`; they do not add a patch or companion dependency themselves.
+
+The repository-level `.cargo/config.toml` contains only lock-resolution patches for libp2p 0.56 weak optional DNS/mDNS entries. Those entries point to the audited no-Hickory local placeholders so `cargo metadata --locked` remains deterministic; they are not present in the normalized crates.io manifest and are not required by downstream applications.
+
+### Android reproducible release
+
+`apps/android/build-android.ps1` and `apps/android/build-android.sh` perform two clean release builds with separate Rust target directories, Gradle build/configuration caches disabled, all tasks rerun, incremental Rust compilation disabled, and a fixed `SOURCE_DATE_EPOCH`. The unsigned APK and AAB must match both by SHA-256 and by a direct byte-for-byte comparison. Success writes the verified APK/AAB, `SHA256SUMS.txt`, and `BUILD-MANIFEST.txt` with `apk_byte_identical=true`, `aab_byte_identical=true`, and `reproducible=true` under `dist/android/`. Any mismatch fails closed and retains build-A/build-B artifacts for investigation.
 
 ## Event split validation
 

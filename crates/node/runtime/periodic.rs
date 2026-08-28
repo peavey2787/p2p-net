@@ -1,11 +1,13 @@
 use std::sync::Arc;
 
 use libp2p::gossipsub::IdentTopic;
+use libp2p::identity::Keypair;
 use libp2p::{PeerId, Swarm};
 use tokio::sync::Mutex;
 
-use crate::connectivity::dht::start_dht_namespace_discovery_with_interval;
-use crate::platform::NodeStorage;
+use crate::connectivity::dht::{
+    publish_local_peer_address_records, start_dht_namespace_discovery_with_interval,
+};
 use crate::stack::MeshBehaviour;
 
 use super::super::config::NodeConfig;
@@ -13,7 +15,7 @@ use super::super::events;
 use super::super::runtime_maintenance;
 use super::super::runtime_tasks::{apply_dht_refresh_snapshot, publish_heartbeat};
 use super::super::snapshot::NodeSnapshot;
-use super::{RuntimeState, PEER_CACHE_FLUSH_INTERVAL};
+use super::RuntimeState;
 
 pub(super) async fn tick_runtime(
     cfg: &NodeConfig,
@@ -79,34 +81,10 @@ pub(super) async fn tick_runtime(
     }
 }
 
-pub(super) async fn flush_observability(
-    cfg: &NodeConfig,
-    snapshot: &Arc<Mutex<NodeSnapshot>>,
-    storage: &dyn NodeStorage,
-    runtime_state: &mut RuntimeState,
-) -> bool {
-    if runtime_state.last_peer_cache_flush.elapsed() >= PEER_CACHE_FLUSH_INTERVAL {
-        runtime_state.flush_peer_cache(cfg, storage);
-    }
-    if runtime_state.observability.is_empty() {
-        return false;
-    }
-    let mut guard = snapshot.lock().await;
-    events::flush_observability_snapshot(
-        &mut guard,
-        &mut runtime_state.observability,
-        &runtime_state.dht_state,
-        &runtime_state.peer_book,
-        &runtime_state.auto_dial_stats,
-        &runtime_state.pending_connections,
-        cfg.discovery.public_bootstrap.auto_connect_discovered_peers,
-    );
-    true
-}
-
 pub(super) async fn refresh_dht(
     cfg: &NodeConfig,
     swarm: &mut Swarm<MeshBehaviour>,
+    local_key: &Keypair,
     snapshot: &Arc<Mutex<NodeSnapshot>>,
     runtime_state: &mut RuntimeState,
     reason: &str,
@@ -120,8 +98,21 @@ pub(super) async fn refresh_dht(
         &mut runtime_state.dht_state,
         refresh_interval_secs,
     );
+    let address_plan = publish_local_peer_address_records(
+        swarm,
+        local_key,
+        cfg.network_id,
+        &cfg.discovery,
+        &mut runtime_state.dht_state,
+    );
     runtime_state.dht_refresh_schedule.record_refresh();
 
     let mut guard = snapshot.lock().await;
     apply_dht_refresh_snapshot(&mut guard, &runtime_state.dht_state, &plan, reason);
+    for error in address_plan.errors {
+        super::super::push_pulse(
+            &mut guard.pulses,
+            format!("dht signed peer address publish error: {error}"),
+        );
+    }
 }

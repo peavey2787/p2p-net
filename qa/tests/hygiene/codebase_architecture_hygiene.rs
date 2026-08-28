@@ -175,8 +175,10 @@ fn cargo_test_registrations_are_unique_and_complete() {
         "integration tests must be registered from qa/tests"
     );
     assert!(
-        cargo.contains("external/libp2p-dns") && cargo.contains("external/libp2p-mdns-placeholder"),
-        "local third-party patches must live under external"
+        cargo.contains("external/libp2p-webrtc")
+            && cargo.contains("package = \"p2p-net-webrtc\"")
+            && !cargo.contains("[patch.crates-io]"),
+        "the hardened WebRTC companion must remain versioned/publishable without root Cargo patches"
     );
 
     let mut names = BTreeSet::new();

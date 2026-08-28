@@ -433,29 +433,27 @@ impl UDPMuxNewAddr {
                             };
 
                             match conn {
-                                None => {
-                                    match ufrag_from_stun_message(read.filled(), false) {
-                                        Ok(ufrag) if self.new_addrs.remember(addr) => {
-                                            tracing::trace!(
-                                                address=%&addr,
-                                                %ufrag,
-                                                "Notifying about new address from ufrag",
-                                            );
-                                            return Poll::Ready(UDPMuxEvent::NewAddr(NewAddr {
-                                                addr,
-                                                ufrag,
-                                            }));
-                                        }
-                                        Ok(_) => {}
-                                        Err(e) => {
-                                            tracing::debug!(
-                                                address=%&addr,
-                                                "Unknown address (non STUN packet: {})",
-                                                e
-                                            );
-                                        }
+                                None => match ufrag_from_stun_message(read.filled(), false) {
+                                    Ok(ufrag) if self.new_addrs.remember(addr) => {
+                                        tracing::trace!(
+                                            address=%&addr,
+                                            %ufrag,
+                                            "Notifying about new address from ufrag",
+                                        );
+                                        return Poll::Ready(UDPMuxEvent::NewAddr(NewAddr {
+                                            addr,
+                                            ufrag,
+                                        }));
                                     }
-                                }
+                                    Ok(_) => {}
+                                    Err(e) => {
+                                        tracing::debug!(
+                                            address=%&addr,
+                                            "Unknown address (non STUN packet: {})",
+                                            e
+                                        );
+                                    }
+                                },
                                 Some(conn) => {
                                     let mut packet = vec![0u8; read.filled().len()];
                                     packet.copy_from_slice(read.filled());

@@ -7,6 +7,7 @@ pub mod dht;
 pub mod discovery;
 pub mod dns;
 pub mod identity;
+pub mod lan;
 pub mod limits;
 pub mod mediator;
 pub mod namespace;

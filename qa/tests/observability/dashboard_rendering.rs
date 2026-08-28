@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use p2p_net::NodeSnapshot;
 
-#[path = "../../../examples/p2p_node/view/mod.rs"]
+#[path = "../../../apps/windows/p2p_node/view/mod.rs"]
 mod dashboard_view;
 
 #[test]

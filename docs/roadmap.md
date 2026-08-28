@@ -140,7 +140,7 @@ Implemented notes:
 
 Status: implemented; pending full validation.
 
-Goal: make public relay candidates usable by default app distributions that provide real relay/mediator endpoints.
+Goal: make relay fallback usable by fresh default nodes without requiring a project-operated relay list, while preserving configured relay support.
 
 Scope:
 
@@ -151,7 +151,7 @@ Scope:
 
 Acceptance criteria:
 
-- When real public relays are configured, NATed nodes can reserve and connect through relay fallback.
+- NATed nodes can reserve configured relays when supplied and can also promote relay-hop-capable peers learned dynamically from the public DHT into relay fallback.
 - `Relay Discovery` status shows selected public relay candidates.
 - DCUtR attempts are visible in the snapshot/pulse stream.
 
@@ -160,7 +160,7 @@ Implemented notes:
 - Public fallback relay candidates flow through the same deterministic relay selector as configured, cached, and rendezvous candidates.
 - Startup now reserves **selected** relays instead of treating the reservation path as configured-relays-only. Selected relays may come from operator config, cache, rendezvous, or public fallback.
 - `ResolvedNodeConfig` now exposes `should_reserve_selected_relays` and `should_seed_selected_relays` so profile policy can cover public fallback relay candidates without overloading the older configured-relay fields.
-- App distributions can provide real public relay/mediator DNSADDR entries in `discovery.public_bootstrap.relay_peers`; this shared repo still ships no fake public relay fleet.
+- App distributions can provide real public relay/mediator DNSADDR entries in `discovery.public_bootstrap.relay_peers`; the shared repo also discovers public-DHT relay-hop peers dynamically and still ships no fake public relay fleet.
 - DCUtR remains enabled whenever relay-client capability is enabled, so relayed connectivity can later attempt direct upgrade while keeping relay fallback.
 
 ## Step 6 — Add consumer-vs-operator examples and advanced override docs
@@ -174,7 +174,7 @@ Scope:
 - Add a consumer default walkthrough: run two apps, public fallback joins network, network peers connect, contacts remain untrusted until invite/QR/join-code.
 - Keep private-infrastructure-first docs as advanced/operator mode.
 - Document manual `bootstrap_peers`, `discovery.rendezvous_peers`, `relay_peers`, and `discovery.public_bootstrap.mode = "disabled"` overrides.
-- Explain why public bootstrap alone is insufficient for NAT-to-NAT reliability without relay/rendezvous endpoints.
+- Explain that public bootstrap is only the routing entry point; the default path adds network-scoped DHT provider/address discovery, dynamic relay-hop discovery, DCUtR, and same-LAN discovery without requiring configured rendezvous/relay endpoints.
 
 Acceptance criteria:
 
@@ -188,7 +188,7 @@ Implemented notes:
 - Added `examples/consumer-default.config.json` for consumer app mode.
 - Kept `examples/private-infrastructure-first.config.json` as the Advanced/operator private mode.
 - Updated README, operator docs, public fallback spec, implementation docs, and validation notes to make bootstrap/rendezvous/relay/DHT/auto-connect/contact-trust boundaries explicit.
-- Documented that public bootstrap alone is insufficient for guaranteed NAT-to-NAT first launch unless real public rendezvous and relay/mediator endpoints are supplied.
+- Superseded the older configured-rendezvous/relay requirement with the decentralized default path: network-scoped DHT provider discovery, signed address recovery, dynamic public relay-hop reservations, same-LAN discovery, and DCUtR with relay fallback.
 
 ## Step 7 — Add runtime status for known vs discovered vs dialed vs connected
 

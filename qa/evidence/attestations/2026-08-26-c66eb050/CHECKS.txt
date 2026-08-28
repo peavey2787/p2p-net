@@ -1,0 +1,19 @@
+Validation result: PASS (user-attested after terminal was closed)
+
+The user reported that the complete canonical full-validation run passed green for the exact source ZIP identified in SOURCE-ZIP-SHA256.txt.
+
+Reported passing stages:
+- pinned Rust/MSVC/UCRT preflight
+- committed dependency lockfile verification
+- cargo fmt --check
+- dependency graph guard
+- cargo test --workspace --locked -j 1
+- dashboard feature tests
+- cargo clippy --workspace --all-targets --all-features --locked -j 1 -- -D warnings
+- cargo audit 0.22.2
+- cargo deny 0.20.2
+- deferred hostile relay-load test
+- deferred hostile connection-churn test
+- deferred final one-minute soak test
+
+No terminal transcript exists because the console was closed before durable evidence capture was implemented. This record is intentionally labeled user-attested; it does not invent stdout/stderr.

@@ -10,7 +10,7 @@ Nodes should prefer infrastructure in this order:
 2. Operator-owned rendezvous peers.
 3. Operator-owned mediators/relays.
 4. Healthy local peer-cache records.
-5. Public fallback bootstrap/rendezvous/relay candidates when normal app policy allows them.
+5. Public bootstrap entry plus network-scoped DHT provider/address discovery and dynamically discovered relay-hop peers when normal app policy allows them.
 
 Public fallback is the normal consumer discovery entry point, but it is not a replacement for operating reliable infrastructure when an application needs guaranteed service capacity or stronger metadata control.
 
@@ -44,11 +44,11 @@ and publish only hashed namespace keys. The implemented namespace shape is `p2p-
 
 ## CGNAT-to-CGNAT reality
 
-Two nodes that are both behind CGNAT usually still need a reachable third-party path before DCUtR can try to upgrade the connection. That path can be one of our own mediators/relays, or a public relay fallback when public relay candidates are configured. Once a relayed connection exists, DCUtR can attempt a direct upgrade. If the upgrade fails, the relay path remains the fallback.
+Two nodes that are both behind CGNAT still need a reachable third-party path before DCUtR can try to upgrade the connection. That path can be an operator relay/mediator or a Circuit Relay v2 hop peer discovered dynamically through the public DHT. Once a relayed connection exists, DCUtR can attempt a direct upgrade. If the upgrade fails, the relay path remains the fallback.
 
 ## Public fallback policy
 
-The implemented public fallback policy lives under `discovery.public_bootstrap`. It defaults to `fallback_only` with built-in public bootstrap seeds plus public rendezvous/relay slots for normal app mode. Private-infrastructure-first operators set `mode = "disabled"` and configure owned bootstrap, rendezvous, mediator, and relay peers. See `docs/spec/PUBLIC_FALLBACK.md`.
+The implemented public fallback policy lives under `discovery.public_bootstrap`. It defaults to `fallback_only` with built-in public bootstrap seeds. Fresh default nodes then use network-scoped DHT provider/address discovery and can reserve relay-hop-capable peers learned dynamically from the public DHT; the shared repository does not require a built-in project-operated rendezvous or relay list. Private-infrastructure-first operators set `mode = "disabled"` and configure owned bootstrap, rendezvous, mediator, and relay peers. See `docs/spec/PUBLIC_FALLBACK.md`.
 
 ## DHT provider fallback
 
@@ -58,6 +58,6 @@ Startup uses DHT provider records after deriving the same hashed namespaces used
 
 ## Resilience validation
 
-The `network_resurrection` QA suite covers the recovery path that matters to applications: two users deriving the same hashed contact namespace, rediscovering a not-yet-connected peer from rendezvous/DHT-style metadata, exposing that peer through the peer-book view used by `get_peers()`, and feeding stored addresses into the `connect_peer(...)` planner.
+The `network_resurrection` QA suite covers metadata-level recovery, while `swarm_smoke` and `live_two_node_probe` cover the production auto-connect path. The zero-manual-dial probes use isolated identities and require application-peer connectivity without calling `connect_peer(...)`.
 
 The same suite also checks that public bootstrap/rendezvous/relay fallback participates only when policy allows it and owned/cached candidates do not already satisfy fallback-only mode.

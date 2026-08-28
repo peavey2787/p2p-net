@@ -39,8 +39,7 @@ use futures::{
 use libp2p_core::muxing::{StreamMuxer, StreamMuxerEvent};
 use webrtc::{
     data::data_channel::DataChannel as DetachedDataChannel, data_channel::RTCDataChannel,
-    ice::udp_mux::UDPMux,
-    peer_connection::RTCPeerConnection,
+    ice::udp_mux::UDPMux, peer_connection::RTCPeerConnection,
 };
 
 use crate::tokio::{error::Error, stream, stream::Stream};

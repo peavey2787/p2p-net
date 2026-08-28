@@ -37,6 +37,43 @@ async fn persistent_key_produces_same_peer_id_across_restarts() {
 }
 
 #[tokio::test]
+async fn same_lan_nodes_auto_connect_without_manual_dial_within_60s() {
+    let network_id = 77_001;
+    let lan_port = available_udp_port();
+    let mut alice_cfg = test_node_config("lan-auto-alice");
+    let mut bob_cfg = test_node_config("lan-auto-bob");
+    for cfg in [&mut alice_cfg, &mut bob_cfg] {
+        cfg.network_id = network_id;
+        cfg.discovery.lan.enabled = true;
+        cfg.discovery.lan.port = lan_port;
+        cfg.discovery.lan.announce_interval_secs = 1;
+        // Keep public infrastructure disabled for this deterministic LAN test,
+        // but exercise the production auto-connect path once LAN discovery
+        // supplies an authenticated compatibility-scoped candidate.
+        cfg.discovery.public_bootstrap.auto_connect_discovered_peers = true;
+    }
+
+    let alice_key = alice_cfg.identity_key_path.clone();
+    let alice_cache = alice_cfg.discovery.peer_cache_path.clone();
+    let bob_key = bob_cfg.identity_key_path.clone();
+    let bob_cache = bob_cfg.discovery.peer_cache_path.clone();
+
+    let alice = start_node(alice_cfg).await.expect("start LAN alice node");
+    let bob = start_node(bob_cfg).await.expect("start LAN bob node");
+
+    wait_for_both_connected(&alice, bob.peer_id, &bob, alice.peer_id)
+        .await
+        .expect("same-LAN nodes should auto-connect without connect_peer within 60s");
+
+    alice.shutdown().await;
+    bob.shutdown().await;
+    cleanup_file(&alice_key);
+    cleanup_file(&alice_cache);
+    cleanup_file(&bob_key);
+    cleanup_file(&bob_cache);
+}
+
+#[tokio::test]
 async fn native_webrtc_direct_transport_connects_two_start_node_instances_within_60s() {
     let alice_cfg = test_node_config("webrtc-direct-alice");
     let bob_cfg = test_node_config("webrtc-direct-bob");
@@ -188,6 +225,11 @@ fn with_peer_id(mut addr: Multiaddr, peer: PeerId) -> Multiaddr {
         addr.push(Protocol::P2p(peer));
     }
     addr
+}
+
+fn available_udp_port() -> u16 {
+    let socket = std::net::UdpSocket::bind(("127.0.0.1", 0)).expect("bind ephemeral UDP port");
+    socket.local_addr().expect("local UDP address").port()
 }
 
 fn cleanup_file(path: &str) {

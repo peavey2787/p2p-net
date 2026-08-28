@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ "${P2P_VALIDATION_EVIDENCE_ACTIVE:-0}" != "1" ]]; then
+  exec bash "$SCRIPT_DIR/qa/evidence/run-validation-with-evidence.sh" "$SCRIPT_DIR/run-full-validation.sh" "$@"
+fi
+
 NO_INSTALL_TOOLS=0
 NO_CLEAN=0
 NO_PAUSE=0
+FROM_STAGE="full"
+FROM_RANK=0
+RESUME_NO_CLEAN=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -16,6 +24,14 @@ while [[ $# -gt 0 ]]; do
     --no-pause)
       NO_PAUSE=1
       ;;
+    --from)
+      if [[ $# -lt 2 ]]; then
+        echo "--from requires a stage name." >&2
+        exit 2
+      fi
+      FROM_STAGE="$2"
+      shift
+      ;;
     *)
       echo "Unknown argument: $1" >&2
       exit 2
@@ -23,6 +39,37 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+stage_rank() {
+  case "$1" in
+    full) echo 0 ;;
+    lockfile) echo 1 ;;
+    format) echo 2 ;;
+    dependency-graph) echo 3 ;;
+    tests) echo 4 ;;
+    dashboard) echo 5 ;;
+    clippy) echo 6 ;;
+    audit) echo 7 ;;
+    deny) echo 8 ;;
+    *) return 1 ;;
+  esac
+}
+
+if ! FROM_RANK="$(stage_rank "$FROM_STAGE")"; then
+  echo "Unknown --from stage: $FROM_STAGE" >&2
+  echo "Valid stages: lockfile, format, dependency-graph, tests, dashboard, clippy, audit, deny" >&2
+  exit 2
+fi
+if (( FROM_RANK > 0 )) && [[ "$NO_CLEAN" == "0" ]]; then
+  NO_CLEAN=1
+  RESUME_NO_CLEAN=1
+fi
+
+should_run() {
+  local rank
+  rank="$(stage_rank "$1")"
+  (( rank >= FROM_RANK ))
+}
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
@@ -95,6 +142,77 @@ clear_validation_target() {
   unset CARGO_TARGET_DIR || true
 }
 
+run_lockfile_readonly_tool() {
+  local tool_label="$1"
+  shift
+  local slug="${tool_label//[^A-Za-z0-9._-]/-}"
+  local backup="$ROOT/target/full-validation/Cargo.lock.${slug}.backup"
+  local tool_status
+
+  [[ -f "$ROOT/Cargo.lock" ]] || {
+    echo "Cargo.lock is missing before ${tool_label}." >&2
+    return 1
+  }
+
+  mkdir -p "$ROOT/target/full-validation"
+  cp -p "$ROOT/Cargo.lock" "$backup"
+
+  set +e
+  "$@"
+  tool_status=$?
+  set -e
+
+  if ! cmp -s "$ROOT/Cargo.lock" "$backup"; then
+    echo "NOTE: ${tool_label} rewrote Cargo.lock; restoring the exact pre-tool lockfile bytes."
+    cp -p "$backup" "$ROOT/Cargo.lock"
+  fi
+  rm -f "$backup"
+
+  if (( tool_status != 0 )); then
+    return "$tool_status"
+  fi
+
+  cargo metadata --locked --format-version 1 >/dev/null
+}
+
+run_dependency_policy() {
+  if cargo deny check --config qa/ci/deny.toml --help >/dev/null 2>&1; then
+    cargo deny check --config qa/ci/deny.toml
+  else
+    cargo deny --config qa/ci/deny.toml check
+  fi
+}
+
+run_format_check_readonly() {
+  local backup="$ROOT/target/full-validation/Cargo.lock.format-backup"
+  local format_status
+
+  [[ -f "$ROOT/Cargo.lock" ]] || {
+    echo "Cargo.lock is missing; format validation requires the committed lockfile." >&2
+    return 1
+  }
+
+  mkdir -p "$ROOT/target/full-validation"
+  cp -p "$ROOT/Cargo.lock" "$backup"
+
+  set +e
+  cargo fmt --all -- --check
+  format_status=$?
+  set -e
+
+  if ! cmp -s "$ROOT/Cargo.lock" "$backup"; then
+    echo "NOTE: cargo fmt metadata rewrote Cargo.lock; restoring the exact pre-format lockfile bytes."
+    cp -p "$backup" "$ROOT/Cargo.lock"
+  fi
+  rm -f "$backup"
+
+  if (( format_status != 0 )); then
+    return "$format_status"
+  fi
+
+  cargo metadata --locked --format-version 1 >/dev/null
+}
+
 assert_no_rejected_dns_resolver() {
   if [[ ! -f Cargo.lock ]]; then
     echo "Cargo.lock is missing; production validation requires the committed lockfile." >&2
@@ -133,6 +251,10 @@ echo "p2p-net full stable validation"
 echo "Root: $ROOT"
 echo "NoInstallTools: $NO_INSTALL_TOOLS"
 echo "NoClean: $NO_CLEAN"
+echo "ResumeFrom: $FROM_STAGE"
+if [[ "$RESUME_NO_CLEAN" == "1" ]]; then
+  echo "Resume mode preserves validation artifacts; --no-clean is implied."
+fi
 echo
 echo "This is the canonical Linux one-file validation runner. It verifies the committed lockfile and formatting without mutating source, and uses isolated target directories to avoid stale/incomplete build artifacts."
 
@@ -153,34 +275,54 @@ if [[ "$NO_CLEAN" != "1" ]]; then
   cargo clean
 fi
 
-run_step "Verify committed dependency lockfile" cargo metadata --locked --format-version 1
+[[ -f "$ROOT/Cargo.lock" ]] || {
+  echo "Cargo.lock is missing; production validation requires the committed lockfile." >&2
+  exit 1
+}
+mkdir -p "$ROOT/target/full-validation"
+VALIDATION_LOCK_BASELINE="$ROOT/target/full-validation/Cargo.lock.validation-baseline"
+cp -p "$ROOT/Cargo.lock" "$VALIDATION_LOCK_BASELINE"
+
+if should_run lockfile; then
+  run_step "Verify committed dependency lockfile" cargo metadata --locked --format-version 1
+fi
 
 ensure_cargo_tool cargo-audit 0.22.2
 ensure_cargo_tool cargo-deny 0.20.2
 
-run_step "Format check" cargo fmt --all -- --check
-run_step "Dependency graph guard" assert_no_rejected_dns_resolver
+if should_run format; then
+  run_step "Format check" run_format_check_readonly
+fi
+if should_run dependency-graph; then
+  run_step "Dependency graph guard" assert_no_rejected_dns_resolver
+fi
 
-set_validation_target tests
-echo "NOTE: The Rust harness will report three long hostile/load tests as ignored in this normal phase. They are deferred, not omitted: this runner executes each one once at the end, with the soak test last."
-run_step "Tests" cargo test --workspace --locked -j 1
+if should_run tests; then
+  set_validation_target tests
+  echo "NOTE: The Rust harness will report three long hostile/load tests as ignored in this normal phase. They are deferred, not omitted: this runner executes each one once at the end, with the soak test last."
+  run_step "Tests" cargo test --workspace --locked -j 1
+fi
 
-set_validation_target dashboard
-run_step "Dashboard feature tests" cargo test --features dashboard --locked -j 1
+if should_run dashboard; then
+  set_validation_target dashboard
+  run_step "Dashboard feature tests" cargo test --features dashboard --locked -j 1
+fi
 
-set_validation_target clippy
-run_step "Clippy" cargo clippy --workspace --all-targets --all-features --locked -j 1 -- -D warnings
+if should_run clippy; then
+  set_validation_target clippy
+  run_step "Clippy" cargo clippy --workspace --all-targets --all-features --locked -j 1 -- -D warnings
+fi
 
 clear_validation_target
-run_step "Security audit" run_cargo_audit_with_repo_config
+if should_run audit; then
+  run_step "Security audit" run_lockfile_readonly_tool cargo-audit run_cargo_audit_with_repo_config
+fi
 
-# cargo-deny changed where --config is accepted across releases. Probe the
-# exact check-level form first and fall back to the global option form so the
-# pinned release and developer-installed compatible releases both work.
-if cargo deny check --config qa/ci/deny.toml --help >/dev/null 2>&1; then
-  run_step "Dependency policy" cargo deny check --config qa/ci/deny.toml
-else
-  run_step "Dependency policy" cargo deny --config qa/ci/deny.toml check
+if should_run deny; then
+  # cargo-deny may invoke Cargo metadata internally without exposing Cargo's
+  # --locked flag. Treat it as a read-only transaction around the committed
+  # lockfile and re-prove locked metadata immediately afterward.
+  run_step "Dependency policy" run_lockfile_readonly_tool cargo-deny run_dependency_policy
 fi
 
 set_validation_target hostile
@@ -189,5 +331,15 @@ run_step "Deferred hostile connection-churn test" cargo test --test multi_node_h
 run_step "Deferred one-minute soak test (final test)" cargo test --test multi_node_hostile --locked -j 1 long_running_soak_node_stays_responsive -- --ignored --exact --nocapture
 
 clear_validation_target
+if ! cmp -s "$ROOT/Cargo.lock" "$VALIDATION_LOCK_BASELINE"; then
+  echo "Cargo.lock changed during validation. The validation runner must be read-only with respect to the committed dependency lockfile." >&2
+  exit 1
+fi
+rm -f "$VALIDATION_LOCK_BASELINE"
 echo
-echo "All stable p2p-net validation checks passed."
+if (( FROM_RANK > 0 )); then
+  echo "p2p-net validation from $FROM_STAGE through the final soak test passed."
+  echo "Earlier validation stages were intentionally skipped in resume mode."
+else
+  echo "All stable p2p-net validation checks passed."
+fi

@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 use libp2p::gossipsub::TopicHash;
+use libp2p::identity::Keypair;
 use libp2p::swarm::SwarmEvent;
 use libp2p::{Multiaddr, PeerId, Swarm};
 use tokio::sync::{broadcast, Mutex};
@@ -9,7 +10,9 @@ use tokio::sync::{broadcast, Mutex};
 use crate::api::{AppMessage, NodeMetrics, PeerSource};
 use crate::connectivity::connection_strategy::PendingConnectionPlans;
 use crate::connectivity::dcutr::DcutrPolicy;
-use crate::connectivity::dht::DhtProviderState;
+use crate::connectivity::dht::{
+    publish_local_peer_address_records, start_dht_namespace_discovery_immediate, DhtProviderState,
+};
 use crate::connectivity::discovery::DiscoveryConfig;
 use crate::connectivity::limits::ConnectionCapState;
 use crate::connectivity::peer_book::PeerBook;
@@ -181,6 +184,7 @@ pub(crate) struct SwarmEventContext<'a> {
     pub(crate) identify_addresses: &'a mut IdentifyAddressState,
     pub(crate) observability: &'a mut ObservabilityBatch,
     pub(crate) local_peer: PeerId,
+    pub(crate) local_key: &'a Keypair,
     pub(crate) network_id: u32,
     pub(crate) application_protocol_version: &'a str,
     pub(crate) application_namespaces: &'a [String],
@@ -325,6 +329,32 @@ pub(crate) async fn handle_swarm_event(
         SwarmEvent::OutgoingConnectionError { error, peer_id, .. } => {
             connection::handle_outgoing_connection_error(peer_id, format!("{error:?}"), swarm, ctx)
                 .await;
+        }
+        SwarmEvent::ExternalAddrConfirmed { address } => {
+            let dht_plan = start_dht_namespace_discovery_immediate(
+                swarm,
+                ctx.network_id,
+                ctx.discovery_cfg,
+                ctx.rendezvous_peers.len(),
+                ctx.dht_state,
+            );
+            let address_plan = publish_local_peer_address_records(
+                swarm,
+                ctx.local_key,
+                ctx.network_id,
+                ctx.discovery_cfg,
+                ctx.dht_state,
+            );
+            ctx.observability.dht_dirty();
+            ctx.observability.pulse(format!(
+                "external address confirmed {address}; refreshed app discovery provider_announces={} address_records={}",
+                dht_plan.announce_attempts,
+                address_plan.attempted_records
+            ));
+            for err in dht_plan.errors.into_iter().chain(address_plan.errors) {
+                ctx.observability
+                    .pulse(format!("external address discovery refresh error: {err}"));
+            }
         }
         SwarmEvent::NewListenAddr { address, .. } => {
             connection::handle_new_listen_addr(address, swarm, ctx).await;

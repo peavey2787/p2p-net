@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 pub const DISCOVERY_NAMESPACE_PREFIX: &str = "p2p-net";
 pub const DISCOVERY_NAMESPACE_HASH_CONTEXT: &str = "p2p-net.discovery.namespace.v1";
+pub const DEFAULT_DISCOVERY_TAG: &str = "__default_application_mesh__";
 pub const MAX_DISCOVERY_APP_ID_LEN: usize = 64;
 pub const MAX_DISCOVERY_TAG_LEN: usize = 256;
 pub const MAX_DISCOVERY_TAGS: usize = 64;
@@ -109,6 +110,23 @@ impl DiscoveryNamespaceConfig {
         }
         Ok(namespaces)
     }
+}
+
+/// Derive the reserved default application namespace used when the operator has
+/// not configured explicit discovery tags. Keeping this namespace derived from
+/// `network_id` prevents unrelated p2p-net networks from sharing one generic
+/// provider key while preserving explicit operator rendezvous namespaces.
+pub fn default_discovery_namespace(
+    network_id: u32,
+    app_id: &str,
+) -> Result<DiscoveryNamespace, crate::common::error::NetError> {
+    build_discovery_namespace(
+        network_id,
+        app_id,
+        DEFAULT_DISCOVERY_TAG,
+        DiscoveryNamespacePrivacy::Hashed,
+        false,
+    )
 }
 
 /// Fully derived namespace metadata. The raw tag is intentionally not stored.
@@ -237,6 +255,17 @@ mod tests {
         assert!(ns.namespace.starts_with("p2p-net/1/hydra-msg/"));
         assert!(!ns.namespace.contains(tag));
         assert_eq!(ns.tag_fingerprint_hex.len(), 64);
+    }
+
+    #[test]
+    fn default_namespace_is_network_specific_and_private() {
+        let one = default_discovery_namespace(1, "p2p-net").expect("network 1");
+        let two = default_discovery_namespace(2, "p2p-net").expect("network 2");
+
+        assert!(one.namespace.starts_with("p2p-net/1/p2p-net/"));
+        assert!(two.namespace.starts_with("p2p-net/2/p2p-net/"));
+        assert_ne!(one.namespace, two.namespace);
+        assert!(!one.namespace.contains(DEFAULT_DISCOVERY_TAG));
     }
 
     #[test]

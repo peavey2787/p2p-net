@@ -3,18 +3,24 @@ $ErrorActionPreference = "Stop"
 
 $NoInstallTools = $false
 $NoPause = $false
+$ForceValidation = $false
 foreach ($arg in $args) {
     switch ($arg) {
         "--no-install-tools" { $NoInstallTools = $true }
         "--no-pause" { $NoPause = $true }
+        "--force-validation" { $ForceValidation = $true }
         default { throw "Unknown argument: $arg" }
     }
 }
 
 $Root = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
 $ReproRoot = Join-Path $Root "target\reproducible-release"
-$WorktreeA = Join-Path $ReproRoot "source-a"
-$WorktreeB = Join-Path $ReproRoot "source-b"
+$RootParent = Split-Path -Parent $Root
+$RootName = Split-Path -Leaf $Root
+$WorktreeRoot = Join-Path $RootParent ("." + $RootName + "-release-worktrees")
+$ValidationWorktree = Join-Path $WorktreeRoot "validation-source"
+$WorktreeA = Join-Path $WorktreeRoot "source-a"
+$WorktreeB = Join-Path $WorktreeRoot "source-b"
 $TargetA = Join-Path $ReproRoot "target-a"
 $TargetB = Join-Path $ReproRoot "target-b"
 $script:ExitCode = 0
@@ -43,20 +49,111 @@ function Remove-ReleaseWorktree {
 function Cleanup-ReleaseWorktrees {
     $oldPreference = $ErrorActionPreference
     $ErrorActionPreference = "SilentlyContinue"
+    Remove-ReleaseWorktree $ValidationWorktree
     Remove-ReleaseWorktree $WorktreeA
     Remove-ReleaseWorktree $WorktreeB
     & git worktree prune *> $null
+    if (Test-Path -LiteralPath $WorktreeRoot) {
+        Remove-Item -LiteralPath $WorktreeRoot -Recurse -Force
+    }
     $ErrorActionPreference = $oldPreference
 }
 
-function Assert-CleanWorktree {
+function Get-WorkingTreeStatus {
     $status = @(& git status --porcelain=v1 --untracked-files=all)
     if ($LASTEXITCODE -ne 0) {
         throw "git status failed with exit code $LASTEXITCODE"
     }
-    if ($status.Count -ne 0) {
-        $status | ForEach-Object { Write-Host $_ -ForegroundColor Red }
-        throw "official release builds require a clean Git working tree"
+    return $status
+}
+
+function Get-SourceFingerprint {
+    $scriptPath = Join-Path $Root "qa\evidence\source-fingerprint.ps1"
+    $json = & $scriptPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "source fingerprint generation failed with exit code $LASTEXITCODE"
+    }
+    return ($json | ConvertFrom-Json)
+}
+
+function Read-EvidenceManifest {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $values = @{}
+    foreach ($line in Get-Content -LiteralPath $Path) {
+        if (-not $line -or $line.StartsWith("#")) { continue }
+        $separator = $line.IndexOf("=")
+        if ($separator -gt 0) {
+            $values[$line.Substring(0, $separator)] = $line.Substring($separator + 1)
+        }
+    }
+    return $values
+}
+
+function Find-ValidationEvidence {
+    param(
+        [Parameter(Mandatory = $true)][string]$ReleaseInputSha256,
+        [string]$SearchRoot = $Root
+    )
+
+    $roots = @(
+        (Join-Path $SearchRoot "qa\evidence\runs"),
+        (Join-Path $SearchRoot "qa\evidence\recovered"),
+        (Join-Path $SearchRoot "qa\evidence\attestations")
+    )
+    foreach ($evidenceRoot in $roots) {
+        if (-not (Test-Path -LiteralPath $evidenceRoot)) {
+            continue
+        }
+        $candidates = @(
+            Get-ChildItem -LiteralPath $evidenceRoot -Filter "manifest.txt" -File -Recurse |
+                Sort-Object LastWriteTimeUtc -Descending
+        )
+        foreach ($candidate in $candidates) {
+            $values = Read-EvidenceManifest $candidate.FullName
+            if ($values["result"] -eq "pass" -and
+                $values["mode"] -eq "full" -and
+                $values["release_input_sha256"] -eq $ReleaseInputSha256) {
+                return [pscustomobject]@{
+                    Path = $candidate.FullName
+                    Values = $values
+                    Sha256 = (Get-FileHash -LiteralPath $candidate.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+                }
+            }
+        }
+    }
+    return $null
+}
+
+function New-SourceSnapshotCommit {
+    param(
+        [Parameter(Mandatory = $true)][string]$Tree,
+        [Parameter(Mandatory = $true)][string]$BaseCommit,
+        [Parameter(Mandatory = $true)][string]$SourceEpoch
+    )
+
+    $names = @("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_AUTHOR_DATE", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "GIT_COMMITTER_DATE")
+    $previous = @{}
+    foreach ($name in $names) {
+        $previous[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
+    }
+    try {
+        $env:GIT_AUTHOR_NAME = "p2p-net release snapshot"
+        $env:GIT_AUTHOR_EMAIL = "release-snapshot@invalid"
+        $env:GIT_AUTHOR_DATE = "$SourceEpoch +0000"
+        $env:GIT_COMMITTER_NAME = "p2p-net release snapshot"
+        $env:GIT_COMMITTER_EMAIL = "release-snapshot@invalid"
+        $env:GIT_COMMITTER_DATE = "$SourceEpoch +0000"
+        $snapshotCommit = ("p2p-net reproducible release snapshot`n" | & git commit-tree $Tree -p $BaseCommit).Trim()
+        if ($LASTEXITCODE -ne 0 -or -not $snapshotCommit) {
+            throw "git commit-tree failed while creating the release snapshot"
+        }
+        return $snapshotCommit
+    }
+    finally {
+        foreach ($name in $names) {
+            [Environment]::SetEnvironmentVariable($name, $previous[$name], "Process")
+        }
     }
 }
 
@@ -191,7 +288,6 @@ try {
         throw "release runner must be executed from a Git checkout"
     }
 
-    Assert-CleanWorktree
     Cleanup-ReleaseWorktrees
     if (Test-Path -LiteralPath $ReproRoot) {
         Remove-Item -LiteralPath $ReproRoot -Recurse -Force
@@ -199,27 +295,104 @@ try {
 
     Write-Host "p2p-net canonical Windows release build"
     Write-Host "Root: $Root"
-    Write-Host ""
-    Write-Host "==> Full production validation"
-    $validationArgs = @("--no-pause")
-    if ($NoInstallTools) {
-        $validationArgs += "--no-install-tools"
-    }
-    & (Join-Path $Root "run-full-validation.cmd") @validationArgs
-    if ($LASTEXITCODE -ne 0) {
-        throw "full production validation failed with exit code $LASTEXITCODE"
-    }
-
-    Assert-CleanWorktree
 
     Write-Host ""
-    Write-Host "==> Resolve release identity"
-    $commit = (& git rev-parse HEAD).Trim()
+    Write-Host "==> Capture exact source snapshot"
+    $workingStatus = @(Get-WorkingTreeStatus)
+    $baseCommit = (& git rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0) { throw "git rev-parse HEAD failed" }
-    $tree = (& git rev-parse "HEAD^{tree}").Trim()
+    $baseTree = (& git rev-parse "HEAD^{tree}").Trim()
     if ($LASTEXITCODE -ne 0) { throw "git rev-parse tree failed" }
     $sourceEpoch = (& git show -s --format=%ct HEAD).Trim()
     if ($LASTEXITCODE -ne 0) { throw "git show commit timestamp failed" }
+    $fingerprint = Get-SourceFingerprint
+    $sourceTree = [string]$fingerprint.workspace_tree
+    $releaseInputSha256 = [string]$fingerprint.release_input_sha256
+    $releaseInputCount = [string]$fingerprint.release_input_file_count
+    Write-Host "Base commit: $baseCommit"
+    Write-Host "Source snapshot tree: $sourceTree"
+    Write-Host "Release-input SHA-256: $releaseInputSha256 ($releaseInputCount files)"
+    if ($workingStatus.Count -eq 0) {
+        Write-Host "Working tree: clean"
+    }
+    else {
+        Write-Host "Working tree: dirty; exact tracked/untracked non-ignored content will be snapshotted"
+    }
+
+    # Freeze the exact captured source before validation. Validation and both
+    # reproducibility builds operate on detached worktrees from this same
+    # synthetic commit, so generated/untracked state in the live checkout cannot
+    # redefine the release while it is running.
+    $snapshotCommit = New-SourceSnapshotCommit $sourceTree $baseCommit $sourceEpoch
+
+    $validationEvidence = $null
+    if (-not $ForceValidation) {
+        $validationEvidence = Find-ValidationEvidence $releaseInputSha256
+    }
+    if ($validationEvidence) {
+        Write-Host ""
+        Write-Host "==> Reuse matching full-validation evidence"
+        Write-Host "Evidence: $($validationEvidence.Path)"
+        Write-Host "Evidence kind: $($validationEvidence.Values['evidence_kind'])"
+        Write-Host "Validated release-input SHA-256: $releaseInputSha256"
+    }
+    else {
+        Write-Host ""
+        Write-Host "==> Full production validation from frozen snapshot"
+        New-Item -ItemType Directory -Path $ReproRoot -Force | Out-Null
+        New-Item -ItemType Directory -Path $WorktreeRoot -Force | Out-Null
+        Invoke-Checked -Command "git" -CommandArgs @(
+            "worktree", "add", "--detach", $ValidationWorktree, $snapshotCommit
+        )
+
+        $validationArgs = @("--no-pause")
+        if ($NoInstallTools) {
+            $validationArgs += "--no-install-tools"
+        }
+        & (Join-Path $ValidationWorktree "run-full-validation.cmd") @validationArgs
+        if ($LASTEXITCODE -ne 0) {
+            throw "full production validation failed with exit code $LASTEXITCODE"
+        }
+
+        $trackedValidationStatus = @(
+            & git -C $ValidationWorktree status --porcelain=v1 --untracked-files=no
+        )
+        if ($LASTEXITCODE -ne 0) {
+            throw "git status failed while checking validation snapshot stability"
+        }
+        if ($trackedValidationStatus.Count -ne 0) {
+            Write-Host "Tracked files changed inside the validation snapshot:"
+            $trackedValidationStatus | ForEach-Object { Write-Host "  $_" }
+            throw "validation modified tracked source files in the frozen snapshot"
+        }
+
+        $snapshotEvidence = Find-ValidationEvidence $releaseInputSha256 $ValidationWorktree
+        if (-not $snapshotEvidence) {
+            throw "full validation passed but no matching durable evidence manifest was produced for the frozen snapshot"
+        }
+
+        $sourceEvidenceDir = Split-Path -Parent $snapshotEvidence.Path
+        $evidenceRunName = Split-Path -Leaf $sourceEvidenceDir
+        $rootEvidenceRuns = Join-Path $Root "qa\evidence\runs"
+        $copiedEvidenceDir = Join-Path $rootEvidenceRuns $evidenceRunName
+        New-Item -ItemType Directory -Path $rootEvidenceRuns -Force | Out-Null
+        if (Test-Path -LiteralPath $copiedEvidenceDir) {
+            Remove-Item -LiteralPath $copiedEvidenceDir -Recurse -Force
+        }
+        Copy-Item -LiteralPath $sourceEvidenceDir -Destination $copiedEvidenceDir -Recurse -Force
+        $copiedManifest = Join-Path $copiedEvidenceDir "manifest.txt"
+        $copiedValues = Read-EvidenceManifest $copiedManifest
+        $validationEvidence = [pscustomobject]@{
+            Path = $copiedManifest
+            Values = $copiedValues
+            Sha256 = (Get-FileHash -LiteralPath $copiedManifest -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
+
+        Remove-ReleaseWorktree $ValidationWorktree
+    }
+
+    Write-Host ""
+    Write-Host "==> Resolve release identity"
     $hostLine = @(& rustc -vV | Where-Object { $_ -like "host: *" }) | Select-Object -First 1
     if ($LASTEXITCODE -ne 0 -or -not $hostLine) { throw "could not determine rustc host target" }
     $hostTarget = $hostLine.Substring(6).Trim()
@@ -231,19 +404,12 @@ try {
         throw "release requires rustc 1.98.0 exactly (found: $rustcVersion)"
     }
 
-    $metadataJson = & cargo metadata --locked --format-version 1 --no-deps
-    if ($LASTEXITCODE -ne 0) { throw "cargo metadata --locked failed" }
-    $metadata = $metadataJson | ConvertFrom-Json
-    $package = @($metadata.packages | Where-Object { $_.name -eq "p2p-net" }) | Select-Object -First 1
-    if (-not $package) { throw "could not find p2p-net package metadata" }
-    $version = [string]$package.version
-
     Initialize-MsvcEnvironment $hostTarget
-    & cargo metadata --locked --format-version 1 > $null
-    if ($LASTEXITCODE -ne 0) { throw "cargo metadata --locked failed" }
 
-    Write-Host "Commit: $commit"
-    Write-Host "Tree: $tree"
+    Write-Host "Base commit: $baseCommit"
+    Write-Host "Base tree: $baseTree"
+    Write-Host "Snapshot commit: $snapshotCommit"
+    Write-Host "Snapshot tree: $sourceTree"
     Write-Host "Target: $hostTarget"
     Write-Host "SOURCE_DATE_EPOCH: $sourceEpoch"
     Write-Host "Rust: $rustcVersion"
@@ -252,12 +418,20 @@ try {
     Write-Host ""
     Write-Host "==> Create independent clean source worktrees"
     New-Item -ItemType Directory -Path $ReproRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path $WorktreeRoot -Force | Out-Null
     Invoke-Checked -Command "git" -CommandArgs @(
-        "worktree", "add", "--detach", $WorktreeA, $commit
+        "worktree", "add", "--detach", $WorktreeA, $snapshotCommit
     )
     Invoke-Checked -Command "git" -CommandArgs @(
-        "worktree", "add", "--detach", $WorktreeB, $commit
+        "worktree", "add", "--detach", $WorktreeB, $snapshotCommit
     )
+
+    $metadataJson = & cargo metadata --manifest-path (Join-Path $WorktreeA "Cargo.toml") --locked --format-version 1 --no-deps
+    if ($LASTEXITCODE -ne 0) { throw "cargo metadata --locked failed for frozen release snapshot" }
+    $metadata = $metadataJson | ConvertFrom-Json
+    $package = @($metadata.packages | Where-Object { $_.name -eq "p2p-net" }) | Select-Object -First 1
+    if (-not $package) { throw "could not find p2p-net package metadata in frozen release snapshot" }
+    $version = [string]$package.version
 
     Write-Host ""
     Write-Host "==> Reproducibility build A"
@@ -293,11 +467,43 @@ try {
     Copy-Item -LiteralPath $artifactA -Destination (Join-Path $distDir $artifactName)
 
     @("$hashA  $artifactName") | Set-Content -LiteralPath (Join-Path $distDir "SHA256SUMS.txt") -Encoding ASCII
+
+    $sourceManifestPath = Join-Path $distDir "SOURCE-MANIFEST.txt"
+    @(& git ls-tree -r --full-tree $sourceTree) | Set-Content -LiteralPath $sourceManifestPath -Encoding UTF8
+    if ($LASTEXITCODE -ne 0) { throw "git ls-tree failed while writing the release source manifest" }
+    $sourceManifestSha256 = (Get-FileHash -LiteralPath $sourceManifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    @("$sourceManifestSha256  SOURCE-MANIFEST.txt") | Set-Content -LiteralPath (Join-Path $distDir "SOURCE-MANIFEST.sha256.txt") -Encoding ASCII
+
+    $releaseInputsPath = Join-Path $distDir "RELEASE-INPUTS.txt"
+    [System.IO.File]::WriteAllText(
+        $releaseInputsPath,
+        [string]$fingerprint.release_input_manifest,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    @("$releaseInputSha256  RELEASE-INPUTS.txt") | Set-Content -LiteralPath (Join-Path $distDir "RELEASE-INPUTS.sha256.txt") -Encoding ASCII
+
+    $validationEvidenceBundle = Join-Path $distDir "validation-evidence"
+    New-Item -ItemType Directory -Path $validationEvidenceBundle -Force | Out-Null
+    Copy-Item -Path (Join-Path (Split-Path -Parent $validationEvidence.Path) "*") -Destination $validationEvidenceBundle -Recurse -Force
+    $validationEvidenceOutput = Join-Path $validationEvidenceBundle "manifest.txt"
+    $validationEvidenceKind = [string]$validationEvidence.Values["evidence_kind"]
+    $validationEvidenceRelative = $validationEvidence.Path
+    if ($validationEvidenceRelative.StartsWith($Root, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $validationEvidenceRelative = $validationEvidenceRelative.Substring($Root.Length).TrimStart([char]92, [char]47)
+    }
+    $workingTreeState = if ($workingStatus.Count -eq 0) { "clean" } else { "dirty-snapshotted" }
+
     @(
         "project=p2p-net",
         "version=$version",
-        "git_commit=$commit",
-        "git_tree=$tree",
+        "git_base_commit=$baseCommit",
+        "git_base_tree=$baseTree",
+        "source_snapshot_commit=$snapshotCommit",
+        "source_snapshot_tree=$sourceTree",
+        "source_manifest_sha256=$sourceManifestSha256",
+        "release_input_sha256=$releaseInputSha256",
+        "release_input_file_count=$releaseInputCount",
+        "working_tree_state=$workingTreeState",
         "source_date_epoch=$sourceEpoch",
         "rustc=$rustcVersion",
         "cargo=$cargoVersion",
@@ -307,8 +513,11 @@ try {
         "features=default,dashboard",
         "artifact=$artifactName",
         "sha256=$hashA",
-        "reproducibility=verified-two-independent-clean-worktrees",
-        "validation=run-full-validation.cmd-passed"
+        "reproducibility=verified-two-independent-clean-worktrees-from-exact-snapshot",
+        "validation=durable-evidence-pass",
+        "validation_evidence_kind=$validationEvidenceKind",
+        "validation_evidence_path=$validationEvidenceRelative",
+        "validation_evidence_sha256=$($validationEvidence.Sha256)"
     ) | Set-Content -LiteralPath (Join-Path $distDir "BUILD-MANIFEST.txt") -Encoding ASCII
 
     Write-Host ""
@@ -316,6 +525,8 @@ try {
     Write-Host "Artifact: $(Join-Path $distDir $artifactName)"
     Write-Host "Manifest: $(Join-Path $distDir 'BUILD-MANIFEST.txt')"
     Write-Host "Checksums: $(Join-Path $distDir 'SHA256SUMS.txt')"
+    Write-Host "Source manifest: $sourceManifestPath"
+    Write-Host "Validation evidence bundle: $validationEvidenceBundle ($validationEvidenceKind)"
     Write-Host ""
     Write-Host "Canonical Windows release build completed successfully."
 }

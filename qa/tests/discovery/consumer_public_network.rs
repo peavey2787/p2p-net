@@ -1,3 +1,5 @@
+use std::fs;
+
 use libp2p::{Multiaddr, PeerId};
 use p2p_net::connectivity::connection_strategy::build_peer_book_connection_plan;
 use p2p_net::{
@@ -36,6 +38,82 @@ fn public_fallback_decisions_cover_bootstrap_rendezvous_and_relay() {
     assert!(always.bootstrap_decision(1).used);
     assert!(always.rendezvous_decision(1).used);
     assert!(always.relay_decision(1).used);
+}
+
+#[test]
+fn live_two_node_probe_uses_production_auto_discovery_without_manual_dial() {
+    let source =
+        fs::read_to_string("examples/live_two_node_probe.rs").expect("read live two-node probe");
+    assert!(source.contains("Duration::from_secs(60)"));
+    assert!(source.contains("LIVE_TWO_NODE_RESULT=auto_connected"));
+    assert!(source.contains("peer_is_application_connected"));
+    assert!(source.contains("P2P_LIVE_PROBE_DISABLE_LAN"));
+    assert!(source.contains("relay_client_reservations"));
+    assert!(source.contains("dcutr_successes"));
+    assert!(
+        !source.contains("connect_peer("),
+        "live two-node validation must not manually inject either peer address",
+    );
+    assert!(
+        !source.contains("discovery.namespace.tags ="),
+        "live two-node validation must use the production default discovery namespace",
+    );
+}
+
+#[test]
+fn cross_machine_live_probe_uses_true_default_network_and_namespace() {
+    let source = fs::read_to_string("examples/live_single_node_probe.rs")
+        .expect("read cross-machine live node probe");
+    assert!(source.contains("Duration::from_secs(60)"));
+    assert!(source.contains("LIVE_SINGLE_NODE_RESULT=connected"));
+    assert!(source.contains("NodeConfig::default()"));
+    assert!(
+        !source.contains("P2P_LIVE_PROBE_NONCE"),
+        "cross-machine validation must not require a shared custom discovery nonce",
+    );
+    assert!(
+        !source.contains("discovery.namespace.tags ="),
+        "cross-machine validation must use the production default discovery namespace",
+    );
+    assert!(
+        !source.contains("connect_peer("),
+        "cross-machine validation must not manually inject peer addresses",
+    );
+}
+
+#[test]
+fn production_core_contains_lan_and_signed_dht_address_recovery() {
+    let lan = fs::read_to_string("crates/connectivity/lan.rs").expect("read LAN discovery");
+    for required in [
+        "LanDiscoverySocket",
+        "reply_requested",
+        "ANDROID_EMULATOR_HOST_V4",
+        "10, 0, 2, 2",
+        "respond(",
+        "Emulator probes are request-only",
+        "Noise + Identify",
+    ] {
+        assert!(
+            lan.contains(required),
+            "missing LAN discovery contract: {required}"
+        );
+    }
+
+    let records = fs::read_to_string("crates/connectivity/dht/address_records.rs")
+        .expect("read signed DHT address records");
+    for required in [
+        "PeerRecord::new",
+        "SignedEnvelope::from_protobuf_encoding",
+        "identity mismatch",
+        "relay_dial_addr_for_peer",
+        "put_record",
+        "get_record",
+    ] {
+        assert!(
+            records.contains(required),
+            "missing signed DHT address recovery contract: {required}"
+        );
+    }
 }
 
 #[test]

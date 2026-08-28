@@ -8,6 +8,7 @@ use tokio::task::JoinHandle;
 
 use crate::api::{AppMessage, AppSubscription, NodeMetrics, P2PNode, PeerInfo};
 use crate::common::error::NetError;
+use crate::connectivity::dns::{resolve_dial_multiaddrs, DnsaddrConfig};
 
 use super::snapshot::NodeSnapshot;
 
@@ -23,6 +24,7 @@ pub struct NodeHandle {
     pub(crate) messages_tx: broadcast::Sender<AppMessage>,
     pub(crate) shutdown_tx: mpsc::Sender<()>,
     pub(crate) task: Arc<Mutex<Option<JoinHandle<()>>>>,
+    pub(crate) dnsaddr: DnsaddrConfig,
 }
 
 impl NodeHandle {
@@ -35,8 +37,24 @@ impl NodeHandle {
     /// Dial a concrete peer multiaddr. The address should include `/p2p/<PeerId>`
     /// when the remote peer identity is known.
     pub async fn connect_peer(&self, addr: Multiaddr) -> Result<(), NetError> {
-        self.request(|reply| NodeCommand::ConnectPeer { addr, reply })
-            .await
+        let resolved = resolve_dial_multiaddrs(&addr, &self.dnsaddr).await?;
+        let mut last_error = None;
+        for candidate in resolved {
+            match self
+                .request(|reply| NodeCommand::ConnectPeer {
+                    addr: candidate,
+                    reply,
+                })
+                .await
+            {
+                Ok(()) => return Ok(()),
+                Err(err) => last_error = Some(err),
+            }
+        }
+        Err(last_error.unwrap_or_else(|| NetError::Dial {
+            target: addr.to_string(),
+            reason: "DNS resolution returned no dialable addresses".to_string(),
+        }))
     }
 
     /// Close active connections to a peer id.

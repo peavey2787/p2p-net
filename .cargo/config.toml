@@ -1,0 +1,18 @@
+# Workspace-local lock-resolution patches.
+#
+# rust-libp2p 0.56's `tokio` feature contains weak feature references to its
+# optional DNS and mDNS crates. Cargo includes those optional packages while
+# generating a workspace lockfile even though p2p-net does not enable the
+# libp2p `dns` or `mdns` features at runtime. Pointing only those resolution
+# entries at the audited local no-Hickory implementations keeps `Cargo.lock`
+# deterministic and advisory-clean without putting a [patch.crates-io] table in
+# the publishable root Cargo.toml. Cargo's normalized crates.io manifest does
+# not contain this workspace configuration, and package-crates performs its
+# downstream smoke build outside this repository.
+
+# Cargo config-relative paths in a discovered `.cargo/config.toml` are based on
+# the repository directory containing `.cargo`, not on `.cargo` itself. Do not
+# prefix these with `..`; doing so escapes the repository on Windows/Linux.
+[patch.crates-io]
+libp2p-dns = { path = "external/libp2p-dns" }
+libp2p-mdns = { path = "external/libp2p-mdns-placeholder" }

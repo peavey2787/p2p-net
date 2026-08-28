@@ -35,6 +35,11 @@ pub struct DhtProviderState {
     get_provider_queries: HashMap<QueryId, String>,
     get_provider_query_keys: HashMap<QueryId, String>,
     provider_addr_lookup_queries: HashMap<QueryId, PeerId>,
+    address_record_put_queries: HashMap<QueryId, (String, String)>,
+    address_record_get_queries: HashMap<QueryId, (PeerId, String)>,
+    address_record_last_fingerprint: HashMap<String, String>,
+    address_record_published_unix_secs: HashMap<String, u64>,
+    address_record_lookup_started_unix_secs: HashMap<(PeerId, String), u64>,
 }
 
 impl DhtProviderState {
@@ -207,6 +212,95 @@ impl DhtProviderState {
             && now.saturating_sub(retry.last_attempt_unix_secs) >= AUTO_CONNECT_RETRY_COOLDOWN_SECS
     }
 
+    pub(super) fn should_publish_address_record(
+        &self,
+        namespace: &str,
+        fingerprint: &str,
+        refresh_interval_secs: u64,
+    ) -> bool {
+        if self
+            .address_record_put_queries
+            .values()
+            .any(|(active_namespace, _)| active_namespace == namespace)
+        {
+            return false;
+        }
+        if self
+            .address_record_last_fingerprint
+            .get(namespace)
+            .is_none_or(|known| known != fingerprint)
+        {
+            return true;
+        }
+        let now = now_unix_secs();
+        self.address_record_published_unix_secs
+            .get(namespace)
+            .map(|last| now.saturating_sub(*last) >= refresh_interval_secs.max(1))
+            .unwrap_or(true)
+    }
+
+    pub(super) fn track_put_address_record(
+        &mut self,
+        id: QueryId,
+        namespace: String,
+        fingerprint: String,
+    ) {
+        self.address_record_put_queries
+            .insert(id, (namespace, fingerprint));
+    }
+
+    pub(super) fn complete_put_address_record(
+        &mut self,
+        id: &QueryId,
+        success: bool,
+    ) -> Option<String> {
+        let (namespace, fingerprint) = self.address_record_put_queries.remove(id)?;
+        if success {
+            self.address_record_last_fingerprint
+                .insert(namespace.clone(), fingerprint);
+            self.address_record_published_unix_secs
+                .insert(namespace.clone(), now_unix_secs());
+        }
+        Some(namespace)
+    }
+
+    pub(super) fn should_lookup_address_record(&self, peer: PeerId, namespace: &str) -> bool {
+        if self
+            .address_record_get_queries
+            .values()
+            .any(|(active_peer, active_namespace)| {
+                *active_peer == peer && active_namespace == namespace
+            })
+        {
+            return false;
+        }
+        let now = now_unix_secs();
+        self.address_record_lookup_started_unix_secs
+            .get(&(peer, namespace.to_string()))
+            .map(|last| now.saturating_sub(*last) >= AUTO_CONNECT_RETRY_COOLDOWN_SECS)
+            .unwrap_or(true)
+    }
+
+    pub(super) fn track_get_address_record(
+        &mut self,
+        id: QueryId,
+        peer: PeerId,
+        namespace: String,
+    ) {
+        self.address_record_lookup_started_unix_secs
+            .insert((peer, namespace.clone()), now_unix_secs());
+        self.address_record_get_queries
+            .insert(id, (peer, namespace));
+    }
+
+    pub(crate) fn address_record_lookup(&self, id: &QueryId) -> Option<(PeerId, String)> {
+        self.address_record_get_queries.get(id).cloned()
+    }
+
+    pub(crate) fn complete_get_address_record(&mut self, id: &QueryId) -> Option<(PeerId, String)> {
+        self.address_record_get_queries.remove(id)
+    }
+
     pub(super) fn complete_start_providing(&mut self, id: &QueryId) -> Option<String> {
         self.start_providing_query_keys.remove(id);
         self.start_providing_queries.remove(id)
@@ -333,6 +427,10 @@ impl DhtProviderState {
                 self.provider_addr_lookup_started_unix_secs.remove(&evicted);
                 self.provider_addr_lookup_queries
                     .retain(|_, peer| peer != &evicted);
+                self.address_record_lookup_started_unix_secs
+                    .retain(|(peer, _), _| peer != &evicted);
+                self.address_record_get_queries
+                    .retain(|_, (peer, _)| peer != &evicted);
             }
         }
     }

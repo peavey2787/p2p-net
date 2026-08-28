@@ -48,11 +48,13 @@ pub use connectivity::discovery::DiscoveryConfig;
 pub use connectivity::dns::{
     DnsaddrConfig, DEFAULT_DNSADDR_DOH_ENDPOINT, DEFAULT_DNSADDR_TIMEOUT_SECS,
 };
+pub use connectivity::lan::LanDiscoveryConfig;
 pub use connectivity::limits::{ConnectionCapState, ConnectionLimitsConfig};
 pub use connectivity::mediator::MediatorConfig;
 pub use connectivity::namespace::{
-    build_discovery_namespace, discovery_tag_hash_hex, DiscoveryNamespace,
-    DiscoveryNamespaceConfig, DiscoveryNamespacePrivacy, DISCOVERY_NAMESPACE_PREFIX,
+    build_discovery_namespace, default_discovery_namespace, discovery_tag_hash_hex,
+    DiscoveryNamespace, DiscoveryNamespaceConfig, DiscoveryNamespacePrivacy, DEFAULT_DISCOVERY_TAG,
+    DISCOVERY_NAMESPACE_PREFIX,
 };
 pub use connectivity::peer_book::{PeerBook, PeerRecord, DEFAULT_MAX_PEER_BOOK_RECORDS};
 pub use connectivity::public_fallback::{
@@ -61,8 +63,8 @@ pub use connectivity::public_fallback::{
     DEFAULT_PUBLIC_RENDEZVOUS_PEERS,
 };
 pub use connectivity::relay::{
-    is_p2p_circuit_addr, relay_peer_id, relay_reservation_addr, RelayAccess, RelaySchedule,
-    RelayServiceConfig, RelayServiceHealth, RelayWindow,
+    is_p2p_circuit_addr, relay_dial_addr_for_peer, relay_peer_id, relay_reservation_addr,
+    RelayAccess, RelaySchedule, RelayServiceConfig, RelayServiceHealth, RelayWindow,
 };
 pub use connectivity::relay_discovery::{
     select_startup_relays, RelayCandidate, RelayCandidateSource, RelayDiscoveryPolicy,
@@ -82,7 +84,8 @@ pub use node::{
     ResolvedNodeConfig,
 };
 pub use platform::{
-    DesktopPlatformRuntime, MemoryNodeStorage, MobilePlatformRuntime, NodeStorage, PlatformRuntime,
+    AndroidPlatformRuntime, DesktopPlatformRuntime, IosPlatformRuntime, MemoryNodeStorage,
+    NodeStorage, PlatformRuntime,
 };
 pub use protocol::pulse::{
     encode_heartbeat_wire, heartbeat_topic, validate_heartbeat_wire, verify_heartbeat,

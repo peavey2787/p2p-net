@@ -24,19 +24,17 @@ pub const DEFAULT_PUBLIC_BOOTSTRAP_SEED_PEERS: &[&str] = &[
 /// Built-in public app rendezvous candidates used by the default consumer config.
 ///
 /// The shared library does not currently ship a project-operated rendezvous
-/// fleet. App distributions that want true run-two-fresh-installs discovery
-/// should publish real rendezvous DNSADDR entries here or override this list in
-/// their app config. Keeping the list empty avoids silently pretending a
-/// rendezvous service exists when none is operated by this repo.
+/// fleet. Default fresh-node discovery is instead provided by network-scoped
+/// DHT provider/address records plus same-LAN discovery. App distributions may
+/// still add rendezvous DNSADDR entries here for deterministic infrastructure.
 pub const DEFAULT_PUBLIC_RENDEZVOUS_PEERS: &[&str] = &[];
 
 /// Built-in public relay candidates used by the default consumer config.
 ///
 /// The shared library does not currently ship a project-operated relay fleet.
-/// App distributions that want default NAT-to-NAT relay connectivity should
-/// publish real relay DNSADDR entries here or override this list in their app
-/// config. Keeping the list empty avoids silently pretending a relay service
-/// exists when none is operated by this repo.
+/// Default nodes can discover public Circuit Relay v2 hop peers through the DHT
+/// and reserve them dynamically; app distributions may still pin owned relay
+/// DNSADDR entries here for deterministic infrastructure.
 pub const DEFAULT_PUBLIC_RELAY_PEERS: &[&str] = &[];
 
 /// When public discovery fallback may be used.

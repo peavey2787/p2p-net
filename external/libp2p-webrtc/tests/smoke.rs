@@ -20,7 +20,6 @@
 
 use std::{
     future::Future,
-    num::NonZeroU8,
     pin::Pin,
     task::{Context, Poll},
     time::Duration,
@@ -42,14 +41,9 @@ use libp2p_core::{
 use libp2p_identity::PeerId;
 use libp2p_webrtc as webrtc;
 use rand::{thread_rng, RngCore};
-use tracing_subscriber::EnvFilter;
 
 #[tokio::test]
 async fn smoke() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .try_init();
-
     let (a_peer_id, mut a_transport) = create_transport();
     let (b_peer_id, mut b_transport) = create_transport();
 
@@ -65,15 +59,13 @@ async fn smoke() {
 // Note: This test should likely be ported to the muxer compliance test suite.
 #[test]
 fn concurrent_connections_and_streams_tokio() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .try_init();
-
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let _guard = rt.enter();
-    quickcheck::QuickCheck::new()
-        .min_tests_passed(1)
-        .quickcheck(prop as fn(_, _) -> _);
+    // Deterministic representative cases are more reproducible than the old
+    // one-case QuickCheck smoke run and avoid package-only dev dependencies.
+    for (number_listeners, number_streams) in [(1, 1), (2, 3), (4, 2)] {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let _guard = rt.enter();
+        exercise_concurrent_connections_and_streams(number_listeners, number_streams);
+    }
 }
 
 fn generate_tls_keypair() -> libp2p_identity::Keypair {
@@ -104,15 +96,11 @@ async fn start_listening(transport: &mut Boxed<(PeerId, StreamMuxerBox)>, addr: 
     }
 }
 
-fn prop(number_listeners: NonZeroU8, number_streams: NonZeroU8) -> quickcheck::TestResult {
+fn exercise_concurrent_connections_and_streams(number_listeners: usize, number_streams: usize) {
     const BUFFER_SIZE: usize = 4096 * 10;
 
-    let number_listeners = u8::from(number_listeners) as usize;
-    let number_streams = u8::from(number_streams) as usize;
-
-    if number_listeners > 10 || number_streams > 10 {
-        return quickcheck::TestResult::discard();
-    }
+    assert!((1..=10).contains(&number_listeners));
+    assert!((1..=10).contains(&number_streams));
 
     let (listeners_tx, mut listeners_rx) = mpsc::channel(number_listeners);
 
@@ -181,8 +169,6 @@ fn prop(number_listeners: NonZeroU8, number_streams: NonZeroU8) -> quickcheck::T
                 .collect::<Vec<_>>(),
         ))
         .unwrap();
-
-    quickcheck::TestResult::passed()
 }
 
 async fn answer_inbound_streams<const BUFFER_SIZE: usize>(mut connection: StreamMuxerBox) {

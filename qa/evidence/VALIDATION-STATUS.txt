@@ -1,0 +1,25 @@
+Most recent retained validation record (historical source snapshot)
+==================================================================
+
+Result: PASS (recovered complete machine transcript)
+Evidence bundle: qa/evidence/recovered/20260826T132413Z-windows-282ad5ca/
+Transcript SHA-256: ccf374f74c21e2255a720e1f12425a45f02aaf2cd0a882fbba436d573e268017
+Validated source package SHA-256: e22d0ddac187e162021f26637c0754805fa4583207e9f90833eceafda58afc14
+Validated source workspace tree: 18f82b888ca0b037da7b101c9eb048d2505631fb
+Validated release-input SHA-256: 72855cbcb7050e784abda8a143b4dd2a1b302c374d6f9d679dc69039040cbb79
+Cargo.lock SHA-256: 5bff41b12b73002a8f359e331fd27b333eed89e93eab1d203174358744c5f758
+
+The retained PASS above proves the earlier validated source snapshot. The current
+source is not represented by that historical PASS. The canonical release-input
+inventory now also includes the build-affecting `.cargo/config.toml` so Cargo
+resolution changes cannot be mistaken for tooling-only changes. The validation
+runner records the exact current fingerprint and file count for the platform's
+synthetic source snapshot. Run the normal full validation on the completed
+source to create a fresh machine-captured qa/evidence/runs/ record before
+publishing or release qualification. The release builder enforces this
+fingerprint match.
+
+The original run's evidence wrapper emitted a non-fatal PowerShell token-array
+Count error and therefore did not finish its automatic manifest. The complete
+machine transcript survived and was independently recovered; the wrapper is
+fixed in this source so subsequent runs persist evidence automatically.

@@ -23,7 +23,6 @@ use std::sync::Arc;
 
 use libp2p::gossipsub::IdentTopic;
 use libp2p::PeerId;
-use serde_json::Value;
 use tokio::sync::{broadcast, mpsc, Mutex};
 
 use crate::common::error::NetError;
@@ -45,7 +44,7 @@ pub use handle::NodeHandle;
 pub use metrics::snapshot_to_prometheus_metrics;
 pub use profile::{BehaviourSet, NodeProfile, NodeRole, ResolvedNodeConfig};
 pub use public_ip::PublicIpProbeConfig;
-pub use snapshot::NodeSnapshot;
+pub use snapshot::{snapshot_to_json, NodeSnapshot};
 
 use snapshot::network_label;
 
@@ -56,9 +55,8 @@ pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
     start_node_with_platform(cfg, runtime, storage).await
 }
 
-/// Start a node with platform-supplied runtime hints and storage. This keeps the
-/// P2P core shared while allowing Android/iOS/Desktop shells to adapt storage,
-/// data directories, and lifecycle restrictions without separate node logic.
+/// Start with platform runtime/storage while keeping Android/iOS/Desktop shells
+/// on the shared node logic and platform-specific lifecycle/data-directory adapters.
 pub async fn start_node_with_platform(
     cfg: NodeConfig,
     platform_runtime: Arc<dyn PlatformRuntime>,
@@ -74,6 +72,7 @@ pub async fn start_node_with_platform(
         storage.as_ref(),
     )?;
     let local_peer = PeerId::from(local_key.public());
+    let discovery_signing_key = local_key.clone();
     let (mut swarm, transport_plan) = build_swarm(local_key, &cfg, &resolved_config).await?;
 
     let heartbeat_topic = IdentTopic::new(heartbeat_topic(cfg.network_id));
@@ -100,6 +99,7 @@ pub async fn start_node_with_platform(
                     crate::api::PeerSource::Manual
                         | crate::api::PeerSource::PeerCache
                         | crate::api::PeerSource::DhtProvider
+                        | crate::api::PeerSource::LanDiscovery
                         | crate::api::PeerSource::Rendezvous
                         | crate::api::PeerSource::PublicRendezvous
                 )
@@ -127,6 +127,10 @@ pub async fn start_node_with_platform(
         .unwrap_or_else(|_| vec![cfg.discovery.rendezvous.namespace.clone()]);
     let discovery_namespace_mode = if cfg.discovery.namespace.is_enabled() {
         cfg.discovery.namespace.privacy.as_str().to_string()
+    } else if cfg.discovery.rendezvous.namespace
+        == crate::connectivity::rendezvous::RendezvousConfig::default().namespace
+    {
+        "network_default".to_string()
     } else {
         "operator".to_string()
     };
@@ -147,6 +151,9 @@ pub async fn start_node_with_platform(
     }
     if cfg.public_ip_probe.enabled {
         active_transports.push("public-ip-probe".to_string());
+    }
+    if cfg.discovery.lan.enabled {
+        active_transports.push("lan-discovery".to_string());
     }
 
     let mut rendezvous_state = RendezvousState::default();
@@ -402,10 +409,11 @@ pub async fn start_node_with_platform(
     let (command_tx, command_rx) = mpsc::channel(128);
     let (messages_tx, _) = broadcast::channel(256);
     let task = runtime::spawn_node_runtime(runtime::NodeRuntimeContext {
-        cfg,
+        cfg: cfg.clone(),
         resolved_config,
         swarm,
         local_peer,
+        discovery_signing_key,
         heartbeat_topic,
         snapshot: Arc::clone(&snapshot),
         snapshot_revision: Arc::clone(&snapshot_revision),
@@ -429,6 +437,7 @@ pub async fn start_node_with_platform(
         messages_tx,
         shutdown_tx,
         task: Arc::new(Mutex::new(Some(task))),
+        dnsaddr: cfg.dnsaddr,
     })
 }
 
@@ -438,8 +447,4 @@ pub(crate) fn push_pulse(buf: &mut VecDeque<String>, line: String) {
     while buf.len() > 24 {
         let _ = buf.pop_back();
     }
-}
-
-pub fn snapshot_to_json(snapshot: &NodeSnapshot) -> Value {
-    serde_json::to_value(snapshot).unwrap_or(Value::Null)
 }

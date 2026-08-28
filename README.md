@@ -6,17 +6,18 @@
   <img src="assets/p2p-net-logo.png" alt="p2p-net Logo" width="400">
 </p>
 
+On Windows, `build-android.cmd` is the one-click reproducible Android release launcher; it performs the two-build byte-for-byte verification and leaves verified unsigned artifacts under `dist/android/`.
+
 ## Features
 
 - Native transports: TCP, QUIC, WebSocket, browser-compatible `/webrtc-direct`, DNS, Noise, Yamux
-- Discovery: Kademlia provider records, peer cache, bootstrap seeds, rendezvous, and public fallback policy
+- Discovery: network-scoped Kademlia provider/address records, bounded same-LAN UDP discovery, peer cache, bootstrap seeds, rendezvous, and public fallback policy
 - NAT traversal: relay client/reservations, DCUtR direct upgrades, AutoNAT, and optional mediator/relay server profiles
 - App API: six data-plane primitives on `NodeHandle`, plus `get_metrics()` for infrastructure telemetry
 - Safety/ops: connection caps, replay/timestamp checks, peer scoring, snapshots, Prometheus-style export, and dashboard UI
 - Portability: platform runtime/storage abstraction and binding-safe facade for desktop, mobile, and WebView shells
 
-DNS support is enabled by default for configured and cached peers through p2p-net's own startup resolver. Peer addresses using `/dns`, `/dns4`, `/dns6`, or `/dnsaddr` are resolved before dialing. WebSocket support in rust-libp2p 0.56 requires the `libp2p-dns` adapter crate, so p2p-net patches that crate to a local no-Hickory implementation instead of using the crates.io resolver path. The disallowed upstream mDNS adapter crate is policy-patched to a local no-op placeholder so the rejected Hickory DNS line stays out of `Cargo.lock`. `/dnsaddr` uses bounded DNS-over-HTTPS TXT lookup support with a configurable endpoint in p2p-net's own resolver. The default endpoint is Cloudflare for simple out-of-the-box operation; production deployments can point it at an internal/self-hosted DoH resolver or disable `/dnsaddr` entirely. LAN multicast discovery/mDNS is not included.
-
+DNS support is enabled by default through p2p-net's own no-Hickory resolver path. Peer addresses using `/dns`, `/dns4`, `/dns6`, or `/dnsaddr` are resolved before dialing, including manual `connect_peer` calls. WebSocket DNS names are resolved by p2p-net's transport adapter rather than rust-libp2p's Hickory-backed DNS feature, so the published crate has no repository-only Cargo patch requirement. `/dnsaddr` uses bounded DNS-over-HTTPS TXT lookup support with a configurable endpoint; the default is Cloudflare, while production deployments can point it at an internal/self-hosted resolver or disable `/dnsaddr`. Upstream libp2p mDNS is not included. Instead, p2p-net enables its own bounded, compatibility-scoped UDP LAN discovery by default, with multicast/broadcast on normal LANs and an Android Emulator host-assist path using the emulator's `10.0.2.2` host alias.
 
 ## Repository layout
 
@@ -35,8 +36,35 @@ qa/fuzz/            Fuzz targets
 qa/tools/           Internal QA utilities
 qa/vectors/         Protocol fixtures and test vectors
 examples/           Runnable examples and minimal demo configs
-external/           Local third-party crate patches
+external/           Publishable hardened companion transport source
 ```
+
+## Use p2p-net from crates.io
+
+After `p2p-net` 0.1.0 is published, downstream Rust applications only need the root crate:
+
+```toml
+[dependencies]
+p2p-net = "0.1.0"
+```
+
+Then use the high-level async API from your application's existing executor:
+
+```rust
+use p2p_net::{start_node, NetError, NodeConfig};
+
+async fn run_node() -> Result<(), NetError> {
+    let node = start_node(NodeConfig::default()).await?;
+    let peers = node.get_peers().await?;
+    println!("known peers: {}", peers.len());
+    node.shutdown().await;
+    Ok(())
+}
+```
+
+The hardened WebRTC implementation is published as the internal dependency `p2p-net-webrtc` 0.1.0. Application developers do **not** add that crate themselves; Cargo resolves it automatically from the `p2p-net` dependency graph. The repository keeps a local path to that companion only for development, and Cargo strips that path from the normalized crates.io package. There is no `[patch.crates-io]` requirement in downstream projects. The source workspace uses a checked-in `.cargo/config.toml` only to map rust-libp2p 0.56's resolution-only weak DNS/mDNS lock entries to audited no-Hickory local placeholders; the root publishable manifest remains patch-free, and the packaged downstream smoke test runs outside the repository configuration.
+
+Maintainers can qualify the exact crates.io payloads with `package-crates.cmd` on Windows or `./package-crates.sh` on Linux. The Windows launcher pauses before closing on both success and failure so Cargo diagnostics remain visible. The packaging gate first verifies the committed production lockfile, packages `p2p-net-webrtc`, then packages `p2p-net` with a command-line-only crates.io patch that points the unpublished companion name at the local audited source. That local verification override is not serialized into the normalized `.crate`; the runners inspect the normalized manifests, compile a temporary downstream consumer from both packaged payloads, write `.crate` files and SHA-256 sums to `dist/crates/`, and record the required publish order. Publish `p2p-net-webrtc` first, wait until crates.io indexes version 0.1.0, then dry-run and publish `p2p-net`.
 
 ## Run all stable tests and checks
 
@@ -55,13 +83,19 @@ Useful options:
 ```cmd
 run-full-validation.cmd --no-install-tools
 run-full-validation.cmd --no-clean
+run-full-validation.cmd --from clippy
 ```
 
 Linux equivalent:
 
 ```bash
 ./run-full-validation.sh
+./run-full-validation.sh --from clippy
 ```
+
+Resume mode accepts `lockfile`, `format`, `dependency-graph`, `tests`, `dashboard`, `clippy`, `audit`, or `deny`. For example, after fixing a Clippy-only failure, `--from clippy` skips the already-passed earlier stages, preserves `target/full-validation` automatically (equivalent to `--no-clean`), and continues from Clippy through audit, dependency policy, and all three deferred hostile/soak tests. Resume mode assumes the earlier stages already passed for the source tree you are continuing; CI never uses resume mode, and release builds only accept full-mode evidence (running the complete gate automatically when matching full evidence is absent).
+
+Every validation invocation now persists its own evidence beneath `qa/evidence/runs/`: a complete transcript, PASS/FAIL manifest, Git status, exact Cargo.lock hash, toolchain versions, and a release-input fingerprint. The generated run directories are Git-ignored, so closing the terminal no longer loses the proof and collecting evidence does not dirty the repository.
 
 Fuzz targets are included under `qa/fuzz/`. They are not part of the cross-platform stable launcher, but the scheduled security workflow builds/runs every fuzz target and also repeats the complete validation suite including deferred hostile/load/soak tests. Additional validation and hostile-network notes are in `docs/validation/VALIDATION.md`.
 
@@ -140,21 +174,21 @@ build-release.cmd
 ./build-release.sh
 ```
 
-The release runners refuse a dirty Git worktree, run the complete production validation gate, pin the release to the current commit timestamp through `SOURCE_DATE_EPOCH`, build `p2p_node` twice from two independent detached worktrees with separate clean target directories, normalize build paths, disable incremental compilation, and fail unless the two release binaries have identical SHA-256 output. Windows also enables MSVC `/Brepro`; Linux uses a deterministic SHA-1 ELF build ID. After the proof succeeds, the canonical binary, `BUILD-MANIFEST.txt`, and `SHA256SUMS.txt` are written under `dist/<target-triple>/`. The proof establishes byte-for-byte reproducibility for the declared source/toolchain on the current host environment; reproducing on another machine also requires an equivalent linker, SDK/system-library environment.
+The release runners snapshot the exact current Git working tree into a synthetic detached commit, including tracked modifications and non-ignored untracked files, so an official reproducibility build does not require committing an otherwise validated source snapshot first. They bind the release to a durable full-validation evidence record whose release-input fingerprint matches the code being built; if no matching evidence exists, they validate a detached worktree created from that frozen snapshot outside the repository tree and copy the resulting machine evidence back to the ignored evidence store. Validation fails if it changes any tracked snapshot file, while generated/untracked validation state cannot redefine the already-frozen release identity. `--force-validation` intentionally reruns validation even when matching evidence exists. The exact snapshot is then built twice from two independent detached clean worktrees with separate target directories, build paths are normalized, incremental compilation is disabled, and the build fails unless the two release binaries have identical SHA-256 output. Windows enables MSVC `/Brepro`; Linux uses a deterministic SHA-1 ELF build ID. The output under `dist/<target-triple>/` includes the binary, `BUILD-MANIFEST.txt`, `SHA256SUMS.txt`, `SOURCE-MANIFEST.txt`, `RELEASE-INPUTS.txt`, and the complete `validation-evidence/` bundle used for the release.
 
 ## Default connectivity model
 
 Normal app mode uses public fallback by default:
 
 ```text
-fresh node -> public fallback joins discovery -> app peers are discovered -> network auto-connect attempts start -> contact trust still requires invite/QR/join-code
+fresh node -> LAN discovery and public bootstrap/DHT discovery run in parallel -> dialable app peers are recovered -> direct/relay auto-connect attempts start -> DCUtR upgrades relayed paths when possible -> contact trust still requires invite/QR/join-code
 ```
 
 Regular users should not have to edit bootstrap settings before first launch. Manual `bootstrap_peers`, `discovery.bootstrap_seed_peers`, `discovery.rendezvous_peers`, and `relay_peers` are power-user/operator controls and should be exposed under Advanced settings in app UIs.
 
 Auto-connect is **not** auto-trust. A peer discovered through public fallback, DHT provider records, or rendezvous may be dialed at the transport layer, but it must not become a trusted chat/contact identity until the app performs an explicit trust action such as QR scan, join code, invite acceptance, or safety-number verification.
 
-The shared crate ships public bootstrap defaults and config slots for public app rendezvous and public relay/mediator candidates. It does not ship a project-operated public rendezvous or relay fleet. Public bootstrap alone is not enough to guarantee two fresh NATed installs can reach each other; apps that need reliable run-two-fresh-installs connectivity should add real public rendezvous DNSADDR entries under `discovery.public_bootstrap.rendezvous_peers` and real public relay/mediator DNSADDR entries under `discovery.public_bootstrap.relay_peers`, or operate private infrastructure.
+The shared crate ships public bootstrap defaults but does not depend on a project-operated rendezvous or relay fleet. Fresh default nodes use a network-specific application namespace, publish/query DHT provider records, recover identity-signed dialable-address records, discover public Circuit Relay v2 hop peers from the public DHT, reserve relay routes when needed, and attempt DCUtR upgrades while retaining relay fallback. Nodes on the same LAN take the faster bounded UDP discovery path first. Operator-provided rendezvous/relay peers remain supported as additional deterministic infrastructure, but they are no longer required for the default discovery path to exchange application-peer addresses.
 
 Runtime snapshots and Prometheus metrics report public fallback by category: `public_bootstrap_used`, `public_rendezvous_used`, and `public_relay_used`. Peer metadata also distinguishes `public_rendezvous` from operator-provided `rendezvous` sources.
 
@@ -189,10 +223,11 @@ Important fields:
 - `bootstrap_peers`: trusted `/p2p/<PeerId>` bootstrap multiaddrs. `/dns`, `/dns4`, `/dns6`, and `/dnsaddr` dial addresses are supported by default.
 - `dnsaddr`: `/dnsaddr` DoH policy. Defaults to bounded Cloudflare DoH for simple operation; set `doh_endpoint` to an internal/self-hosted DoH resolver for production, or set `enabled` to `false` to reject `/dnsaddr` in configured peers. See `docs/impl/DNSADDR_DOH.md`.
 - `relay_peers`: operator-pinned relay or mediator peers to dial and reserve through.
-- `discovery.namespace`: derive hashed app/contact/group discovery namespaces from `network_id`, `app_id`, and tags. See `docs/spec/DISCOVERY_NAMESPACES.md`.
+- `discovery.namespace`: derive hashed app/contact/group discovery namespaces from `network_id`, `app_id`, and tags. With no explicit tags, the built-in default derives a reserved network-specific application namespace instead of publishing one generic `p2p-net` provider key. See `docs/spec/DISCOVERY_NAMESPACES.md`.
+- `discovery.lan`: bounded same-LAN multicast/broadcast discovery. Enabled by default; discovery hints are compatibility-scoped and the resulting libp2p connection is still authenticated by Noise + Identify.
 - `discovery.public_bootstrap`: public bootstrap, rendezvous, relay, and network auto-connect fallback. Defaults to `fallback_only` for normal app mode; set `disabled` for private-infrastructure-first mode or `always` for aggressive public fallback. See `docs/spec/PUBLIC_FALLBACK.md`.
 - `discovery.dht`: announce and query hashed app namespaces through Kademlia provider records. See `docs/spec/DHT_PROVIDER_DISCOVERY.md`.
-- `discovery.relay_discovery`: select relay candidates from configured relays, cached healthy peers, and rendezvous infrastructure. See `docs/impl/RELAY_DISCOVERY.md`.
+- `discovery.relay_discovery`: select relay candidates from configured relays, cached healthy peers, rendezvous infrastructure, and public-DHT peers that advertise Circuit Relay v2 hop capability. See `docs/impl/RELAY_DISCOVERY.md`.
 - `dcutr`: direct-connection upgrade policy with relay fallback, retry budget, and observability. See `docs/impl/DCUTR_POLICY.md`.
 - `start_node_with_platform(...)`: embed the shared core with platform runtime/storage adapters. See `docs/impl/PLATFORM_RUNTIME.md`.
 - `bindings`: binding-safe JSON/enum facade for Kotlin, Swift, desktop, and WebView shells. See `docs/impl/BINDINGS.md`.

@@ -2,6 +2,8 @@
 
 use std::collections::VecDeque;
 
+use serde_json::Value;
+
 use crate::connectivity::relay::{RelayServiceHealth, RelayState};
 
 mod helpers;
@@ -226,4 +228,8 @@ impl NodeSnapshot {
         self.dcutr_upgrade_eligible_connections = relay_state.dcutr_upgrade_eligible_connections;
         self.dcutr_retry_suppressed = relay_state.dcutr_retry_suppressed;
     }
+}
+
+pub fn snapshot_to_json(snapshot: &NodeSnapshot) -> Value {
+    serde_json::to_value(snapshot).unwrap_or(Value::Null)
 }

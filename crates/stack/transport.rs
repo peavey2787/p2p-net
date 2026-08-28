@@ -1,11 +1,14 @@
 use std::time::Duration;
 
+use libp2p::core::upgrade::Version;
 use libp2p::identity::Keypair;
 use libp2p::swarm::Swarm;
-use libp2p::{noise, tcp, yamux, SwarmBuilder};
+use libp2p::{noise, tcp, yamux, SwarmBuilder, Transport};
 use libp2p_webrtc::tokio::{Certificate as WebRtcCertificate, Transport as WebRtcTransport};
+use libp2p_websocket as websocket;
 
 use super::behaviour::{build_behaviour, BehaviourBuildContext, MeshBehaviour};
+use super::dns_transport::OsDnsTransport;
 use crate::common::error::NetError;
 use crate::connectivity::webrtc::WEBRTC_DIRECT_TRANSPORT;
 use crate::{NodeConfig, ResolvedNodeConfig};
@@ -56,10 +59,17 @@ pub async fn build_swarm(
             ))
         })
         .map_err(|e| NetError::Build(e.to_string()))?
-        .with_dns()
-        .map_err(|e| NetError::Build(e.to_string()))?
-        .with_websocket(noise::Config::new, yamux::Config::default)
-        .await
+        .with_other_transport(|key| {
+            let noise = noise::Config::new(key).map_err(
+                |err| -> Box<dyn std::error::Error + Send + Sync + 'static> { Box::new(err) },
+            )?;
+            let tcp = tcp::tokio::Transport::new(tcp::Config::default().nodelay(true));
+            let websocket = websocket::Config::new(OsDnsTransport::new(tcp))
+                .upgrade(Version::V1Lazy)
+                .authenticate(noise)
+                .multiplex(yamux::Config::default());
+            Ok::<_, Box<dyn std::error::Error + Send + Sync + 'static>>(websocket)
+        })
         .map_err(|e| NetError::Build(e.to_string()))?
         .with_relay_client(noise::Config::new, yamux::Config::default)
         .map_err(|e| NetError::Build(e.to_string()))?;

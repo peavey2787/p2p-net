@@ -1,0 +1,16 @@
+[package]
+name = "p2p-net-android-native"
+version = "0.1.0"
+edition = "2021"
+license = "BUSL-1.1"
+publish = false
+
+[lib]
+name = "p2p_net_android"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+base64 = "0.22"
+p2p-net = { path = "../../.." }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "sync"] }

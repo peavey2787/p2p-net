@@ -31,6 +31,9 @@ fn public_fallback_is_enabled_by_default_for_normal_app_mode() {
     assert!(cfg.public_ip_probe.advertise_listen_addresses);
     assert!(cfg.discovery.rendezvous.client_enabled);
     assert!(!cfg.discovery.rendezvous.server_enabled);
+    assert!(cfg.discovery.lan.enabled);
+    assert_eq!(cfg.discovery.lan.port, 44_777);
+    assert_eq!(cfg.discovery.lan.announce_interval_secs, 2);
     assert!(cfg.discovery.dht.discover_with_rendezvous_peers);
     assert_eq!(cfg.discovery.dht.refresh_interval_secs, 300);
     assert_eq!(

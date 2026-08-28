@@ -20,7 +20,7 @@ The consumer-facing example is tracked at `examples/consumer-default.config.json
 
 ## Bootstrap, rendezvous, relay, and trust are separate
 
-Public bootstrap gives a node a first route into the wider libp2p/Kademlia layer. It is not enough by itself to guarantee two fresh NATed app installs can connect. Reliable consumer startup needs app rendezvous or DHT provider discovery for finding app peers, and relay/mediator candidates for NAT-to-NAT paths.
+Public bootstrap gives a node a first route into the wider libp2p/Kademlia layer. The default runtime then uses network-scoped DHT provider discovery plus signed peer-address recovery to find application peers, discovers relay-hop-capable public DHT peers when NAT traversal needs a circuit, and attempts DCUtR while retaining relay fallback. Same-LAN nodes use the faster UDP discovery path.
 
 `auto_connect_discovered_peers` only creates bounded network-layer dial attempts. It must not add trusted contacts. Contact trust still belongs to the application layer through QR codes, join codes, invite acceptance, safety-number verification, or an equivalent explicit user action.
 
@@ -49,4 +49,4 @@ A public fallback list is a dependency on external operators. Those peers can di
 - Keep hashed discovery namespaces enabled.
 - Avoid readable discovery tags outside local debugging.
 - Watch snapshot and metrics fields for public fallback participation.
-- If your app needs run-two-fresh-installs reliability for all users, operate or contract public rendezvous plus relay/mediator peers and add them to `discovery.public_bootstrap.rendezvous_peers` and `discovery.public_bootstrap.relay_peers`.
+- If your deployment needs guaranteed relay capacity or service-level control, operate or contract rendezvous/relay peers and add them to the public-fallback lists; otherwise the default decentralized relay path remains best-effort external infrastructure.

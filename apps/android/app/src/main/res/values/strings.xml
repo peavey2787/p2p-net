@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">P2P Node</string>
+    <string name="node_channel_name">P2P node</string>
+    <string name="node_channel_description">Keeps the native P2P node active while enabled.</string>
+    <string name="node_running">P2P node is running</string>
+    <string name="stop_node">Stop</string>
+</resources>

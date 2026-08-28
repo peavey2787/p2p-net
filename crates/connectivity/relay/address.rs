@@ -35,33 +35,34 @@ pub fn relay_peer_id(addr: &Multiaddr) -> Option<PeerId> {
     None
 }
 
+/// Turn a relay reservation/listen address into a dialable route for `target`.
+/// The relay peer ID before `/p2p-circuit` is preserved and the target peer ID
+/// is appended after the circuit component. Existing routes for another target
+/// are rejected.
+pub fn relay_dial_addr_for_peer(addr: &Multiaddr, target: PeerId) -> Option<Multiaddr> {
+    if !is_p2p_circuit_addr(addr) {
+        return None;
+    }
+    let mut seen_circuit = false;
+    let mut target_after_circuit = None;
+    for protocol in addr.iter() {
+        match protocol {
+            Protocol::P2pCircuit => seen_circuit = true,
+            Protocol::P2p(peer) if seen_circuit => target_after_circuit = Some(peer),
+            _ => {}
+        }
+    }
+    match target_after_circuit {
+        Some(peer) if peer == target => Some(addr.clone()),
+        Some(_) => None,
+        None => Some(addr.clone().with(Protocol::P2p(target))),
+    }
+}
+
 fn has_p2p_peer_id(addr: &Multiaddr) -> bool {
     addr.iter()
         .any(|protocol| matches!(protocol, Protocol::P2p(_)))
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn builds_relay_reservation_address() {
-        let relay_peer = PeerId::random();
-        let relay_addr: Multiaddr = format!("/ip4/127.0.0.1/tcp/4001/p2p/{relay_peer}")
-            .parse()
-            .unwrap();
-        let reservation = relay_reservation_addr(&relay_addr).unwrap();
-        assert_eq!(
-            reservation.to_string(),
-            format!("/ip4/127.0.0.1/tcp/4001/p2p/{relay_peer}/p2p-circuit")
-        );
-        assert_eq!(relay_peer_id(&reservation), Some(relay_peer));
-        assert!(is_p2p_circuit_addr(&reservation));
-    }
-
-    #[test]
-    fn reservation_address_rejects_non_relay_addr() {
-        let addr: Multiaddr = "/ip4/127.0.0.1/tcp/4001".parse().unwrap();
-        assert!(relay_reservation_addr(&addr).is_none());
-    }
-}
+mod tests;

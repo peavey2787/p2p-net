@@ -41,36 +41,38 @@ Cargo.lock — 5,882 lines
 Longest runtime source files:
 
 ```text
-crates/node/events/connection.rs — 496 lines
-crates/connectivity/dns.rs — 446 lines
+crates/protocol/pulse.rs — 494 lines
+crates/connectivity/dns.rs — 450 lines
+crates/node/mod.rs — 450 lines
+crates/stack/discovery.rs — 436 lines
+crates/node/events/connection.rs — 435 lines
 crates/bindings/mod.rs — 431 lines
-crates/node/mod.rs — 421 lines
-crates/stack/discovery.rs — 415 lines
-crates/api/mod.rs — 384 lines
+crates/api/mod.rs — 426 lines
+crates/connectivity/dht.rs — 404 lines
+crates/node/runtime/driver.rs — 394 lines
 crates/connectivity/connection_strategy.rs — 362 lines
-crates/connectivity/relay_discovery.rs — 344 lines
-crates/connectivity/dht.rs — 334 lines
-crates/protocol/pulse.rs — 330 lines
 ```
 
 Former hotspot status:
 
 ```text
-crates/node/mod.rs — 421 lines
-crates/node/config.rs — 255 lines
+crates/node/mod.rs — 450 lines
+crates/node/config.rs — 261 lines
 crates/node/config/listeners.rs — 53 lines
-crates/node/config_validation.rs — 165 lines
+crates/node/config_validation.rs — 173 lines
 crates/node/metrics.rs — 11 lines
 crates/node/metrics/prometheus.rs — 24 lines
-crates/node/runtime.rs — 285 lines
-crates/node/runtime/dht_schedule.rs — 72 lines
-crates/node/runtime/periodic.rs — 119 lines
-crates/node/snapshot.rs — 225 lines
+crates/node/runtime.rs — 135 lines
+crates/node/runtime/driver.rs — 394 lines
+crates/node/runtime/observability.rs — 38 lines
+crates/node/runtime/dht_schedule.rs — 79 lines
+crates/node/runtime/periodic.rs — 118 lines
+crates/node/snapshot.rs — 235 lines
 crates/node/snapshot/helpers.rs — 17 lines
 crates/node/startup.rs — 104 lines
 crates/node/startup/addrs.rs — 251 lines
-crates/connectivity/relay.rs — 13 lines
-crates/connectivity/relay/address.rs — 67 lines
+crates/connectivity/relay.rs — 15 lines
+crates/connectivity/relay/address.rs — 68 lines
 crates/connectivity/relay/config.rs — 272 lines
 crates/connectivity/relay/policy.rs — 17 lines
 crates/connectivity/relay/schedule.rs — 173 lines
@@ -79,11 +81,14 @@ crates/connectivity/relay/state.rs — 128 lines
 
 ## Structure result
 
-The root layout is organized and not nested:
+The root layout is organized and not nested. Platform applications have explicit owners instead of living inside the shared core:
 
 ```text
 .git/
 .github/
+apps/
+  windows/
+  android/
 Cargo.toml
 Cargo.lock
 README.md
@@ -113,7 +118,7 @@ qa/tests/runtime/
 qa/tests/security/
 ```
 
-Canonical release implementation helpers live under `qa/release/`, while the user-facing Windows/Linux release launchers stay at the repository root.
+Canonical release implementation helpers live under `qa/release/`, while the user-facing Windows/Linux release launchers stay at the repository root. The desktop dashboard application is owned by `apps/windows/`; native Android JNI/service/UI code is owned by `apps/android/`; shared platform policy is split into `crates/platform/android.rs`, `desktop.rs`, and `ios.rs`. `qa/tests/hygiene/platform_app_architecture.rs` and the focused `qa/tests/hygiene/platform_app_windows.rs` integration test prevent those boundaries from collapsing.
 
 ## DRY result
 
@@ -129,7 +134,7 @@ No `#[allow(...)]` cleanup suppressions were added.
 
 ## Added regression coverage
 
-Step 9 added `qa/tests/hygiene/final_hygiene_audit.rs` and registered it in `Cargo.toml`. Canonical release reproducibility is separately guarded by `qa/tests/hygiene/release_reproducibility.rs`, which requires the root Windows/Linux release launchers to retain clean-worktree, full-validation, two-worktree, deterministic-link, and checksum-verification behavior.
+Step 9 added `qa/tests/hygiene/final_hygiene_audit.rs` and registered it in `Cargo.toml`. Canonical release reproducibility is separately guarded by `qa/tests/hygiene/release_reproducibility.rs`, which requires the root Windows/Linux release launchers to retain exact working-tree snapshotting, durable validation-evidence binding, two-worktree reproduction, deterministic linking, and checksum verification.
 
 That test locks in the cleanup by checking:
 

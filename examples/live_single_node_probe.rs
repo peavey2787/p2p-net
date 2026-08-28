@@ -1,8 +1,10 @@
 //! Cross-machine public-network probe for one isolated p2p-net instance.
 //!
-//! Run one copy on each machine with the same `P2P_LIVE_PROBE_NONCE` and a
-//! different `P2P_LIVE_PROBE_ROLE`. Each process has 60 seconds to discover
-//! and connect to the other through the normal production planner.
+//! Run one copy on each machine with a different `P2P_LIVE_PROBE_ROLE`. Each
+//! process has 60 seconds to discover and connect to the other through the
+//! normal production planner. Network ID and discovery namespace stay at the
+//! exact production defaults; only local identity/cache paths and listen ports
+//! are isolated so concurrent probe processes cannot collide.
 
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
@@ -22,10 +24,12 @@ macro_rules! probe_log {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let nonce = required_env("P2P_LIVE_PROBE_NONCE")?;
     let role = required_env("P2P_LIVE_PROBE_ROLE")?;
-    let network_id = stable_network_id(&nonce);
-    let cfg = probe_config(&role, &nonce, network_id);
+    let nonce = std::process::id();
+    let cfg = probe_config(&role, nonce);
+    assert_eq!(cfg.network_id, NodeConfig::default().network_id);
+    assert!(cfg.discovery.namespace.tags.is_empty());
+    let network_id = cfg.network_id;
     let node = start_node(cfg.clone()).await?;
 
     probe_log!(
@@ -144,13 +148,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn probe_config(role: &str, nonce: &str, network_id: u32) -> NodeConfig {
+fn probe_config(role: &str, nonce: u32) -> NodeConfig {
     let temp = std::env::temp_dir();
-    let role_hash = stable_network_id(role);
+    let role_hash = stable_role_hash(role);
     let transport_port = 47_000u16.saturating_add((role_hash % 500) as u16);
     let mut cfg = NodeConfig {
         profile: NodeProfile::Full,
-        network_id,
         heartbeat_interval_secs: 5,
         identity_key_path: temp
             .join(format!("p2p-net-live-{role}-{nonce}.identity"))
@@ -171,17 +174,16 @@ fn probe_config(role: &str, nonce: &str, network_id: u32) -> NodeConfig {
         .join(format!("p2p-net-live-{role}-{nonce}.peers.json"))
         .to_string_lossy()
         .to_string();
-    cfg.discovery.namespace.tags = vec![format!("live-cross-platform-{nonce}")];
     cfg
 }
 
-fn stable_network_id(value: &str) -> u32 {
+fn stable_role_hash(value: &str) -> u32 {
     let hash = blake3::hash(value.as_bytes());
     u32::from_le_bytes(hash.as_bytes()[..4].try_into().expect("four bytes"))
 }
 
 fn required_env(name: &str) -> Result<String, Box<dyn std::error::Error>> {
-    std::env::var(name).map_err(|_| format!("{name} must be set to the shared probe value").into())
+    std::env::var(name).map_err(|_| format!("{name} must be set").into())
 }
 
 fn hold_duration() -> Option<Duration> {

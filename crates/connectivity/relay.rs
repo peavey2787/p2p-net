@@ -6,7 +6,9 @@ mod policy;
 mod schedule;
 mod state;
 
-pub use address::{is_p2p_circuit_addr, relay_peer_id, relay_reservation_addr};
+pub use address::{
+    is_p2p_circuit_addr, relay_dial_addr_for_peer, relay_peer_id, relay_reservation_addr,
+};
 pub use config::{RelayAccess, RelayServiceConfig};
 pub use policy::classify_relay_denial;
 pub use schedule::{RelaySchedule, RelayWindow};

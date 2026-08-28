@@ -3,6 +3,7 @@
 mod behaviour;
 mod dcutr;
 mod discovery;
+mod dns_transport;
 mod external_addresses;
 mod transport;
 

@@ -406,6 +406,7 @@ fn on_identify_event(
                         PeerSource::Manual
                             | PeerSource::PeerCache
                             | PeerSource::DhtProvider
+                            | PeerSource::LanDiscovery
                             | PeerSource::Rendezvous
                             | PeerSource::PublicRendezvous
                     )

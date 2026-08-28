@@ -7,11 +7,24 @@ use crate::connectivity::discovery::DiscoveryConfig;
 pub(super) const DHT_PROVIDER_ANCHOR_PREFIX_BYTES: usize = 2;
 const DHT_PROVIDER_ANCHOR_MAX_ATTEMPTS: u32 = 1 << 20;
 const DHT_PROVIDER_ANCHOR_CONTEXT: &str = "p2p-net.dht.provider.anchor.v1";
+const DHT_PEER_ADDRESS_RECORD_CONTEXT: &str = "p2p-net.dht.peer-address.v1";
 pub(super) const MULTIHASH_SHA2_256_CODE: u8 = 0x12;
 pub(super) const SHA2_256_DIGEST_BYTES: u8 = 32;
 
 pub fn dht_record_key(namespace: &str) -> kad::RecordKey {
     provider_multihash_key(namespace.as_bytes())
+}
+
+pub(super) fn dht_peer_address_record_key(namespace: &str, peer: &PeerId) -> kad::RecordKey {
+    let mut material = Vec::with_capacity(
+        DHT_PEER_ADDRESS_RECORD_CONTEXT.len() + namespace.len() + peer.to_bytes().len() + 2,
+    );
+    material.extend_from_slice(DHT_PEER_ADDRESS_RECORD_CONTEXT.as_bytes());
+    material.push(0);
+    material.extend_from_slice(namespace.as_bytes());
+    material.push(0);
+    material.extend_from_slice(&peer.to_bytes());
+    provider_multihash_key(material)
 }
 
 pub(super) fn dht_record_replica_key(namespace: &str, replica: u8) -> kad::RecordKey {

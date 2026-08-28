@@ -64,4 +64,4 @@ These fields let the GUI explain why a lite node has no relay, only one relay, o
 
 `discovery.public_bootstrap.relay_peers` can add public relay/mediator candidates when public fallback policy allows it. These candidates are tracked separately from configured, cached, and rendezvous candidates so operators can see when the node depended on public infrastructure.
 
-Public fallback relays are selected after operator-owned/cached/rendezvous candidates. The normal app default enables public fallback policy, but this shared library does not ship project-operated relay peers; app distributions can add public relay DNSADDR entries or use private `relay_peers`. See `docs/spec/PUBLIC_FALLBACK.md`.
+Public fallback relays are selected after operator-owned/cached/rendezvous candidates. The normal app default also inspects public-DHT peers for Circuit Relay v2 hop support and can reserve those relays dynamically, so an explicit project-operated relay list is optional. App distributions can still add public relay DNSADDR entries or private `relay_peers` for deterministic capacity. See `docs/spec/PUBLIC_FALLBACK.md`.

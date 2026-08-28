@@ -16,7 +16,7 @@ The runtime ships with `mode = "fallback_only"`, a built-in public bootstrap see
 
 Public fallback DNS resolution is best-effort: bad multiaddr syntax still fails validation, but temporary public DNS/bootstrap outages do not stop local startup.
 
-The shared library does not ship a project-operated public rendezvous or relay fleet. App distributions that need guaranteed run-two-fresh-installs connectivity should add real public rendezvous and relay/mediator DNSADDR entries to `discovery.public_bootstrap.rendezvous_peers` and `discovery.public_bootstrap.relay_peers`, or operate private infrastructure and configure it through the advanced/operator fields.
+The shared library does not ship a project-operated public rendezvous or relay fleet. Default fresh-node connectivity instead combines a network-specific application namespace, public-DHT provider discovery, identity-signed peer-address records, same-LAN UDP discovery, dynamic relay-hop discovery/reservations, and DCUtR with relay fallback. Owned rendezvous/relay DNSADDR entries remain supported as optional deterministic infrastructure.
 
 ## Consumer vs operator examples
 
@@ -24,4 +24,4 @@ The shared library does not ship a project-operated public rendezvous or relay f
 - `examples/public-fallback.config.json` is the expanded public-fallback example for operators and power users who want to see the full fallback shape.
 - `examples/private-infrastructure-first.config.json` documents the Advanced/operator private mode: public fallback disabled, public auto-connect disabled, and owned bootstrap/rendezvous/relay peers supplied explicitly.
 
-Public bootstrap alone is intentionally documented as insufficient for guaranteed NAT-to-NAT first launch. The implementation exposes public rendezvous and relay slots, but applications must fill those slots with real infrastructure before claiming reliable no-config connectivity.
+Public bootstrap is intentionally only the routing entry point. Application-peer discovery and address exchange are performed by the default DHT/LAN layers, while NAT-to-NAT recovery can reserve relay-hop-capable public DHT peers and attempt DCUtR. Public rendezvous and relay slots remain available for deployments that want owned capacity or policy control.

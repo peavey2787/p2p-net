@@ -3,6 +3,7 @@
 # -----------------------------------------------------------------------------
 /target/
 /target-*/
+/external/libp2p-webrtc/target/
 /debug/
 /release/
 
@@ -124,9 +125,15 @@ node-config.local.json
 # -----------------------------------------------------------------------------
 # Dependency/vendor policy
 # -----------------------------------------------------------------------------
-# Do NOT ignore external/. This repo may intentionally patch crates locally.
+# Do NOT ignore external/. This repo intentionally carries audited companion/third-party source.
 !/external/
 !/external/**
+
+# Re-assert generated Cargo state after the external-source unignore rules above.
+# Package validation must never turn build output or a standalone dependency
+# lockfile into a canonical release input.
+/external/**/target/
+/external/**/Cargo.lock
 
 # -----------------------------------------------------------------------------
 # IDE/editor files
@@ -172,6 +179,10 @@ PowerShell_transcript*.txt
 # Misc generated files
 # -----------------------------------------------------------------------------
 .*/
+# The workspace Cargo config is release-critical: it pins only Cargo's
+# resolution-only libp2p DNS/mDNS entries to the audited local placeholders.
+!/.cargo/
+!/.cargo/config.toml
 *.tmp
 *.temp
 *.orig
@@ -189,3 +200,14 @@ p2p-node-panic.log
 
 # Canonical release outputs
 /dist/
+
+# Android local/generated build state
+/apps/android/local.properties
+/apps/android/app/src/main/jniLibs/
+/apps/android/app/.cxx/
+/apps/android/app/build/
+/apps/android/build/
+apps/android/qa/evidence/
+
+# Machine-generated durable validation evidence (kept locally, not committed)
+/qa/evidence/runs/

@@ -1,9 +1,10 @@
 //! Local `libp2p-dns` patch for p2p-net.
 //!
-//! rust-libp2p 0.56's WebSocket builder expects the `libp2p-dns` crate when
-//! WebSocket support is compiled. The crates.io `libp2p-dns` line pulled the
-//! rejected Hickory resolver dependency into `Cargo.lock`, so p2p-net patches
-//! that crate to this minimal no-Hickory implementation.
+//! rust-libp2p 0.56's top-level Tokio WebSocket builder expects the
+//! `libp2p-dns` crate when its `websocket` feature is enabled. p2p-net avoids
+//! that builder and uses `libp2p-websocket` directly. This local crate exists
+//! only for Cargo's workspace lock-resolution of weak optional feature edges,
+//! keeping the committed lock free of the rejected Hickory dependency graph.
 //!
 //! `/dns`, `/dns4`, and `/dns6` use Tokio's OS-backed resolver. `/dnsaddr` is
 //! intentionally rejected here so there is no hidden hard-coded third-party DoH

@@ -75,6 +75,20 @@ fn multiple_tags_derive_multiple_unique_namespaces() {
 }
 
 #[test]
+fn empty_default_tags_use_network_specific_application_namespace() {
+    let cfg = DiscoveryConfig::default();
+    let first = cfg.rendezvous_namespaces(1).expect("network 1 namespace");
+    let second = cfg.rendezvous_namespaces(2).expect("network 2 namespace");
+
+    assert_eq!(first.len(), 1);
+    assert_eq!(second.len(), 1);
+    assert_ne!(first, second);
+    assert!(first[0].starts_with("p2p-net/1/p2p-net/"));
+    assert!(second[0].starts_with("p2p-net/2/p2p-net/"));
+    assert_ne!(first[0], RendezvousConfig::default().namespace);
+}
+
+#[test]
 fn empty_app_tags_preserve_operator_rendezvous_namespace() {
     let cfg = DiscoveryConfig {
         rendezvous: RendezvousConfig {

@@ -1,0 +1,24 @@
+Recovered machine validation transcript review
+=============================================
+
+Result: PASS
+
+The original evidence wrapper emitted a PowerShell StrictMode property error while parsing an empty/singleton argument token collection. That wrapper error occurred outside the validation transcript and did not alter the validation runner exit path or test execution. The transcript itself is complete and ends in the canonical PASS marker.
+
+Verified transcript facts:
+- Rust: rustc 1.98.0; cargo 1.98.0.
+- Windows MSVC linker/UCRT preflight: PASS.
+- Locked dependency preflight: PASS.
+- cargo fmt --check: PASS.
+- dependency graph guard: PASS.
+- normal tests: PASS.
+- dashboard feature tests: PASS.
+- Clippy with -D warnings: PASS.
+- cargo audit: completed with no vulnerability failure.
+- cargo deny: advisories ok, bans ok, licenses ok, sources ok.
+- hostile relay reservation spam: PASS.
+- hostile connection open/close spam: PASS.
+- one-minute soak: PASS (60.20s).
+- final marker: All stable p2p-net validation checks passed.
+
+Across all Rust test-result summary lines in the captured transcript: 0 failed.

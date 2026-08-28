@@ -65,22 +65,22 @@ Use `examples/consumer-default.config.json` as the consumer-facing example. Its 
 
 Power users can still override the defaults by adding manual peers or disabling public fallback.
 
-## Why public bootstrap alone is not enough
+## How default connectivity progresses beyond bootstrap
 
-Public bootstrap peers help a node enter the wider routing layer, but they do not guarantee that two fresh app installs behind different NATs can connect to each other.
-
-Reliable no-config consumer connectivity needs more than bootstrap:
+Public bootstrap peers are only the entry point into the wider routing layer. The default runtime continues automatically through the remaining stages rather than requiring the user to configure rendezvous or relay peers:
 
 | Piece | Purpose |
 |---|---|
-| Public bootstrap | Reach the wider libp2p/Kademlia layer. |
-| Public app rendezvous | Let fresh app nodes register and find peers in the app namespace. |
-| DHT provider discovery | Recover app peers through hashed namespace provider records. |
-| Public relay/mediator | Provide a reachable third-party path when both users are behind NAT/CGNAT. |
-| DCUtR | Try to upgrade a relayed connection into a direct connection. |
+| Same-LAN UDP discovery | Find compatible peers on the local network immediately; the official Android Emulator uses the same protocol through a `10.0.2.2` unicast reply assist. |
+| Public bootstrap | Reach the wider libp2p/Kademlia layer when LAN discovery is not enough. |
+| Network-scoped DHT provider discovery | Find only application peers for the exact `network_id`/app namespace. |
+| Identity-signed DHT address records | Recover direct and relay dial routes without trusting an unauthenticated address publisher. |
+| Dynamic Circuit Relay v2 discovery | Reserve public relay-hop-capable DHT peers when direct reachability is unavailable. |
+| DCUtR | Try to upgrade a relayed connection into a direct connection while retaining relay fallback. |
 | Auto-connect policy | Turn discovered app peers into bounded network-layer dial attempts. |
+| Optional rendezvous/owned relay infrastructure | Add deterministic service capacity when an operator wants it; not required for the built-in discovery path. |
 
-The shared repository ships public bootstrap defaults and the config slots for public rendezvous and relay candidates. It does not pretend to operate a public rendezvous or relay fleet. Applications that require reliable run-two-fresh-installs behavior should add real public rendezvous and relay/mediator DNSADDR entries before release.
+The shared repository ships public bootstrap defaults but does not pretend to operate a public rendezvous or relay fleet. Fresh nodes progress from bootstrap into network-scoped DHT provider/address discovery, dynamic public relay-hop discovery, and DCUtR fallback. Same-LAN peers use the faster UDP path. Applications may still add owned rendezvous or relay/mediator DNSADDR entries when they want deterministic infrastructure capacity or policy control.
 
 ## Advanced overrides
 
@@ -115,4 +115,4 @@ That shape is the private/operator path. See `PRIVATE_INFRASTRUCTURE_FIRST.md` a
 
 Consumer mode does not assume one startup DHT query is enough. After the initial announce/query, startup retries back off through 5, 15, 30, and 60 seconds before settling on `discovery.dht.refresh_interval_secs`. Recovery from zero connected peers can pull the next refresh forward, subject to a 5-second minimum gap, and learning public external addresses triggers an immediate refresh. Ordinary additional connections do not restart the DHT refresh timer. This lets nodes meet as routing improves without tying DHT work to every application heartbeat.
 
-When no separate public relay fleet is configured, resolved public libp2p bootstrap peers are also tried as best-effort relay candidates. They are not app peers and they are not trusted contacts; they are only public infrastructure candidates. Relays that do not support reservation fail visibly while DHT discovery and direct-dial attempts continue.
+When no separate public relay fleet is configured, Identify responses from public-DHT infrastructure are inspected for Circuit Relay v2 hop support. Compatible candidates are bounded and reservation attempts fail visibly while DHT discovery and direct-dial attempts continue. They are infrastructure only, never trusted application contacts.

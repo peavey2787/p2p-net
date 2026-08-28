@@ -1,5 +1,7 @@
 use crate::api::PeerSource;
-use crate::connectivity::dht::on_kademlia_event;
+use crate::connectivity::dht::{
+    decode_peer_address_record, on_kademlia_event, start_peer_address_record_lookup,
+};
 use crate::connectivity::relay::is_p2p_circuit_addr;
 
 use super::super::dial::{auto_dial_dht_provider, AutoDialOutcome};
@@ -40,6 +42,9 @@ fn record_dht_provider_peers(
         ctx.peer_book
             .record_namespace(*provider, namespace.clone(), PeerSource::DhtProvider);
         allow_dcutr_peer(swarm, *provider);
+        if *provider != ctx.local_peer {
+            let _ = start_peer_address_record_lookup(swarm, ctx.dht_state, *provider, &namespace);
+        }
         if swarm.is_connected(provider) {
             // Provider discovery can finish after an inbound relayed
             // connection has already arrived. The exact namespace record is
@@ -153,6 +158,68 @@ where
         peer: *peer,
         address_updated: true,
     }]
+}
+
+fn record_dht_peer_address_records(
+    ev: &libp2p::kad::Event,
+    swarm: &mut Swarm<MeshBehaviour>,
+    ctx: &mut SwarmEventContext<'_>,
+) -> (Vec<AutoDialCandidate>, Vec<String>) {
+    let libp2p::kad::Event::OutboundQueryProgressed {
+        id, result, step, ..
+    } = ev
+    else {
+        return (Vec::new(), Vec::new());
+    };
+    let Some((expected_peer, namespace)) = ctx.dht_state.address_record_lookup(id) else {
+        return (Vec::new(), Vec::new());
+    };
+
+    match result {
+        libp2p::kad::QueryResult::GetRecord(Ok(libp2p::kad::GetRecordOk::FoundRecord(record))) => {
+            if step.last {
+                ctx.dht_state.complete_get_address_record(id);
+            }
+            match decode_peer_address_record(&record.record.value, expected_peer) {
+                Ok(addrs) => {
+                    ctx.peer_book.record_namespace(
+                        expected_peer,
+                        namespace,
+                        PeerSource::DhtProvider,
+                    );
+                    let candidates = record_known_provider_addrs(&expected_peer, addrs, swarm, ctx);
+                    (
+                        candidates,
+                        vec![format!(
+                            "dht signed peer address record accepted peer={expected_peer}"
+                        )],
+                    )
+                }
+                Err(err) => (
+                    Vec::new(),
+                    vec![format!(
+                        "dht signed peer address record rejected peer={expected_peer} error={err}"
+                    )],
+                ),
+            }
+        }
+        libp2p::kad::QueryResult::GetRecord(Ok(
+            libp2p::kad::GetRecordOk::FinishedWithNoAdditionalRecord { .. },
+        )) => {
+            ctx.dht_state.complete_get_address_record(id);
+            (Vec::new(), Vec::new())
+        }
+        libp2p::kad::QueryResult::GetRecord(Err(err)) => {
+            ctx.dht_state.complete_get_address_record(id);
+            (
+                Vec::new(),
+                vec![format!(
+                    "dht signed peer address lookup failed peer={expected_peer} error={err:?}"
+                )],
+            )
+        }
+        _ => (Vec::new(), Vec::new()),
+    }
 }
 
 fn maybe_auto_dial_dht_providers(
@@ -271,6 +338,8 @@ pub(crate) fn handle_event(
 
     let mut auto_dial_candidates = record_dht_provider_peers(ev, swarm, ctx);
     auto_dial_candidates.extend(record_kademlia_provider_addrs(ev, swarm, ctx));
+    let (record_candidates, record_pulses) = record_dht_peer_address_records(ev, swarm, ctx);
+    auto_dial_candidates.extend(record_candidates);
     let peer_connectivity_changed = !auto_dial_candidates.is_empty();
     let auto_dial_pulses = maybe_auto_dial_dht_providers(auto_dial_candidates, swarm, ctx);
 
@@ -281,7 +350,7 @@ pub(crate) fn handle_event(
     if peer_connectivity_changed {
         ctx.observability.peer_connectivity_dirty();
     }
-    for pulse in auto_dial_pulses {
+    for pulse in record_pulses.into_iter().chain(auto_dial_pulses) {
         ctx.observability.pulse(pulse);
     }
 }

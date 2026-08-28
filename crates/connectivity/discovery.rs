@@ -5,7 +5,8 @@ use libp2p_rendezvous as rendezvous;
 use serde::{Deserialize, Serialize};
 
 use super::dht::DhtDiscoveryConfig;
-use super::namespace::{DiscoveryNamespace, DiscoveryNamespaceConfig};
+use super::lan::LanDiscoveryConfig;
+use super::namespace::{default_discovery_namespace, DiscoveryNamespace, DiscoveryNamespaceConfig};
 use super::public_fallback::PublicBootstrapConfig;
 use super::relay_discovery::RelayDiscoveryPolicy;
 use super::rendezvous::RendezvousConfig;
@@ -41,6 +42,10 @@ pub struct DiscoveryConfig {
     /// Application discovery namespace derivation. Tags are hashed by default before publication.
     #[serde(default)]
     pub namespace: DiscoveryNamespaceConfig,
+    /// Same-LAN zero-configuration discovery. The beacon is compatibility-scoped
+    /// and connection identity is still authenticated by libp2p Identify/Noise.
+    #[serde(default)]
+    pub lan: LanDiscoveryConfig,
     /// Public bootstrap/rendezvous/relay fallback and auto-connect policy. Enabled by default for consumer app mode; disable it for private-infrastructure-only operation.
     #[serde(default)]
     pub public_bootstrap: PublicBootstrapConfig,
@@ -70,6 +75,7 @@ impl Default for DiscoveryConfig {
             bootstrap_seed_peers: Vec::new(),
             rendezvous_peers: Vec::new(),
             namespace: DiscoveryNamespaceConfig::default(),
+            lan: LanDiscoveryConfig::default(),
             public_bootstrap: PublicBootstrapConfig::default(),
             dht: DhtDiscoveryConfig::default(),
             relay_discovery: RelayDiscoveryPolicy::default(),
@@ -104,6 +110,7 @@ impl DiscoveryConfig {
             ));
         }
         self.namespace.validate()?;
+        self.lan.validate()?;
         self.public_bootstrap.validate()?;
         self.dht.validate()?;
         self.relay_discovery.validate()?;
@@ -118,10 +125,11 @@ impl DiscoveryConfig {
         Ok(())
     }
 
-    /// Namespaces used by rendezvous/DHT discovery. When app tags are configured,
-    /// derived hashed app namespaces replace the operator rendezvous namespace.
-    /// If no tags are configured, `discovery.rendezvous.namespace` remains
-    /// active for backward compatibility and operator-managed infrastructure.
+    /// Namespaces used by rendezvous/DHT discovery. Explicit app tags derive
+    /// privacy-preserving app namespaces. With no tags, the built-in rendezvous
+    /// namespace is replaced by a reserved network-specific application
+    /// namespace so fresh installs on different networks cannot collide in the
+    /// public DHT. An explicitly customized rendezvous namespace is preserved.
     pub fn rendezvous_namespaces(
         &self,
         network_id: u32,
@@ -131,6 +139,10 @@ impl DiscoveryConfig {
                 .namespace
                 .derived_namespaces(network_id)
                 .map(|items| items.into_iter().map(|item| item.namespace).collect());
+        }
+        if self.rendezvous.namespace == RendezvousConfig::default().namespace {
+            return default_discovery_namespace(network_id, &self.namespace.app_id)
+                .map(|item| vec![item.namespace]);
         }
         Ok(vec![self.rendezvous.namespace.clone()])
     }
@@ -193,6 +205,22 @@ mod tests {
         assert_ne!(
             protocol,
             config.application_protocol_version(7).expect("different")
+        );
+    }
+
+    #[test]
+    fn default_namespace_is_network_specific_but_operator_namespace_is_preserved() {
+        let first = DiscoveryConfig::default();
+        let first_ns = first.rendezvous_namespaces(1).expect("network 1");
+        let second_ns = first.rendezvous_namespaces(2).expect("network 2");
+        assert_ne!(first_ns, second_ns);
+        assert!(first_ns[0].starts_with("p2p-net/1/p2p-net/"));
+
+        let mut operator = DiscoveryConfig::default();
+        operator.rendezvous.namespace = "my-private-rendezvous".to_string();
+        assert_eq!(
+            operator.rendezvous_namespaces(1).expect("operator"),
+            vec!["my-private-rendezvous".to_string()]
         );
     }
 

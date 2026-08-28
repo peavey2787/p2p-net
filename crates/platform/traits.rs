@@ -15,6 +15,7 @@ use crate::{EnvironmentConfig, PlatformKind};
 /// `.p2p-net-peer-cache.json`. Desktop implementations may map them directly to
 /// filesystem paths. Mobile implementations can map the same keys into app
 /// private storage, Keychain/Keystore-backed blobs, or encrypted containers.
+/// The native Android adapter maps them into its app-private data directory.
 pub trait NodeStorage: Send + Sync {
     fn storage_kind(&self) -> &'static str {
         "custom"

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-DHT provider discovery is the fallback discovery layer for application namespaces. It lets nodes announce and search for hashed namespace keys through Kademlia provider records when operator rendezvous peers are unavailable.
+DHT provider discovery is the public decentralized discovery layer for application namespaces. It lets nodes announce and search for network-scoped namespace keys through Kademlia provider records, both with and without operator rendezvous infrastructure.
 
 The public application data-plane API remains the six primitives:
 
@@ -17,14 +17,14 @@ DHT provider discovery is internal plumbing behind those primitives.
 
 ## Priority order
 
-Nodes should prefer owned infrastructure first:
+The normal planner combines these sources without treating routing peers as application peers:
 
-1. operator bootstrap peers
-2. operator rendezvous peers
-3. operator mediator/relay peers
-4. healthy peer cache
-5. public bootstrap or relay fallback when policy allows it
-6. DHT provider lookups for hashed discovery namespaces
+1. same-LAN compatibility-scoped discovery when enabled
+2. operator bootstrap/rendezvous/relay infrastructure when configured
+3. healthy peer cache
+4. public bootstrap when fallback policy allows it
+5. network-scoped DHT provider lookups
+6. direct address recovery, dynamic relay fallback, and DCUtR upgrade attempts
 
 Public fallback is enabled by default in fallback-only mode for normal app startup. DHT provider discovery may be enabled by default, but it only becomes useful after the node has joined a Kademlia routing layer through configured, cached, or fallback bootstrap peers. Private deployments can disable public fallback and use owned bootstrap/rendezvous infrastructure instead.
 
@@ -36,7 +36,7 @@ DHT provider keys use the same derived discovery namespaces as rendezvous discov
 p2p-net/<network_id>/<app_id>/<tag_hash>
 ```
 
-Raw contact tags must not be published by default. The namespace model hashes app tags unless the operator explicitly enables readable unsafe tags.
+Raw contact tags must not be published by default. The namespace model hashes app tags unless the operator explicitly enables readable unsafe tags. If no tags are configured and the built-in rendezvous namespace is unchanged, p2p-net derives a reserved hashed default tag from the exact `network_id` and app ID. Fresh default networks therefore no longer collide on one generic `p2p-net` provider key.
 
 ## Announcement
 
@@ -45,17 +45,7 @@ When `discovery.dht.enabled` and `discovery.dht.announce` are true, startup call
 
 ## Discovery
 
-When `discovery.dht.enabled` and `discovery.dht.discover` are true, startup calls Kademlia `get_providers(namespace_key)` for each derived namespace only when there are no configured rendezvous peers by default.
-
-Operators can set:
-
-```json
-{
-  "discover_with_rendezvous_peers": true
-}
-```
-
-to run DHT provider lookup alongside rendezvous discovery.
+When `discovery.dht.enabled` and `discovery.dht.discover` are true, startup calls Kademlia `get_providers(namespace_key)` for each derived namespace. The normal default keeps `discover_with_rendezvous_peers = true`, so DHT discovery continues alongside optional rendezvous infrastructure rather than becoming unavailable merely because a rendezvous peer is configured. Operators may disable that setting when they intentionally want rendezvous-only discovery.
 
 Repeated runtime refreshes are throttled by:
 
@@ -72,4 +62,8 @@ Startup discovery still runs immediately; the interval controls repeated announc
 
 ## Runtime results
 
-Provider lookup results update internal DHT provider state, observability counters, and the peer book used by `get_peers()`. Kademlia routing-table peers are not persisted as application peers merely because they helped route a query; only peers discovered for the application namespace are promoted into the peer book/cache.
+Provider lookup results update internal DHT provider state, observability counters, and the peer book used by `get_peers()`. Kademlia routing-table peers are not persisted as application peers merely because they helped route a query; only peers returned for the exact application namespace become application discovery candidates.
+
+For each discovered provider, the runtime also tries to recover dialable addresses from Kademlia routing/provider information. A supplemental identity-signed `PeerRecord` is published under a namespace+peer key when the local node has a public direct or confirmed relay route; readers verify that the signed record identity exactly matches the provider peer before accepting any address. Relay reservation addresses are target-bound as `/p2p-circuit/p2p/<target>` before use. Public DHTs may apply their own record-storage policy, so signed records supplement rather than replace normal provider-address recovery.
+
+When a new public or relay external address is confirmed, provider/address publication is refreshed immediately (subject to in-flight bounds), which prevents a startup provider record with no useful route from remaining stale for the full steady-state interval. Auto-dial retries are bounded and retain relay fallback while DCUtR attempts a direct upgrade.

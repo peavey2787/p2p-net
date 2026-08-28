@@ -22,8 +22,14 @@ const AUTO_CONNECT_RETRY_COOLDOWN_SECS: u64 = 5;
 const AUTO_CONNECT_RETRY_WINDOW_SECS: u64 = 300;
 const MAX_AUTO_CONNECT_ATTEMPTS_PER_WINDOW: u32 = 8;
 
+mod address_records;
 mod keys;
 mod state;
+pub(crate) use address_records::{decode_peer_address_record, start_peer_address_record_lookup};
+pub use address_records::{
+    publish_local_peer_address_records, publish_local_peer_address_records_with_addresses,
+    DhtAddressPublishPlan,
+};
 use keys::dht_provider_keys;
 pub use keys::dht_record_key;
 pub use state::DhtProviderState;
@@ -347,6 +353,20 @@ pub fn on_kademlia_event(
                     "dht provider address lookup failed peer={peer} error={err:?}"
                 ))
             }
+            kad::QueryResult::PutRecord(Ok(_)) => {
+                state
+                    .complete_put_address_record(id, true)
+                    .map(|namespace| {
+                        format!("dht peer address record published namespace={namespace}")
+                    })
+            }
+            kad::QueryResult::PutRecord(Err(err)) => state
+                .complete_put_address_record(id, false)
+                .map(|namespace| {
+                    format!(
+                        "dht peer address record publish failed namespace={namespace} error={err:?}"
+                    )
+                }),
             _ => None,
         },
         kad::Event::RoutingUpdated { .. } => None,

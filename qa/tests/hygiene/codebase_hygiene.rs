@@ -50,6 +50,9 @@ fn runtime_docs_do_not_contain_transitional_phase_language() {
 fn repository_layout_matches_modular_baseline() {
     let root = manifest_dir();
     for dir in [
+        "apps",
+        "apps/windows",
+        "apps/android",
         "crates",
         "docs/impl",
         "docs/spec",
@@ -93,7 +96,7 @@ fn repository_layout_matches_modular_baseline() {
     );
     assert!(
         !root.join(Path::new("external").join("vendor")).exists(),
-        "local third-party patches must live directly under external/, without an extra vendor nesting directory"
+        "audited companion/third-party source must live directly under external/, without an extra vendor nesting directory"
     );
     assert!(
         root.join("run-full-validation.cmd").is_file()
@@ -133,6 +136,12 @@ fn repository_layout_matches_modular_baseline() {
         assert!(
             !contents.contains("--skip-ignored"),
             "{launcher} is the run-all gate and must not provide a path that omits deferred tests"
+        );
+        assert!(
+            contents.contains("--from")
+                && contents.contains("clippy")
+                && contents.contains("Resume mode preserves validation artifacts"),
+            "{launcher} must support artifact-preserving stage resume, including --from clippy"
         );
         let relay_load = contents
             .find("relay_reservation_spam_does_not_panic")
@@ -385,7 +394,6 @@ fn profile_decisions_are_not_duplicated_in_startup_or_stack_layers() {
 #[test]
 fn snapshot_json_uses_derived_serialization_instead_of_duplicate_field_mapping() {
     let root = manifest_dir();
-    let node_mod = fs::read_to_string(root.join("crates/node/mod.rs")).expect("node mod");
     let node_snapshot =
         fs::read_to_string(root.join("crates/node/snapshot.rs")).expect("node snapshot");
 
@@ -394,11 +402,11 @@ fn snapshot_json_uses_derived_serialization_instead_of_duplicate_field_mapping()
         "NodeSnapshot should derive serialization so JSON output cannot drift from snapshot fields"
     );
     assert!(
-        node_mod.contains("serde_json::to_value(snapshot)"),
+        node_snapshot.contains("serde_json::to_value(snapshot)"),
         "snapshot_to_json should serialize NodeSnapshot directly"
     );
     assert!(
-        !node_mod.contains("fn insert<T: serde::Serialize>"),
+        !node_snapshot.contains("fn insert<T: serde::Serialize>"),
         "snapshot_to_json must not duplicate the NodeSnapshot field list by hand"
     );
 }

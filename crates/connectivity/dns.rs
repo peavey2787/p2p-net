@@ -3,7 +3,7 @@
 //! p2p-net keeps DNS support enabled by default. `/dns`, `/dns4`, and `/dns6`
 //! are resolved through Tokio's OS resolver. `/dnsaddr` is resolved through a
 //! bounded DNS-over-HTTPS TXT lookup path with recursion, count, size, and
-//! timeout limits. LAN multicast discovery is intentionally not included.
+//! timeout limits. LAN discovery is owned separately by connectivity::lan and does not use Hickory/mDNS.
 
 use crate::common::error::config_error;
 use std::{net::IpAddr, time::Duration};
@@ -144,6 +144,23 @@ pub fn has_dnsaddr(addr: &Multiaddr) -> bool {
 /// True when the multiaddr contains any DNS-family component.
 pub fn has_any_dns(addr: &Multiaddr) -> bool {
     has_resolvable_dns(addr) || has_dnsaddr(addr)
+}
+
+/// Resolve a caller-supplied dial address before it reaches the libp2p transport.
+///
+/// This keeps `/dns`, `/dns4`, `/dns6`, and `/dnsaddr` support available to
+/// `NodeHandle::connect_peer` without enabling libp2p's Hickory-backed DNS
+/// transport feature. Non-DNS addresses are returned unchanged.
+pub(crate) async fn resolve_dial_multiaddrs(
+    addr: &Multiaddr,
+    dnsaddr: &DnsaddrConfig,
+) -> Result<Vec<Multiaddr>, NetError> {
+    resolve_multiaddr(addr, dnsaddr)
+        .await
+        .map_err(|reason| NetError::Dial {
+            target: addr.to_string(),
+            reason: format!("DNS resolution failed: {reason}"),
+        })
 }
 
 async fn resolve_multiaddr(

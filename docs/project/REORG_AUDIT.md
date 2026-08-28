@@ -17,7 +17,7 @@ This pass reorganized the repository to match the modular baseline:
 - Fuzzing under `qa/fuzz/`.
 - QA utilities under `qa/tools/`.
 - Test vectors under `qa/vectors/`.
-- Local third-party patches under `external/`.
+- Audited third-party-derived/publishable companion source under `external/`.
 
 ## Structural checks performed in the sandbox
 

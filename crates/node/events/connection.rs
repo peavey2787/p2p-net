@@ -247,6 +247,7 @@ fn should_track_peer_in_peer_book(peer_id: PeerId, ctx: &SwarmEventContext<'_>) 
                     | PeerSource::Rendezvous
                     | PeerSource::PublicRendezvous
                     | PeerSource::DhtProvider
+                    | PeerSource::LanDiscovery
             )
         }) || !record.namespaces.is_empty()
     })

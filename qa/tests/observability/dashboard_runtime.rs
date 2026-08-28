@@ -2,7 +2,7 @@ use std::fs;
 
 #[test]
 fn dashboard_is_event_driven_and_avoids_periodic_full_snapshot_hashing() {
-    let source = fs::read_to_string("examples/p2p_node.rs").expect("read dashboard example");
+    let source = fs::read_to_string("apps/windows/p2p_node.rs").expect("read dashboard example");
     let handle = fs::read_to_string("crates/node/handle.rs").expect("read node handle");
 
     assert!(source.contains("EventStream::new()"));
@@ -17,7 +17,7 @@ fn dashboard_is_event_driven_and_avoids_periodic_full_snapshot_hashing() {
 
 #[test]
 fn dashboard_panic_path_restores_style_and_sanitizes_dynamic_text() {
-    let source = fs::read_to_string("examples/p2p_node.rs").expect("read dashboard example");
+    let source = fs::read_to_string("apps/windows/p2p_node.rs").expect("read dashboard example");
 
     assert!(source.contains("SetAttribute(Attribute::Reset)"));
     assert!(source.contains("ResetColor"));
@@ -27,7 +27,7 @@ fn dashboard_panic_path_restores_style_and_sanitizes_dynamic_text() {
 
 #[test]
 fn dashboard_default_is_full_capability_without_example_specific_throttles() {
-    let source = fs::read_to_string("examples/p2p_node.rs").expect("read dashboard example");
+    let source = fs::read_to_string("apps/windows/p2p_node.rs").expect("read dashboard example");
 
     assert!(source.contains("profile: NodeProfile::Full"));
     assert!(source.contains("#[tokio::main]"));
@@ -41,7 +41,7 @@ fn dashboard_default_is_full_capability_without_example_specific_throttles() {
 
 #[test]
 fn dashboard_handles_console_close_and_always_runs_node_shutdown() {
-    let dashboard = fs::read_to_string("examples/p2p_node.rs").expect("read dashboard example");
+    let dashboard = fs::read_to_string("apps/windows/p2p_node.rs").expect("read dashboard example");
     let handle = fs::read_to_string("crates/node/handle.rs").expect("read node handle");
 
     assert!(dashboard.contains("ctrl_close"));
@@ -74,6 +74,10 @@ fn full_node_protocol_cadences_and_dht_controls_remain_wired_to_libp2p() {
 #[test]
 fn full_node_hot_paths_are_optimized_without_reducing_capability() {
     let runtime = fs::read_to_string("crates/node/runtime.rs").expect("read runtime");
+    let runtime_driver =
+        fs::read_to_string("crates/node/runtime/driver.rs").expect("read runtime driver");
+    let dht_schedule = fs::read_to_string("crates/node/runtime/dht_schedule.rs")
+        .expect("read DHT refresh schedule");
     let cache = fs::read_to_string("crates/connectivity/peer_cache/store.rs").expect("read cache");
     let kademlia = fs::read_to_string("crates/node/events/kademlia.rs").expect("read kad events");
 
@@ -81,9 +85,10 @@ fn full_node_hot_paths_are_optimized_without_reducing_capability() {
     let identify = fs::read_to_string("crates/node/events/connection/identify.rs")
         .expect("read identify event handling");
 
-    assert!(runtime.contains("request_connectivity_recovery_refresh"));
-    assert!(runtime.contains("swarm.connected_peers().take(2).count() == 1"));
-    assert!(runtime.contains("PEER_CACHE_FLUSH_INTERVAL: Duration = Duration::from_secs(5)"));
+    assert!(dht_schedule.contains("request_connectivity_recovery_refresh"));
+    assert!(runtime_driver.contains("swarm.connected_peers().take(2).count() == 1"));
+    assert!(runtime.contains("PEER_CACHE_FLUSH_INTERVAL"));
+    assert!(runtime.contains("from_secs(5)"));
     assert!(runtime.contains("peer_cache_writes"));
     assert!(cache.contains("PeerCacheWriteBatch"));
     assert!(cache.contains("pending_seen: HashSet"));

@@ -20,10 +20,10 @@ Default consumer shape:
       "announce": true,
       "discover": true,
       "discover_with_rendezvous_peers": true,
-      "refresh_interval_secs": 600,
-      "periodic_bootstrap_interval_secs": null,
-      "query_parallelism": 1,
-      "provider_key_replicas": 1
+      "refresh_interval_secs": 300,
+      "periodic_bootstrap_interval_secs": 300,
+      "query_parallelism": 3,
+      "provider_key_replicas": 3
     },
     "public_bootstrap": {
       "mode": "fallback_only",
@@ -76,11 +76,9 @@ Advanced private-infrastructure-only shape:
 
 Manual bootstrap peers remain optional power-user config. When `bootstrap_peers`, `discovery.bootstrap_seed_peers`, `discovery.rendezvous_peers`, or healthy peer-cache entries exist, `fallback_only` keeps those owned/cached candidates first.
 
-## Bootstrap alone is not enough
+## Bootstrap is only the entry point
 
-Public bootstrap helps a node enter the wider routing layer, but it does not guarantee app-peer discovery or NAT traversal. The consumer default model has separate slots for bootstrap, app rendezvous, relay/mediator fallback, DHT provider discovery, and bounded auto-connect because each solves a different problem.
-
-Applications that require two fresh installs on different networks to connect reliably should ship real public rendezvous and relay/mediator candidates or operate private infrastructure. Without those real endpoints, the repository can honestly provide public bootstrap and deterministic discovery logic, but it cannot promise NAT-to-NAT reachability.
+Public bootstrap gets a node into the wider routing layer; the default connectivity path then performs network-scoped DHT provider discovery, identity-signed dialable-address recovery, dynamic Circuit Relay v2 hop discovery/reservation, and DCUtR direct upgrades with relay fallback. Same-LAN peers use the faster UDP discovery path first. Operator rendezvous/relay endpoints remain optional additional infrastructure rather than a requirement for the built-in application-peer address exchange.
 
 ## Auto-connect is not auto-trust
 
@@ -88,12 +86,7 @@ Applications that require two fresh installs on different networks to connect re
 
 ## Honest infrastructure defaults
 
-The library default includes public bootstrap seeds. It does not ship a project-operated rendezvous or relay fleet, so the built-in `rendezvous_peers` and `relay_peers` lists are empty. App distributions that want reliable run-two-fresh-installs connectivity should publish real public rendezvous and relay/mediator DNSADDR entries and include them in:
-
-- `discovery.public_bootstrap.rendezvous_peers`
-- `discovery.public_bootstrap.relay_peers`
-
-This avoids claiming rendezvous or relay service exists when this repo does not operate one. Public bootstrap still works as the consumer default discovery entry point; rendezvous and relay fallback become active automatically when real candidates are configured and policy allows them.
+The library default includes public bootstrap seeds but does not claim to operate a project rendezvous or relay fleet. Instead, default nodes use decentralized DHT provider/address records and discover relay-capable public DHT peers dynamically. The built-in `rendezvous_peers` and `relay_peers` lists therefore remain empty. Applications may still populate those lists with owned or contracted infrastructure for tighter operational control and deterministic capacity.
 
 ## Preference order
 
@@ -106,14 +99,15 @@ Startup discovery order is:
 5. `discovery.public_bootstrap.rendezvous_peers` when policy allows it
 6. `discovery.public_bootstrap.bootstrap_seed_peers` when policy allows it
 
-Relay selection order is:
+Relay selection/recovery order is:
 
 1. `relay_peers`
 2. healthy cached relay candidates
 3. rendezvous relay candidates
 4. `discovery.public_bootstrap.relay_peers` when policy allows it
+5. relay-hop-capable peers learned from public DHT/Identify when dynamic relay discovery is enabled
 
-When relay reservations are enabled, the runtime reserves through the selected relay set rather than only `relay_peers`, so real public relay/mediator candidates configured by an app distribution can provide NAT-to-NAT first-launch fallback. DCUtR remains enabled with relay-client capability so relayed connections can attempt direct upgrade while keeping relay fallback.
+When relay reservations are enabled, the runtime reserves through configured/cached/rendezvous candidates first and can additionally promote relay-hop-capable peers learned from public DHT Identify traffic. Once a relay route becomes an external address, the signed DHT address record is refreshed so another application peer can dial that route. DCUtR remains enabled with relay fallback retained.
 
 ## Runtime safety
 

@@ -1576,7 +1576,6 @@ dependencies = [
  "libp2p-swarm",
  "libp2p-tcp",
  "libp2p-upnp",
- "libp2p-websocket",
  "libp2p-yamux",
  "multiaddr",
  "pin-project",
@@ -1659,6 +1658,8 @@ dependencies = [
 [[package]]
 name = "libp2p-dcutr"
 version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b4107305e12158af3e66960b6181789c547394c9c9a8696f721521602bfc73a"
 dependencies = [
  "asynchronous-codec",
  "either",
@@ -2019,8 +2020,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "libp2p-webrtc"
-version = "0.9.0-alpha.1"
+name = "p2p-net-webrtc"
+version = "0.1.0"
 dependencies = [
  "async-trait",
  "futures",
@@ -2427,16 +2428,28 @@ dependencies = [
  "hex",
  "libp2p",
  "libp2p-rendezvous",
- "libp2p-webrtc",
+ "libp2p-websocket",
+ "p2p-net-webrtc",
  "rand 0.8.6",
  "reqwest",
  "serde",
  "serde_json",
  "sha2",
+ "socket2 0.6.4",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
  "webrtc",
+]
+
+[[package]]
+name = "p2p-net-android-native"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "p2p-net",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

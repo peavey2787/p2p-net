@@ -27,7 +27,8 @@ fn operator_guides_are_present_and_link_examples() {
     assert!(overview.contains("PRODUCTION_FLEET.md"));
     assert!(consumer.contains("examples/consumer-default.config.json"));
     assert!(consumer.contains("Auto-connect is not auto-trust"));
-    assert!(consumer.contains("Public bootstrap peers help a node enter the wider routing layer"));
+    assert!(consumer
+        .contains("Public bootstrap peers are only the entry point into the wider routing layer"));
     assert!(private.contains("examples/private-infrastructure-first.config.json"));
     assert!(private.contains("public_bootstrap.mode` is `disabled"));
     assert!(public.contains("examples/consumer-default.config.json"));

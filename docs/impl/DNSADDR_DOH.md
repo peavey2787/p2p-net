@@ -25,7 +25,7 @@ DNS support remains enabled by default.
 - `/dnsaddr` uses a bounded DNS-over-HTTPS JSON TXT lookup path.
 - The default DoH endpoint is Cloudflare: `https://cloudflare-dns.com/dns-query`.
 - Lookup limits are enforced for timeout, recursion depth, record count, total resolved addresses, and TXT value size.
-- LAN multicast discovery/mDNS is intentionally not included.
+- Upstream mDNS remains excluded; same-LAN discovery is owned separately by `crates/connectivity/lan.rs` and uses a bounded compatibility-scoped UDP beacon protocol.
 
 This does **not** send the node identity private key. The DoH provider can observe the `_dnsaddr` names queried by the process, so it is still an operational dependency.
 
@@ -63,9 +63,9 @@ When disabled, configured `/dnsaddr` peer addresses fail validation with a clear
 
 ## Resolver consistency
 
-The configured `dnsaddr` policy is applied by the startup pre-resolver in `crates/connectivity/dns.rs`, which resolves configured and cached peers before dialing. WebSocket support in rust-libp2p 0.56 expects the `libp2p-dns` adapter crate, so p2p-net patches that adapter to a local no-Hickory implementation. The adapter resolves ordinary `/dns`, `/dns4`, and `/dns6` names through Tokio's OS resolver and rejects `/dnsaddr`; `/dnsaddr` is handled only by p2p-net's configurable pre-resolver. The disallowed upstream mDNS adapter is patched to a local no-op placeholder.
+The configured `dnsaddr` policy is applied in `crates/connectivity/dns.rs`, which resolves configured, cached, and caller-supplied manual peer addresses before they reach the libp2p transport. Ordinary `/dns`, `/dns4`, and `/dns6` names use Tokio's OS resolver; `/dnsaddr` uses only p2p-net's configurable bounded DoH path. The published crate intentionally leaves rust-libp2p's Hickory-backed DNS and mDNS features disabled, so downstream applications require no Cargo patch or hidden resolver dependency. The source workspace maps Cargo's resolution-only weak DNS/mDNS lock entries to audited no-Hickory placeholders through `.cargo/config.toml`.
 
-The crate enables libp2p's DNS feature only to satisfy rust-libp2p's WebSocket builder, but the crates.io DNS adapter is replaced with p2p-net's local no-Hickory adapter. `/dnsaddr` is not resolved inside that adapter. The tradeoff is explicit and documented: runtime-discovered `/dnsaddr` multiaddrs are only useful after they are stored and passed back through p2p-net's configured/cache resolution path, or after another discovery layer provides concrete `/ip4` or `/ip6` addresses.
+The WebSocket transport uses `libp2p-websocket` directly and wraps TCP with p2p-net's own `OsDnsTransport`; it does not enable or depend on `libp2p-dns`, and it does not enable the top-level `libp2p` `websocket` feature whose Tokio builder is coupled to `libp2p-dns`. That adapter resolves ordinary `/dns`, `/dns4`, and `/dns6` names with Tokio's OS resolver and deliberately rejects `/dnsaddr`, which remains owned by p2p-net's configurable bounded pre-resolver. Runtime-discovered `/dnsaddr` multiaddrs are therefore only useful after they are stored and passed back through p2p-net's configured/cache resolution path, or after another discovery layer provides concrete `/ip4` or `/ip6` addresses.
 
 This avoids a split-brain setup where startup resolution uses one resolver but transport-level dialing silently falls back to another.
 

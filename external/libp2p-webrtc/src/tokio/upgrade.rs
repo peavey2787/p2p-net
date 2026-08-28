@@ -77,7 +77,10 @@ impl Drop for MuxConnCleanup {
         let udp_mux = self.udp_mux.clone();
         drop(handle.spawn(async move {
             let cleanup = udp_mux.remove_conn_by_ufrag(&ufrag);
-            if tokio::time::timeout(CLEANUP_TIMEOUT, cleanup).await.is_err() {
+            if tokio::time::timeout(CLEANUP_TIMEOUT, cleanup)
+                .await
+                .is_err()
+            {
                 tracing::trace!("WebRTC mux cleanup timed out for ufrag={ufrag}");
             }
         }));
@@ -255,12 +258,7 @@ async fn inbound_inner(
 
     Ok((
         peer_id,
-        Connection::new(
-            peer_connection.take(),
-            udp_mux,
-            remote_ufrag.to_owned(),
-        )
-        .await,
+        Connection::new(peer_connection.take(), udp_mux, remote_ufrag.to_owned()).await,
     ))
 }
 

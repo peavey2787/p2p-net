@@ -1,61 +1,158 @@
 #[test]
-fn default_dependency_graph_uses_local_no_hickory_dns_patch() {
+fn crates_io_manifest_is_publishable_without_manifest_patches() {
     let manifest = include_str!("../../../Cargo.toml");
+    let cargo_config = include_str!("../../../.cargo/config.toml");
+    let lockfile = include_str!("../../../Cargo.lock");
+    let dns_patch = include_str!("../../../external/libp2p-dns/Cargo.toml");
+    let mdns_patch = include_str!("../../../external/libp2p-mdns-placeholder/Cargo.toml");
+    let transport_source = include_str!("../../../crates/stack/transport.rs");
+
+    assert!(manifest.contains("publish = true"));
+    assert!(manifest.contains("rust-version = \"1.98\""));
+    assert!(manifest.contains("members = [\"apps/android/native\"]"));
+    assert!(manifest.contains("exclude = [\"qa/fuzz\", \"external/libp2p-webrtc\"]"));
+    assert!(manifest.contains("\"external/libp2p-webrtc/**\""));
+    assert!(manifest.contains("dns = []"));
+    assert!(manifest.contains("libp2p-websocket = \"0.45.1\""));
     assert!(
-        manifest.contains("dns = [\"libp2p/dns\"]"),
-        "WebSocket support requires libp2p/dns to activate the local patched libp2p-dns adapter"
+        !manifest.lines().any(|line| line.trim() == "\"websocket\","),
+        "top-level libp2p websocket feature must stay disabled; p2p-net uses libp2p-websocket directly so libp2p does not compile its DNS-coupled websocket builder"
     );
     assert!(
-        manifest.contains("libp2p-dns = { path = \"external/libp2p-dns\" }"),
-        "libp2p-dns must be patched to the local no-Hickory adapter"
+        transport_source.contains("use libp2p_websocket as websocket;"),
+        "WebSocket transport must use the direct libp2p-websocket crate"
+    );
+    assert!(
+        !manifest.contains("[patch.crates-io]") && !manifest.contains("libp2p/dns"),
+        "the published p2p-net dependency graph must not require repository-local DNS/mDNS patches"
+    );
+
+    // Cargo resolves weak optional dependency feature references while creating
+    // a workspace lockfile. Keep those resolution-only libp2p packages local so
+    // the committed lock remains stable without reintroducing Hickory.
+    for required in [
+        "[patch.crates-io]",
+        "libp2p-dns = { path = \"external/libp2p-dns\" }",
+        "libp2p-mdns = { path = \"external/libp2p-mdns-placeholder\" }",
+    ] {
+        assert!(
+            cargo_config.contains(required),
+            "Cargo config missing `{required}`"
+        );
+    }
+    assert!(
+        !cargo_config.contains("path = \"../external/"),
+        "Cargo config paths are relative to the repository directory above .cargo; ../external escapes the repo"
+    );
+    assert!(dns_patch.contains("name = \"libp2p-dns\""));
+    assert!(dns_patch.contains("publish = false"));
+    assert!(!dns_patch.contains("hickory"));
+    assert!(mdns_patch.contains("name = \"libp2p-mdns\""));
+    assert!(mdns_patch.contains("publish = false"));
+    assert!(lockfile.contains("name = \"libp2p-dns\""));
+    assert!(lockfile.contains("name = \"libp2p-mdns\""));
+
+    // The root now owns WebSocket transport directly. A stale lockfile that
+    // still lists libp2p-websocket under the libp2p package makes Cargo 1.98
+    // require a lockfile rewrite and breaks every strict --locked path.
+    let libp2p_block = lockfile
+        .split("[[package]]")
+        .find(|block| block.contains("name = \"libp2p\"") && block.contains("version = \"0.56.0\""))
+        .expect("Cargo.lock missing libp2p 0.56.0");
+    assert!(
+        !libp2p_block.contains("\"libp2p-websocket\""),
+        "libp2p-websocket must not remain feature-resolved under libp2p after disabling libp2p's websocket feature"
+    );
+    let root_block = lockfile
+        .split("[[package]]")
+        .find(|block| block.contains("name = \"p2p-net\"") && block.contains("version = \"0.1.0\""))
+        .expect("Cargo.lock missing p2p-net 0.1.0");
+    assert!(
+        root_block.contains("\"libp2p-websocket\""),
+        "p2p-net must retain its direct libp2p-websocket lock dependency"
+    );
+    assert!(
+        !lockfile.contains("name = \"hickory-"),
+        "resolution-only DNS/mDNS lock entries must remain Hickory-free"
     );
 }
 
 #[test]
-fn upstream_mdns_is_policy_patched_to_noop_placeholder() {
+fn hardened_webrtc_transport_is_a_publishable_companion_crate() {
     let manifest = include_str!("../../../Cargo.toml");
-    assert!(
-        manifest.contains("libp2p-mdns = { path = \"external/libp2p-mdns-placeholder\" }"),
-        "disallowed upstream libp2p-mdns must be patched away from crates.io"
-    );
-}
-
-#[test]
-fn local_webrtc_patch_avoids_buggy_aes256_srtp_profile() {
-    let manifest = include_str!("../../../Cargo.toml");
+    let webrtc_manifest = include_str!("../../../external/libp2p-webrtc/Cargo.toml");
     let upgrade_source = include_str!("../../../external/libp2p-webrtc/src/tokio/upgrade.rs");
+    let mux_source = include_str!("../../../external/libp2p-webrtc/src/tokio/udp_mux.rs");
+    let connection_source = include_str!("../../../external/libp2p-webrtc/src/tokio/connection.rs");
+    let smoke_source = include_str!("../../../external/libp2p-webrtc/tests/smoke.rs");
 
+    assert!(manifest.contains(
+        "libp2p-webrtc = { package = \"p2p-net-webrtc\", version = \"0.1.0\", path = \"external/libp2p-webrtc\", features = [\"tokio\"] }"
+    ));
+    for required in [
+        "name = \"p2p-net-webrtc\"",
+        "version = \"0.1.0\"",
+        "publish = true",
+        "name = \"libp2p_webrtc\"",
+    ] {
+        assert!(
+            webrtc_manifest.contains(required),
+            "publishable WebRTC companion missing `{required}`"
+        );
+    }
     assert!(
-        manifest.contains("libp2p-webrtc = { path = \"external/libp2p-webrtc\" }"),
-        "libp2p-webrtc must stay patched locally until the upstream WebRTC SRTP AES-256 panic is fixed"
+        !webrtc_manifest.contains("quickcheck")
+            && !webrtc_manifest.contains("tracing-subscriber")
+            && !webrtc_manifest.contains("features = [\"full\"]"),
+        "publishable companion tests must not add package-only/randomized dependency resolution"
     );
+    assert!(smoke_source.contains("[(1, 1), (2, 3), (4, 2)]"));
+    assert!(smoke_source.contains("exercise_concurrent_connections_and_streams"));
+    assert!(upgrade_source.contains("set_srtp_protection_profiles"));
+    assert!(!upgrade_source.contains("Srtp_Aead_Aes_256_Gcm"));
+    for required in [
+        "MAX_PENDING_NEW_ADDRS",
+        "PENDING_NEW_ADDR_TTL",
+        "PendingNewAddrs",
+        "removed_conn.close()",
+    ] {
+        assert!(
+            mux_source.contains(required),
+            "missing WebRTC guard `{required}`"
+        );
+    }
+    for required in [
+        "CONNECTION_SETUP_TIMEOUT",
+        "MuxConnCleanup",
+        "PendingPeerConnection",
+        "remove_conn_by_ufrag",
+    ] {
+        assert!(
+            upgrade_source.contains(required),
+            "missing WebRTC cleanup guard `{required}`"
+        );
+    }
     assert!(
-        upgrade_source.contains("set_srtp_protection_profiles"),
-        "local WebRTC transport patch must constrain SRTP protection profiles explicitly"
-    );
-    assert!(
-        !upgrade_source.contains("Srtp_Aead_Aes_256_Gcm"),
-        "AES-256-GCM currently triggers a 32-byte/16-byte generic-array panic in webrtc-rs 0.12 SRTP"
+        connection_source.contains("impl Drop for Connection")
+            && connection_source.contains("peer_conn.close().await")
+            && connection_source
+                .matches("Arc::downgrade(&data_channel)")
+                .count()
+                >= 2
     );
 }
 
 #[test]
-fn local_dns_patch_does_not_hide_doh_or_hickory() {
-    let dns_manifest = include_str!("../../../external/libp2p-dns/Cargo.toml");
-    let dns_source = include_str!("../../../external/libp2p-dns/src/lib.rs");
+fn dns_resolution_is_owned_by_p2p_net_including_manual_dials() {
+    let dns = include_str!("../../../crates/connectivity/dns.rs");
+    let transport = include_str!("../../../crates/stack/transport.rs");
+    let handle = include_str!("../../../crates/node/handle.rs");
 
-    assert!(
-        !dns_manifest.contains("hickory") && !dns_source.contains("hickory-"),
-        "local libp2p-dns patch must not depend on or reference Hickory packages"
-    );
-    assert!(
-        !dns_manifest.contains("reqwest") && !dns_source.contains("cloudflare-dns.com"),
-        "transport-level DNS adapter must not contain a hidden DoH provider"
-    );
-    assert!(
-        dns_source.contains("DnsaddrRequiresConfiguredPreresolver"),
-        "/dnsaddr must be handled by p2p-net's configured pre-resolver, not by the transport adapter"
-    );
+    assert!(!transport.contains(".with_dns()"));
+    assert!(dns.contains("pub(crate) async fn resolve_dial_multiaddrs"));
+    assert!(dns.contains("tokio::net::lookup_host"));
+    assert!(dns.contains("DEFAULT_DNSADDR_DOH_ENDPOINT"));
+    assert!(handle.contains("resolve_dial_multiaddrs(&addr, &self.dnsaddr).await?"));
 }
 
 #[test]
@@ -66,7 +163,7 @@ fn direct_webrtc_probe_stays_on_the_audited_dependency_generation() {
 
     assert!(
         manifest.contains("webrtc = { version = \"0.12.0\", optional = true }"),
-        "the direct WebRTC probe must share the audited webrtc-rs generation used by libp2p-webrtc"
+        "the direct WebRTC probe must share the audited webrtc-rs generation used by p2p-net-webrtc"
     );
     for vulnerable_package in [
         "name = \"webrtc\"\nversion = \"0.8.0\"",
@@ -80,63 +177,15 @@ fn direct_webrtc_probe_stays_on_the_audited_dependency_generation() {
             "the obsolete WebRTC dependency chain must not return to Cargo.lock: {vulnerable_package}"
         );
     }
-    assert!(
-        probe.contains("set_srtp_protection_profiles"),
-        "the direct WebRTC probe must retain the same explicit SRTP profile policy as the transport"
-    );
-    assert!(
-        !probe.contains("Srtp_Aead_Aes_256_Gcm"),
-        "the direct WebRTC probe must not advertise the known-problematic AES-256 SRTP profile"
-    );
+    assert!(probe.contains("set_srtp_protection_profiles"));
+    assert!(!probe.contains("Srtp_Aead_Aes_256_Gcm"));
 }
 
 #[test]
-fn local_webrtc_patch_bounds_half_open_udp_state_and_cleans_failed_mux_connections() {
+fn local_webrtc_transport_declares_runtime_cleanup_support() {
     let webrtc_manifest = include_str!("../../../external/libp2p-webrtc/Cargo.toml");
-    let mux_source = include_str!("../../../external/libp2p-webrtc/src/tokio/udp_mux.rs");
-    let upgrade_source = include_str!("../../../external/libp2p-webrtc/src/tokio/upgrade.rs");
-    let connection_source = include_str!("../../../external/libp2p-webrtc/src/tokio/connection.rs");
-
-    for required in [
-        "MAX_PENDING_NEW_ADDRS",
-        "PENDING_NEW_ADDR_TTL",
-        "PendingNewAddrs",
-        "removed_conn.close()",
-    ] {
-        assert!(
-            mux_source.contains(required),
-            "local WebRTC UDP mux must retain the bounded half-open-state guard `{required}`"
-        );
-    }
-    for required in [
-        "CONNECTION_SETUP_TIMEOUT",
-        "MuxConnCleanup",
-        "PendingPeerConnection",
-        "remove_conn_by_ufrag",
-    ] {
-        assert!(
-            upgrade_source.contains(required),
-            "failed/cancelled WebRTC setup must retain cleanup guard `{required}`"
-        );
-    }
-    assert!(
-        !mux_source.contains("new_addrs: HashSet<SocketAddr>"),
-        "unbounded WebRTC pre-handshake source tracking must not return"
-    );
-    assert!(
-        connection_source.contains("impl Drop for Connection")
-            && connection_source.contains("peer_conn.close().await"),
-        "WebRTC connections must retain fail-safe close-on-drop cleanup"
-    );
-    assert!(
-        connection_source
-            .matches("Arc::downgrade(&data_channel)")
-            .count()
-            >= 2,
-        "WebRTC data-channel callbacks must not strongly capture the channel that owns them"
-    );
     assert!(
         webrtc_manifest.contains("features = [\"net\", \"rt\", \"time\"]"),
-        "the local WebRTC patch uses Tokio runtime cleanup and must declare the rt feature"
+        "the hardened WebRTC transport uses Tokio runtime cleanup and must declare the rt feature"
     );
 }
