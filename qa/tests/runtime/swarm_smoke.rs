@@ -143,23 +143,20 @@ async fn relayed_application_peer_stays_connected_beyond_old_idle_timeout() {
         .await
         .expect("both application peers should report the relayed connection");
 
-    let fallback_before = alice.snapshot.lock().await.dcutr_relay_fallbacks;
-    assert!(
-        fallback_before > 0,
-        "alice should be connected through relay fallback"
-    );
-
-    assert_connection_stays_up(&alice, bob.peer_id, &bob, alice.peer_id, STABILITY_WINDOW)
+    wait_for_active_relay_circuit(&relay)
         .await
-        .expect(
-            "relayed application connection should survive beyond the old 30-second idle timeout",
-        );
+        .expect("alice should be connected to bob through the local relay");
 
-    let fallback_after = alice.snapshot.lock().await.dcutr_relay_fallbacks;
-    assert_eq!(
-        fallback_after, fallback_before,
-        "stable relay connection must not disconnect and re-establish during the keepalive window"
-    );
+    assert_connection_stays_up(
+        &alice,
+        bob.peer_id,
+        &bob,
+        alice.peer_id,
+        &relay,
+        STABILITY_WINDOW,
+    )
+    .await
+    .expect("relayed application connection should survive beyond the old 30-second idle timeout");
 
     let alice_metrics = alice
         .get_metrics(None)
@@ -355,23 +352,39 @@ async fn wait_for_relay_reservation(relay: &NodeHandle, client: &NodeHandle) -> 
     ))
 }
 
+async fn wait_for_active_relay_circuit(relay: &NodeHandle) -> Result<(), String> {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        loop {
+            if relay.snapshot.lock().await.relay_active_circuits > 0 {
+                return Ok(());
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await
+    .map_err(|_| "timed out waiting for active relay circuit".to_string())?
+}
+
 async fn assert_connection_stays_up(
     first: &NodeHandle,
     first_peer: PeerId,
     second: &NodeHandle,
     second_peer: PeerId,
+    relay: &NodeHandle,
     duration: Duration,
 ) -> Result<(), String> {
     let deadline = tokio::time::Instant::now() + duration;
     while tokio::time::Instant::now() < deadline {
-        if !peer_connected(first, first_peer).await? || !peer_connected(second, second_peer).await?
-        {
+        let peers_connected =
+            peer_connected(first, first_peer).await? && peer_connected(second, second_peer).await?;
+        let relay_active = relay.snapshot.lock().await.relay_active_circuits > 0;
+        if !peers_connected || !relay_active {
             return Err(format!(
-                "application connection dropped before {}s keepalive window completed",
+                "relayed application connection dropped before {}s keepalive window completed",
                 duration.as_secs()
             ));
         }
-        tokio::time::sleep(Duration::from_millis(250)).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
     }
     Ok(())
 }
