@@ -89,10 +89,7 @@ async fn same_lan_nodes_auto_connect_without_manual_dial_within_60s() {
 async fn relayed_application_peer_stays_connected_beyond_old_idle_timeout() {
     const STABILITY_WINDOW: Duration = Duration::from_secs(50);
 
-    let mut relay_cfg = test_node_config("relay-keepalive-server");
-    relay_cfg.profile = NodeProfile::Relay;
-    relay_cfg.discovery.lan.enabled = false;
-    relay_cfg.listen_addresses = vec!["/ip4/127.0.0.1/tcp/0".to_string()];
+    let mut relay_cfg = relay_keepalive_node_config("relay-keepalive-server");
     relay_cfg.relay = RelayServiceConfig {
         enabled: true,
         max_circuit_duration_secs: 120,
@@ -108,9 +105,7 @@ async fn relayed_application_peer_stays_connected_beyond_old_idle_timeout() {
         .map(|addr| with_peer_id(addr, relay.peer_id))
         .expect("relay should expose a TCP listen address");
 
-    let mut bob_cfg = test_node_config("relay-keepalive-bob");
-    bob_cfg.profile = NodeProfile::Lite;
-    bob_cfg.discovery.lan.enabled = false;
+    let mut bob_cfg = relay_keepalive_node_config("relay-keepalive-bob");
     bob_cfg.relay_peers = vec![relay_addr.to_string()];
     bob_cfg.dcutr = DcutrPolicy {
         enabled: false,
@@ -120,7 +115,7 @@ async fn relayed_application_peer_stays_connected_beyond_old_idle_timeout() {
     let bob_key = bob_cfg.identity_key_path.clone();
     let bob_cache = bob_cfg.discovery.peer_cache_path.clone();
     let bob = start_node(bob_cfg).await.expect("start relayed bob node");
-    wait_for_relay_reservation(&bob)
+    wait_for_relay_reservation(&relay, &bob)
         .await
         .expect("bob should reserve the local relay");
 
@@ -128,9 +123,7 @@ async fn relayed_application_peer_stays_connected_beyond_old_idle_timeout() {
     let bob_relay_addr = relay_dial_addr_for_peer(&reservation_addr, bob.peer_id)
         .expect("relay reservation should produce a dialable target address");
 
-    let mut alice_cfg = test_node_config("relay-keepalive-alice");
-    alice_cfg.profile = NodeProfile::Lite;
-    alice_cfg.discovery.lan.enabled = false;
+    let mut alice_cfg = relay_keepalive_node_config("relay-keepalive-alice");
     alice_cfg.dcutr = DcutrPolicy {
         enabled: false,
         keep_relay_fallback: true,
@@ -291,6 +284,18 @@ fn test_node_config(prefix: &str) -> NodeConfig {
     }
 }
 
+fn relay_keepalive_node_config(prefix: &str) -> NodeConfig {
+    let mut cfg = test_node_config(prefix);
+    // Match the already-proven local relay harness used by the hostile relay
+    // tests: a Full-profile node with one deterministic TCP listener. The
+    // keepalive behaviour under test is profile-independent; this removes
+    // unrelated Lite-profile/listener variables from reservation setup.
+    cfg.profile = NodeProfile::Full;
+    cfg.discovery.lan.enabled = false;
+    cfg.listen_addresses = vec!["/ip4/127.0.0.1/tcp/0".to_string()];
+    cfg
+}
+
 async fn wait_for_tcp_listen_addr(handle: &NodeHandle) -> Option<Multiaddr> {
     tokio::time::timeout(Duration::from_secs(60), async {
         loop {
@@ -312,17 +317,43 @@ async fn wait_for_tcp_listen_addr(handle: &NodeHandle) -> Option<Multiaddr> {
     .flatten()
 }
 
-async fn wait_for_relay_reservation(handle: &NodeHandle) -> Result<(), String> {
-    tokio::time::timeout(Duration::from_secs(60), async {
+async fn wait_for_relay_reservation(
+    relay: &NodeHandle,
+    client: &NodeHandle,
+) -> Result<(), String> {
+    let result = tokio::time::timeout(Duration::from_secs(60), async {
         loop {
-            if handle.snapshot.lock().await.relay_client_reservations > 0 {
+            let relay_accepted = relay
+                .snapshot
+                .lock()
+                .await
+                .relay_reservations_accepted_total
+                > 0;
+            let client_reserved = client.snapshot.lock().await.relay_client_reservations > 0;
+            if relay_accepted && client_reserved {
                 return;
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
     })
-    .await
-    .map_err(|_| "timed out waiting for relay reservation".to_string())
+    .await;
+    if result.is_ok() {
+        return Ok(());
+    }
+
+    let relay_snapshot = relay.snapshot.lock().await.clone();
+    let client_snapshot = client.snapshot.lock().await.clone();
+    Err(format!(
+        "timed out waiting for relay reservation: server accepted_total={} denied={} errors={} client reservations={} attempts={} failures={} server_pulses={:?} client_pulses={:?}",
+        relay_snapshot.relay_reservations_accepted_total,
+        relay_snapshot.relay_denied_reservations,
+        relay_snapshot.relay_server_errors,
+        client_snapshot.relay_client_reservations,
+        client_snapshot.relay_client_reservation_attempts,
+        client_snapshot.relay_client_reservation_failures,
+        relay_snapshot.pulses,
+        client_snapshot.pulses,
+    ))
 }
 
 async fn assert_connection_stays_up(
