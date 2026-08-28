@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use libp2p::gossipsub::IdentTopic;
 use libp2p::identity::Keypair;
-use libp2p::{PeerId, Swarm};
+use libp2p::Swarm;
 use tokio::sync::Mutex;
 
 use crate::connectivity::dht::{
@@ -22,13 +22,14 @@ use super::RuntimeState;
 pub(super) async fn tick_runtime(
     cfg: &NodeConfig,
     swarm: &mut Swarm<MeshBehaviour>,
-    local_peer: PeerId,
     heartbeat_topic: &IdentTopic,
     application_namespaces: &[String],
     snapshot: &Arc<Mutex<NodeSnapshot>>,
     runtime_state: &mut RuntimeState,
     started_at: std::time::Instant,
 ) {
+    let local_peer = swarm.local_peer_id().to_owned();
+
     events::enforce_relay_schedule(&cfg.relay, swarm, snapshot, &mut runtime_state.relay_state)
         .await;
 

@@ -90,6 +90,15 @@ fn canonical_release_runners_verify_two_clean_builds() {
     );
 
     assert!(
+        windows.contains("dist\\windows"),
+        "Windows release output must be retained under dist/windows"
+    );
+    assert!(
+        linux.contains("DIST_DIR=\"$ROOT/dist/linux\""),
+        "Linux release output must be retained under dist/linux"
+    );
+
+    assert!(
         windows_validation.contains("Cargo.lock.format-backup")
             && windows_validation.contains("Post-format lockfile verification")
             && windows_validation.contains("Cargo.lock.audit-backup")

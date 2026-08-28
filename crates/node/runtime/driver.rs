@@ -111,7 +111,6 @@ pub(super) async fn run_node_runtime(ctx: NodeRuntimeContext) {
                 periodic::tick_runtime(
                     &cfg,
                     &mut swarm,
-                    local_peer,
                     &heartbeat_topic,
                     &application_namespaces,
                     &snapshot,

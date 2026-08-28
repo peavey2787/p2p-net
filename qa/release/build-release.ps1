@@ -458,7 +458,7 @@ try {
     }
     Write-Host "Reproducibility verified: both clean builds have identical SHA-256 digests."
 
-    $distDir = Join-Path $Root ("dist\" + $hostTarget)
+    $distDir = Join-Path $Root "dist\windows"
     $artifactName = "p2p_node-$version-$hostTarget.exe"
     if (Test-Path -LiteralPath $distDir) {
         Remove-Item -LiteralPath $distDir -Recurse -Force

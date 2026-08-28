@@ -335,7 +335,7 @@ fi
 
 echo "Reproducibility verified: both clean builds are byte-for-byte identical."
 
-DIST_DIR="$ROOT/dist/$HOST_TARGET"
+DIST_DIR="$ROOT/dist/linux"
 ARTIFACT_NAME="p2p_node-$VERSION-$HOST_TARGET"
 rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR"

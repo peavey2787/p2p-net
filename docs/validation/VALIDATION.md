@@ -102,7 +102,7 @@ Both runners:
 - build the production `p2p_node` example with `--release --locked --offline --features dashboard` in two separate clean target directories
 - disable incremental compilation and normalize source, target, Cargo-home, and Rustup-home paths through encoded rustflags
 - compare the two resulting binaries and fail closed on any SHA-256 mismatch
-- write the verified artifact, build manifest, source manifest, release-input manifest, validation evidence, and checksums to `dist/<target-triple>/`
+- write the verified artifact, build manifest, source manifest, release-input manifest, validation evidence, and checksums to `dist/windows/` on Windows or `dist/linux/` on Linux
 
 Windows imports the same Visual Studio Build Tools environment used by the validation preflight and requests MSVC `/Brepro` linking. Linux requests a deterministic SHA-1 ELF build ID. These runners prove repeatability across two independent clean source/build directories on the current host. Cross-host byte identity additionally depends on matching native linker, SDK, and system-library inputs, which are recorded operational requirements rather than silently assumed.
 
