@@ -1,6 +1,6 @@
 use super::keys::{
-    dht_record_replica_key, DHT_PROVIDER_ANCHOR_PREFIX_BYTES, MULTIHASH_SHA2_256_CODE,
-    SHA2_256_DIGEST_BYTES,
+    dht_provider_keys_for_generation, dht_record_replica_key, DHT_PROVIDER_ANCHOR_PREFIX_BYTES,
+    MULTIHASH_SHA2_256_CODE, SHA2_256_DIGEST_BYTES,
 };
 use super::*;
 use sha2::{Digest, Sha256};
@@ -74,7 +74,7 @@ fn public_provider_keys_share_a_bootstrap_anchor_prefix() {
         .rsplit_once("/p2p/")
         .expect("peer suffix");
     let anchor = anchor_text.parse::<PeerId>().expect("peer id");
-    let keys = dht_provider_keys("p2p-net/1/test/private", &config);
+    let keys = dht_provider_keys_for_generation("p2p-net/1/test/private", &config, 42);
     let target = Sha256::digest(anchor.to_bytes());
     let location = Sha256::digest(keys[0].1.to_vec());
 
@@ -82,4 +82,17 @@ fn public_provider_keys_share_a_bootstrap_anchor_prefix() {
         location[..DHT_PROVIDER_ANCHOR_PREFIX_BYTES],
         target[..DHT_PROVIDER_ANCHOR_PREFIX_BYTES]
     );
+}
+
+#[test]
+fn rolling_provider_keys_overlap_across_one_bucket_boundary() {
+    let config = DiscoveryConfig::default();
+    let old = dht_provider_keys_for_generation("p2p-net/1/test/private", &config, 41);
+    let new = dht_provider_keys_for_generation("p2p-net/1/test/private", &config, 42);
+
+    assert_eq!(old.len(), 3);
+    assert_eq!(new.len(), 3);
+    assert_eq!(old[0].1, new[0].1, "stable compatibility key");
+    assert_eq!(old[1].1, new[2].1, "old current is new previous");
+    assert_ne!(old[2].1, new[1].1);
 }

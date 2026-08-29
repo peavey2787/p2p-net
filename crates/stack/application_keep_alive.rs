@@ -31,7 +31,8 @@ pub struct ApplicationKeepAlive {
 #[derive(Default)]
 struct PeerRetention {
     verified: bool,
-    active: Option<ConnectionId>,
+    active_direct: Option<ConnectionId>,
+    active_relay: Option<ConnectionId>,
     connections: HashMap<ConnectionId, RetainedConnection>,
 }
 
@@ -50,7 +51,8 @@ impl ApplicationKeepAlive {
     pub fn release_peer(&mut self, peer: &PeerId) {
         if let Some(retention) = self.peers.get_mut(peer) {
             retention.verified = false;
-            retention.active = None;
+            retention.active_direct = None;
+            retention.active_relay = None;
             for connection in retention.connections.values() {
                 connection.keep_alive.store(false, Ordering::Release);
             }
@@ -82,27 +84,39 @@ impl ApplicationKeepAlive {
 
 fn select_retained_connection(retention: &mut PeerRetention) {
     if !retention.verified {
-        retention.active = None;
+        retention.active_direct = None;
+        retention.active_relay = None;
     } else {
-        let active_is_direct = retention.active.is_some_and(|connection_id| {
+        let active_direct_is_valid = retention.active_direct.is_some_and(|connection_id| {
             retention
                 .connections
                 .get(&connection_id)
                 .is_some_and(|connection| !connection.relayed)
         });
-        if !active_is_direct {
-            retention.active = retention
+        if !active_direct_is_valid {
+            retention.active_direct = retention
                 .connections
                 .iter()
-                .find_map(|(id, connection)| (!connection.relayed).then_some(*id))
-                .or_else(|| retention.connections.keys().next().copied());
+                .find_map(|(id, connection)| (!connection.relayed).then_some(*id));
+        }
+        let active_relay_is_valid = retention.active_relay.is_some_and(|connection_id| {
+            retention
+                .connections
+                .get(&connection_id)
+                .is_some_and(|connection| connection.relayed)
+        });
+        if !active_relay_is_valid {
+            retention.active_relay = retention
+                .connections
+                .iter()
+                .find_map(|(id, connection)| connection.relayed.then_some(*id));
         }
     }
 
     for (connection_id, connection) in &retention.connections {
-        connection
-            .keep_alive
-            .store(retention.active == Some(*connection_id), Ordering::Release);
+        let retained = retention.active_direct == Some(*connection_id)
+            || retention.active_relay == Some(*connection_id);
+        connection.keep_alive.store(retained, Ordering::Release);
     }
 }
 
@@ -145,8 +159,11 @@ impl NetworkBehaviour for ApplicationKeepAlive {
                 if event.remaining_established == 0 || retention.connections.is_empty() {
                     true
                 } else {
-                    if retention.active == Some(event.connection_id) {
-                        retention.active = None;
+                    if retention.active_direct == Some(event.connection_id) {
+                        retention.active_direct = None;
+                    }
+                    if retention.active_relay == Some(event.connection_id) {
+                        retention.active_relay = None;
                     }
                     select_retained_connection(retention);
                     false
@@ -268,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn direct_connection_replaces_relay_as_retained_route() {
+    fn direct_connection_keeps_relay_fallback_retained() {
         let peer = PeerId::random();
         let mut behaviour = ApplicationKeepAlive::default();
         let relay = behaviour.handler_for(peer, ConnectionId::new_unchecked(1), true);
@@ -277,7 +294,7 @@ mod tests {
 
         let direct = behaviour.handler_for(peer, ConnectionId::new_unchecked(2), false);
 
-        assert!(!relay.connection_keep_alive());
+        assert!(relay.connection_keep_alive());
         assert!(direct.connection_keep_alive());
     }
 }

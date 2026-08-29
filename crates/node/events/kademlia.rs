@@ -6,7 +6,9 @@ use crate::connectivity::relay::is_p2p_circuit_addr;
 
 use super::super::dial::{auto_dial_dht_provider, AutoDialOutcome};
 use super::SwarmEventContext;
-use crate::stack::{add_peer_address_to_discovery, allow_dcutr_peer, MeshBehaviour};
+use crate::stack::{
+    add_peer_address_to_discovery, allow_dcutr_peer, retain_application_peer, MeshBehaviour,
+};
 use libp2p::{Multiaddr, PeerId, Swarm};
 use std::collections::HashSet;
 
@@ -51,6 +53,8 @@ fn record_dht_provider_peers(
             // sufficient to promote that live connection immediately.
             ctx.peer_book.record_connected(*provider, None);
             ctx.relay_state.unverified_relayed_peers.remove(provider);
+            retain_application_peer(swarm, *provider);
+            swarm.behaviour_mut().gossipsub.add_explicit_peer(provider);
         }
         let has_known_addr = ctx
             .peer_book

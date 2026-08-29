@@ -30,7 +30,6 @@ pub use address_records::{
     publish_local_peer_address_records, publish_local_peer_address_records_with_addresses,
     DhtAddressPublishPlan,
 };
-use keys::dht_provider_keys;
 pub use keys::dht_record_key;
 pub use state::DhtProviderState;
 

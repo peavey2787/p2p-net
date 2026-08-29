@@ -29,7 +29,7 @@ pub struct DhtProviderState {
     pub(super) provider_announce_started_unix_secs: HashMap<String, u64>,
     pub(super) provider_query_started_unix_secs: HashMap<String, u64>,
     provider_addr_lookup_started_unix_secs: HashMap<PeerId, u64>,
-    provider_keys_by_namespace: HashMap<String, Vec<(String, kad::RecordKey)>>,
+    provider_keys_by_namespace: HashMap<String, (u64, Vec<(String, kad::RecordKey)>)>,
     start_providing_queries: HashMap<QueryId, String>,
     start_providing_query_keys: HashMap<QueryId, String>,
     get_provider_queries: HashMap<QueryId, String>,
@@ -48,10 +48,31 @@ impl DhtProviderState {
         namespace: &str,
         discovery_cfg: &DiscoveryConfig,
     ) -> Vec<(String, kad::RecordKey)> {
-        self.provider_keys_by_namespace
-            .entry(namespace.to_string())
-            .or_insert_with(|| dht_provider_keys(namespace, discovery_cfg))
-            .clone()
+        let generation = super::keys::dht_provider_key_generation(discovery_cfg);
+        if let Some((cached_generation, keys)) = self.provider_keys_by_namespace.get(namespace) {
+            if *cached_generation == generation {
+                return keys.clone();
+            }
+        }
+
+        let keys =
+            super::keys::dht_provider_keys_for_generation(namespace, discovery_cfg, generation);
+        if let Some((_, old_keys)) = self
+            .provider_keys_by_namespace
+            .insert(namespace.to_string(), (generation, keys.clone()))
+        {
+            let active = keys
+                .iter()
+                .map(|(tracking, _)| tracking)
+                .collect::<HashSet<_>>();
+            for (tracking, _) in old_keys {
+                if !active.contains(&tracking) {
+                    self.provider_announce_started_unix_secs.remove(&tracking);
+                    self.provider_query_started_unix_secs.remove(&tracking);
+                }
+            }
+        }
+        keys
     }
 
     pub(super) fn track_start_providing_for_key(

@@ -18,6 +18,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
+import org.json.JSONObject
 
 /**
  * Process-wide owner for the Rust node.
@@ -39,6 +40,21 @@ object NodeRepository {
     private val refreshRequested = AtomicBoolean(false)
     private val _state = MutableStateFlow(NodeUiState())
     val state: StateFlow<NodeUiState> = _state.asStateFlow()
+
+    /** Whether the persisted node config explicitly enables LAN discovery. */
+    fun isLanDiscoveryEnabled(context: Context): Boolean {
+        val config = context
+            .getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+            .getString(CONFIG_KEY, null)
+            ?: return false
+        return runCatching {
+            JSONObject(config)
+                .optJSONObject("discovery")
+                ?.optJSONObject("lan")
+                ?.optBoolean("enabled", false)
+                ?: false
+        }.getOrDefault(false)
+    }
 
     private var samplerJob: Job? = null
     private var lastPeerRefreshElapsed = 0L

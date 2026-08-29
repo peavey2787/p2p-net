@@ -30,7 +30,9 @@ class P2PNodeService : Service() {
         super.onCreate()
         createNotificationChannel()
         startNodeForeground()
-        acquireMulticastLock()
+        if (NodeRepository.isLanDiscoveryEnabled(applicationContext)) {
+            acquireMulticastLock()
+        }
         registerNetworkCallback()
     }
 

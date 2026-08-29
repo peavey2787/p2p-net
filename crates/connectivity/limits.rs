@@ -107,8 +107,8 @@ impl ConnectionLimitsConfig {
     }
 }
 
-/// Runtime helper for enforcing per-IP caps and reserving outbound application
-/// capacity that libp2p's built-in connection limits cannot classify.
+/// Runtime helper for enforcing per-IP caps and tracking outbound connections
+/// that can be released immediately before a high-priority application dial.
 #[derive(Debug, Clone, Default)]
 pub struct ConnectionCapState {
     max_established_per_ip: Option<u32>,
@@ -148,9 +148,13 @@ impl ConnectionCapState {
         self.record_established_with_priority(connection_id, peer_id, remote_addr, outgoing, false)
     }
 
-    /// Record a connection while preserving outbound capacity for verified or
-    /// discovery-qualified application peers. Public Kademlia infrastructure
-    /// remains fully enabled, but cannot consume the final application slots.
+    /// Record a connection and classify outbound application connections.
+    ///
+    /// This must not reject an already-established infrastructure connection
+    /// merely to keep speculative headroom. Kademlia still owns that connection
+    /// and will immediately redial it, creating an unbounded connect/close loop.
+    /// Callers instead use [`Self::outgoing_connections_to_release`] directly
+    /// before an application-peer dial needs capacity.
     pub fn record_established_with_priority(
         &mut self,
         connection_id: ConnectionId,
@@ -172,18 +176,7 @@ impl ConnectionCapState {
             self.max_established_per_ip
                 .is_some_and(|limit| *count > limit)
         });
-        let exceeds_infrastructure_cap = outgoing
-            && !application_peer
-            && self.max_established_outgoing.is_some_and(|limit| {
-                let application_count = self.application_outgoing_connections.len();
-                let infrastructure_count = self
-                    .outgoing_by_connection
-                    .len()
-                    .saturating_sub(application_count);
-                infrastructure_count > infrastructure_outgoing_limit(limit)
-            });
-
-        if exceeds_ip_cap || exceeds_infrastructure_cap {
+        if exceeds_ip_cap {
             self.cap_disconnects = self.cap_disconnects.saturating_add(1);
             return true;
         }
@@ -225,15 +218,6 @@ impl ConnectionCapState {
     }
 }
 
-const APPLICATION_OUTBOUND_HEADROOM: u32 = 8;
-
-fn infrastructure_outgoing_limit(configured_limit: u32) -> usize {
-    let reserved = configured_limit
-        .saturating_sub(1)
-        .min(APPLICATION_OUTBOUND_HEADROOM);
-    usize::try_from(configured_limit.saturating_sub(reserved)).unwrap_or(usize::MAX)
-}
-
 pub fn multiaddr_ip_key(addr: &Multiaddr) -> Option<String> {
     addr.iter().find_map(|protocol| match protocol {
         Protocol::Ip4(ip) => Some(ip.to_string()),
@@ -254,16 +238,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn public_infrastructure_cannot_consume_reserved_application_slots() {
+    fn infrastructure_is_released_only_when_an_application_dial_needs_headroom() {
         let cfg = ConnectionLimitsConfig {
-            max_established_outgoing: Some(10),
+            max_established_outgoing: Some(3),
             max_established_per_ip: None,
             ..ConnectionLimitsConfig::default()
         };
         let mut caps = ConnectionCapState::new(&cfg);
         let addr: Multiaddr = "/ip4/8.8.8.8/tcp/4001".parse().unwrap();
 
-        for id in 0..2 {
+        for id in 0..3 {
             assert!(!caps.record_established_with_priority(
                 ConnectionId::new_unchecked(id),
                 PeerId::random(),
@@ -272,20 +256,7 @@ mod tests {
                 false,
             ));
         }
-        assert!(caps.record_established_with_priority(
-            ConnectionId::new_unchecked(2),
-            PeerId::random(),
-            &addr,
-            true,
-            false,
-        ));
-        assert!(!caps.record_established_with_priority(
-            ConnectionId::new_unchecked(3),
-            PeerId::random(),
-            &addr,
-            true,
-            true,
-        ));
+        assert_eq!(caps.outgoing_connections_to_release(1), 1);
     }
 
     #[test]
@@ -306,18 +277,20 @@ mod tests {
             true,
             false,
         ));
-        assert!(caps.record_established_with_priority(
+        assert!(!caps.record_established_with_priority(
             ConnectionId::new_unchecked(2),
             PeerId::random(),
             &addr,
             true,
             false,
         ));
+        assert_eq!(caps.outgoing_connections_to_release(1), 1);
 
-        // The runtime closes a rejected established connection and removes it
-        // when libp2p emits ConnectionClosed.
+        // Closing tracked connections restores the corresponding headroom.
         caps.record_closed(ConnectionId::new_unchecked(2));
         caps.record_closed(first);
+
+        assert_eq!(caps.outgoing_connections_to_release(1), 0);
 
         assert!(!caps.record_established_with_priority(
             ConnectionId::new_unchecked(3),

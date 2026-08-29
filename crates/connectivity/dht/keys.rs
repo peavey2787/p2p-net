@@ -1,12 +1,14 @@
 use libp2p::kad;
 use libp2p::PeerId;
 use sha2::{Digest, Sha256};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::connectivity::discovery::DiscoveryConfig;
 
 pub(super) const DHT_PROVIDER_ANCHOR_PREFIX_BYTES: usize = 2;
 const DHT_PROVIDER_ANCHOR_MAX_ATTEMPTS: u32 = 1 << 20;
 const DHT_PROVIDER_ANCHOR_CONTEXT: &str = "p2p-net.dht.provider.anchor.v1";
+pub(super) const DHT_PROVIDER_ACTIVE_BUCKET_SECS: u64 = 120;
 const DHT_PEER_ADDRESS_RECORD_CONTEXT: &str = "p2p-net.dht.peer-address.v1";
 pub(super) const MULTIHASH_SHA2_256_CODE: u8 = 0x12;
 pub(super) const SHA2_256_DIGEST_BYTES: u8 = 32;
@@ -35,17 +37,21 @@ pub(super) fn dht_record_replica_key(namespace: &str, replica: u8) -> kad::Recor
     }
 }
 
-fn dht_record_replica_tracking_key(namespace: &str, replica: u8) -> String {
-    if replica == 0 {
-        namespace.to_string()
-    } else {
-        format!("{namespace}:provider-replica:{replica}")
+pub(super) fn dht_provider_key_generation(discovery_cfg: &DiscoveryConfig) -> u64 {
+    if discovery_cfg.dht.provider_key_replicas == 1 {
+        return 0;
     }
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        / DHT_PROVIDER_ACTIVE_BUCKET_SECS
 }
 
-pub(super) fn dht_provider_keys(
+pub(super) fn dht_provider_keys_for_generation(
     namespace: &str,
     discovery_cfg: &DiscoveryConfig,
+    generation: u64,
 ) -> Vec<(String, kad::RecordKey)> {
     let public_anchors = if discovery_cfg.public_bootstrap.mode.is_enabled() {
         discovery_cfg
@@ -56,34 +62,46 @@ pub(super) fn dht_provider_keys(
                 addr.rsplit_once("/p2p/")
                     .and_then(|(_, peer)| peer.parse::<PeerId>().ok())
             })
-            .take(discovery_cfg.dht.provider_key_replicas)
+            .take(2)
             .collect::<Vec<_>>()
     } else {
         Vec::new()
     };
 
-    if !public_anchors.is_empty() {
-        return public_anchors
-            .into_iter()
-            .enumerate()
-            .map(|(replica, anchor)| {
-                (
-                    format!("{namespace}:provider-anchor:{replica}"),
-                    anchored_provider_key(namespace, &anchor, replica as u8),
-                )
-            })
-            .collect();
+    let replicas = discovery_cfg.dht.provider_key_replicas;
+    let stable = || {
+        let key = public_anchors.first().map_or_else(
+            || dht_record_replica_key(namespace, 0),
+            |anchor| anchored_provider_key(namespace, anchor, 0),
+        );
+        (format!("{namespace}:provider-anchor:0"), key)
+    };
+    if replicas == 1 {
+        return vec![stable()];
     }
 
-    (0..discovery_cfg.dht.provider_key_replicas)
-        .map(|replica| {
-            let replica = u8::try_from(replica).expect("validated provider key replica count");
-            (
-                dht_record_replica_tracking_key(namespace, replica),
-                dht_record_replica_key(namespace, replica),
-            )
-        })
-        .collect()
+    // Keep every replica in the routing region of the first bootstrap anchor.
+    // That anchor is the compatibility path proven reachable by the stable
+    // provider key. Placing freshness replicas near a different seed made a
+    // partial seed outage hide all current providers while stale providers on
+    // the stable key continued to resolve.
+    let rolling_anchor = public_anchors.first();
+    let rolling = |bucket: u64| {
+        let material = format!("{namespace}/active-provider-bucket/{bucket}");
+        let key = rolling_anchor.map_or_else(
+            || dht_record_replica_key(&material, 1),
+            |anchor| anchored_provider_key(&material, anchor, 1),
+        );
+        (format!("{namespace}:provider-active:{bucket}"), key)
+    };
+    let current = rolling(generation);
+    let previous = rolling(generation.saturating_sub(1));
+
+    if replicas == 2 {
+        vec![current, previous]
+    } else {
+        vec![stable(), current, previous]
+    }
 }
 
 fn anchored_provider_key(namespace: &str, anchor: &PeerId, replica: u8) -> kad::RecordKey {

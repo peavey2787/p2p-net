@@ -10,9 +10,7 @@ use tokio::sync::{broadcast, Mutex};
 use crate::api::{AppMessage, NodeMetrics, PeerSource};
 use crate::connectivity::connection_strategy::PendingConnectionPlans;
 use crate::connectivity::dcutr::DcutrPolicy;
-use crate::connectivity::dht::{
-    publish_local_peer_address_records, start_dht_namespace_discovery_immediate, DhtProviderState,
-};
+use crate::connectivity::dht::{publish_local_peer_address_records, DhtProviderState};
 use crate::connectivity::discovery::DiscoveryConfig;
 use crate::connectivity::limits::ConnectionCapState;
 use crate::connectivity::peer_book::PeerBook;
@@ -345,13 +343,10 @@ pub(crate) async fn handle_swarm_event(
                 .await;
         }
         SwarmEvent::ExternalAddrConfirmed { address } => {
-            let dht_plan = start_dht_namespace_discovery_immediate(
-                swarm,
-                ctx.network_id,
-                ctx.discovery_cfg,
-                ctx.rendezvous_peers.len(),
-                ctx.dht_state,
-            );
+            // External address observations are especially noisy behind VPNs
+            // and endpoint-dependent NAT. Publish the bounded signed address
+            // record immediately so newly confirmed relay routes are dialable,
+            // but do not launch a provider announce/query for every port.
             let address_plan = publish_local_peer_address_records(
                 swarm,
                 ctx.local_key,
@@ -361,13 +356,12 @@ pub(crate) async fn handle_swarm_event(
             );
             ctx.observability.dht_dirty();
             ctx.observability.pulse(format!(
-                "external address confirmed {address}; refreshed app discovery provider_announces={} address_records={}",
-                dht_plan.announce_attempts,
+                "external address confirmed {address}; signed address records published={}",
                 address_plan.attempted_records
             ));
-            for err in dht_plan.errors.into_iter().chain(address_plan.errors) {
+            for err in address_plan.errors {
                 ctx.observability
-                    .pulse(format!("external address discovery refresh error: {err}"));
+                    .pulse(format!("dht signed peer address publish error: {err}"));
             }
         }
         SwarmEvent::NewListenAddr { address, .. } => {
