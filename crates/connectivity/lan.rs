@@ -39,7 +39,7 @@ pub struct LanDiscoveryConfig {
 impl Default for LanDiscoveryConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
+            enabled: false,
             port: 44_777,
             announce_interval_secs: 2,
         }

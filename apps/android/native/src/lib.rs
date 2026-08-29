@@ -752,7 +752,9 @@ mod tests {
 
     #[test]
     fn default_android_config_is_full_profile() {
-        assert_eq!(full_node_default_config().profile, NodeProfile::Full);
+        let config = full_node_default_config();
+        assert_eq!(config.profile, NodeProfile::Full);
+        assert!(!config.discovery.lan.enabled);
     }
 
     #[test]
