@@ -13,7 +13,7 @@ use crate::connectivity::dht::{
 };
 use crate::connectivity::peer_book::PeerBook;
 use crate::protocol::pulse::{collect_local_heartbeat, encode_heartbeat_wire};
-use crate::stack::{add_external_address_candidate, MeshBehaviour};
+use crate::stack::{add_external_address_candidate, retain_application_peer, MeshBehaviour};
 
 use super::config::NodeConfig;
 use super::public_ip::PublicIpProbeResult;
@@ -39,6 +39,7 @@ pub(crate) fn refresh_application_keepalive_peers(
         .filter(|peer| peer_book.has_application_namespace(peer, application_namespaces))
         .collect::<Vec<_>>();
     for peer in &peers {
+        retain_application_peer(swarm, *peer);
         swarm.behaviour_mut().gossipsub.add_explicit_peer(peer);
     }
     peers.len()

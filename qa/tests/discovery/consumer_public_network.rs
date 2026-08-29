@@ -71,10 +71,11 @@ fn cross_machine_live_probe_uses_true_default_network_and_namespace() {
         !source.contains("P2P_LIVE_PROBE_NONCE"),
         "cross-machine validation must not require a shared custom discovery nonce",
     );
-    assert!(
-        !source.contains("discovery.namespace.tags ="),
-        "cross-machine validation must use the production default discovery namespace",
-    );
+    assert!(source.contains("P2P_LIVE_PROBE_TAG"));
+    assert!(source.contains("snapshot.application_peer_connections >= expected_peers"));
+    assert!(source.contains(
+        "cfg.discovery.namespace,\n            NodeConfig::default().discovery.namespace"
+    ));
     assert!(
         !source.contains("connect_peer("),
         "cross-machine validation must not manually inject peer addresses",

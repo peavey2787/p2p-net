@@ -3,7 +3,7 @@ use libp2p::{PeerId, Swarm};
 
 use crate::api::{accounted_transport_bytes, PeerSource};
 use crate::protocol::pulse::{validate_heartbeat_wire, HeartbeatValidationDecision};
-use crate::stack::MeshBehaviour;
+use crate::stack::{retain_application_peer, MeshBehaviour};
 
 use super::SwarmEventContext;
 
@@ -60,6 +60,7 @@ pub(crate) fn handle_heartbeat_message(
                 record_heartbeat_peer(author, ctx);
                 let author_connected = swarm.connected_peers().any(|peer| peer == &author);
                 if author_connected {
+                    retain_application_peer(swarm, author);
                     swarm.behaviour_mut().gossipsub.add_explicit_peer(&author);
                 }
             }

@@ -7,7 +7,10 @@ use crate::connectivity::relay::{relay_peer_id, relay_reservation_addr, RelaySta
 use crate::connectivity::relay_discovery::{
     relay_candidate_addr, supported_relay_addr_score, RelayCandidateSource,
 };
-use crate::stack::{add_external_address_candidate, add_peer_address_to_discovery, MeshBehaviour};
+use crate::stack::{
+    add_external_address_candidate, add_peer_address_to_discovery, retain_application_peer,
+    MeshBehaviour,
+};
 
 use super::super::super::push_pulse;
 use super::super::{sync_swarm_connection_snapshot, SwarmEventContext};
@@ -37,6 +40,7 @@ pub(crate) async fn handle_identify_observed_addr(
         }
         ctx.peer_book.record_connected(*peer_id, None);
         ctx.relay_state.unverified_relayed_peers.remove(peer_id);
+        retain_application_peer(swarm, *peer_id);
         swarm.behaviour_mut().gossipsub.add_explicit_peer(peer_id);
         crate::stack::allow_dcutr_peer(swarm, *peer_id);
     }

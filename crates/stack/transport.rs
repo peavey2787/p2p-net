@@ -13,9 +13,9 @@ use crate::common::error::NetError;
 use crate::connectivity::webrtc::WEBRTC_DIRECT_TRANSPORT;
 use crate::{NodeConfig, ResolvedNodeConfig};
 
-// Ping intentionally does not keep rust-libp2p swarm connections alive. Application
-// heartbeats are the keepalive signal for compatible peers, so keep the swarm idle
-// window above the 30-second application heartbeat cadence with a 15-second margin.
+// Ping intentionally does not keep rust-libp2p swarm connections alive. The
+// application-keep-alive behaviour retains verified app peers while unrelated
+// public infrastructure remains subject to this short idle window.
 const SWARM_IDLE_CONNECTION_TIMEOUT_SECS: u64 = 45;
 
 fn swarm_idle_connection_timeout() -> Duration {

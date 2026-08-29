@@ -21,7 +21,7 @@ use crate::connectivity::limits::ConnectionLimitsConfig;
 use crate::connectivity::relay::{RelayAccess, RelayServiceConfig};
 use crate::ResolvedNodeConfig;
 
-use super::{DcutrBehaviour, ExternalAddressCandidates};
+use super::{ApplicationKeepAlive, DcutrBehaviour, ExternalAddressCandidates};
 
 const KADEMLIA_QUERY_TIMEOUT: Duration = Duration::from_secs(20);
 
@@ -29,6 +29,7 @@ const KADEMLIA_QUERY_TIMEOUT: Duration = Duration::from_secs(20);
 #[behaviour(to_swarm = "MeshEvent")]
 pub struct MeshBehaviour {
     pub connection_limits: connection_limits::Behaviour,
+    pub application_keep_alive: ApplicationKeepAlive,
     pub relay_acl_blocked: Toggle<allow_block_list::Behaviour<BlockedPeers>>,
     pub relay_acl_allowed: Toggle<allow_block_list::Behaviour<AllowedPeers>>,
     pub gossipsub: gossipsub::Behaviour,
@@ -253,6 +254,7 @@ pub fn build_behaviour(ctx: BehaviourBuildContext<'_>) -> MeshBehaviour {
 
     MeshBehaviour {
         connection_limits,
+        application_keep_alive: ApplicationKeepAlive::default(),
         relay_acl_blocked,
         relay_acl_allowed,
         gossipsub,

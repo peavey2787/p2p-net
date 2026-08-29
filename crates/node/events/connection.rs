@@ -7,7 +7,8 @@ use crate::api::PeerSource;
 use crate::connectivity::addr::{has_reachable_transport, is_local_direct_addr};
 use crate::connectivity::relay::{relay_peer_id, update_nat_state, RelayServiceHealth};
 use crate::stack::{
-    add_external_address_candidate, add_hole_punch_candidate, refresh_rendezvous, MeshBehaviour,
+    add_external_address_candidate, add_hole_punch_candidate, refresh_rendezvous,
+    retain_application_peer, MeshBehaviour,
 };
 
 use super::super::push_pulse;
@@ -64,9 +65,14 @@ pub(crate) async fn handle_connection_established(
         return;
     }
 
-    let over_ip_cap =
-        ctx.connection_caps
-            .record_established(connection_id, peer_id, &remote_addr, outgoing);
+    let track_as_application_peer = should_track_peer_in_peer_book(peer_id, ctx);
+    let over_ip_cap = ctx.connection_caps.record_established_with_priority(
+        connection_id,
+        peer_id,
+        &remote_addr,
+        outgoing,
+        track_as_application_peer,
+    );
     if over_ip_cap {
         let _ = swarm.close_connection(connection_id);
         ctx.metrics
@@ -84,7 +90,6 @@ pub(crate) async fn handle_connection_established(
         return;
     }
 
-    let track_as_application_peer = should_track_peer_in_peer_book(peer_id, ctx);
     let mut evicted_unverified_peer = None;
     if relayed_endpoint && !track_as_application_peer {
         if !ctx
@@ -120,6 +125,7 @@ pub(crate) async fn handle_connection_established(
     }
 
     if track_as_application_peer {
+        retain_application_peer(swarm, peer_id);
         swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
         ctx.peer_cache_writes
             .record_seen(peer_id, remote_addr.clone());

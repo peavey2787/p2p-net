@@ -1,10 +1,14 @@
 //! Cross-machine public-network probe for one isolated p2p-net instance.
 //!
 //! Run one copy on each machine with a different `P2P_LIVE_PROBE_ROLE`. Each
-//! process has 60 seconds to discover and connect to the other through the
-//! normal production planner. Network ID and discovery namespace stay at the
-//! exact production defaults; only local identity/cache paths and listen ports
-//! are isolated so concurrent probe processes cannot collide.
+//! process has 60 seconds to discover and connect to the requested number of
+//! application peers through the normal production planner. Set
+//! `P2P_LIVE_PROBE_EXPECT_PEERS=2` for a three-node stability run. Network ID
+//! and discovery namespace stay at the exact production defaults unless
+//! `P2P_LIVE_PROBE_TAG` supplies a shared private test tag. Only local
+//! identity/cache paths and listen ports are isolated so concurrent probe
+//! processes cannot collide. Set `P2P_LIVE_PROBE_DISABLE_LAN=1` when the run
+//! must prove public discovery and relay/direct connectivity without LAN help.
 
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
@@ -12,7 +16,10 @@ use std::time::{Duration, Instant};
 use p2p_net::{start_node, NodeConfig, NodeProfile};
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(60);
-const HOLD_SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
+// One node can satisfy the discovery gate almost a full timeout before another.
+// Keep successful nodes alive long enough for the slowest node to complete its
+// own hold window without manufacturing a test-only disconnect.
+const HOLD_SHUTDOWN_GRACE: Duration = Duration::from_secs(70);
 
 macro_rules! probe_log {
     ($($arg:tt)*) => {{
@@ -25,10 +32,16 @@ macro_rules! probe_log {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let role = required_env("P2P_LIVE_PROBE_ROLE")?;
+    let expected_peers = expected_peer_count()?;
     let nonce = std::process::id();
     let cfg = probe_config(&role, nonce);
     assert_eq!(cfg.network_id, NodeConfig::default().network_id);
-    assert!(cfg.discovery.namespace.tags.is_empty());
+    if std::env::var_os("P2P_LIVE_PROBE_TAG").is_none() {
+        assert_eq!(
+            cfg.discovery.namespace,
+            NodeConfig::default().discovery.namespace
+        );
+    }
     let network_id = cfg.network_id;
     let node = start_node(cfg.clone()).await?;
 
@@ -47,15 +60,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tokio::time::sleep((started + PROBE_TIMEOUT - now).min(Duration::from_secs(5))).await;
         print_new_pulses(&role, &node, &mut seen_pulses).await;
         let snapshot = node.snapshot.lock().await.clone();
-        let application_peers = node
-            .get_peers()
-            .await?
-            .into_iter()
-            .filter(|peer| peer.connected && peer.namespace.is_some())
-            .count();
+        let application_peers = connected_application_peers(&node).await?;
         probe_log!(
-            "role={role} elapsed={}s application_peers={} app_swarm={} all_swarm={} peer_book={} dht_announced={} dht_queries={}/{} dht_peers={} auto_dials={} relay_reservations={}/{} dcutr_eligible={} dcutr_successes={} last_app_dial_error={:?}",
+            "role={role} elapsed={}s application_peers={}/{} app_peer_ids={:?} app_swarm={} all_swarm={} peer_book={} dht_announced={} dht_queries={}/{} dht_peers={} auto_dials={} relay_reservations={}/{} dcutr_eligible={} dcutr_successes={} last_app_dial_error={:?}",
             started.elapsed().as_secs(),
+            application_peers.len(),
+            expected_peers,
             application_peers,
             snapshot.application_peer_connections,
             snapshot.all_swarm_connections,
@@ -71,7 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             snapshot.dcutr_successes,
             snapshot.last_application_dial_error,
         );
-        if application_peers > 0 {
+        if snapshot.application_peer_connections >= expected_peers {
             break true;
         }
     };
@@ -79,9 +89,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !connected {
         node.shutdown().await;
         cleanup(&cfg);
-        return Err(
-            "single live node did not connect to an application peer before timeout".into(),
-        );
+        return Err(format!(
+            "single live node did not connect to {expected_peers} application peer(s) before timeout"
+        )
+        .into());
     }
 
     let held_connection = if let Some(hold) = hold_duration() {
@@ -95,16 +106,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .max(Duration::from_secs(1)),
             )
             .await;
+            print_new_pulses(&role, &node, &mut seen_pulses).await;
             let snapshot = node.snapshot.lock().await.clone();
-            let application_peers = node
-                .get_peers()
-                .await?
-                .into_iter()
-                .filter(|peer| peer.connected && peer.namespace.is_some())
-                .count();
+            let application_peers = connected_application_peers(&node).await?;
             probe_log!(
-                "role={role} hold_elapsed={}s application_peers={} app_swarm={} all_swarm={} peer_book={} auto_dials={} dcutr_eligible={} dcutr_successes={}",
+                "role={role} hold_elapsed={}s application_peers={}/{} app_peer_ids={:?} app_swarm={} all_swarm={} peer_book={} auto_dials={} dcutr_eligible={} dcutr_successes={}",
                 hold_started.elapsed().as_secs(),
+                application_peers.len(),
+                expected_peers,
                 application_peers,
                 snapshot.application_peer_connections,
                 snapshot.all_swarm_connections,
@@ -113,15 +122,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 snapshot.dcutr_upgrade_eligible_connections,
                 snapshot.dcutr_successes,
             );
-            if application_peers == 0 {
+            if snapshot.application_peer_connections < expected_peers {
                 let disconnected_at = disconnected_since.get_or_insert_with(Instant::now);
                 if disconnected_at.elapsed() >= PROBE_TIMEOUT {
                     node.shutdown().await;
                     cleanup(&cfg);
-                    return Err(
-                        "application peer was not restored within the 60-second reconnect window"
-                            .into(),
-                    );
+                    return Err(format!(
+                        "expected {expected_peers} application peers were not restored within the 60-second reconnect window"
+                    )
+                    .into());
                 }
             } else if let Some(disconnected_at) = disconnected_since.take() {
                 probe_log!(
@@ -135,16 +144,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         false
     };
 
-    // Both cross-machine processes normally reach their hold deadline within
-    // one polling interval of each other. Keep the completed side alive long
-    // enough for the other side to record its own final successful sample.
+    // Keep an early-finishing side alive through the maximum discovery skew so
+    // every other node can record its own final successful sample.
     if held_connection {
         tokio::time::sleep(HOLD_SHUTDOWN_GRACE).await;
     }
 
     node.shutdown().await;
     cleanup(&cfg);
-    probe_log!("LIVE_SINGLE_NODE_RESULT=connected role={role}");
+    probe_log!("LIVE_SINGLE_NODE_RESULT=connected role={role} expected_peers={expected_peers}");
     Ok(())
 }
 
@@ -154,7 +162,7 @@ fn probe_config(role: &str, nonce: u32) -> NodeConfig {
     let transport_port = 47_000u16.saturating_add((role_hash % 500) as u16);
     let mut cfg = NodeConfig {
         profile: NodeProfile::Full,
-        heartbeat_interval_secs: 5,
+        heartbeat_interval_secs: heartbeat_interval_secs(),
         identity_key_path: temp
             .join(format!("p2p-net-live-{role}-{nonce}.identity"))
             .to_string_lossy()
@@ -170,6 +178,15 @@ fn probe_config(role: &str, nonce: u32) -> NodeConfig {
         ],
         ..NodeConfig::default()
     };
+    if let Ok(tag) = std::env::var("P2P_LIVE_PROBE_TAG") {
+        let tag = tag.trim();
+        if !tag.is_empty() {
+            cfg.discovery.namespace.tags = vec![tag.to_string()];
+        }
+    }
+    if env_flag("P2P_LIVE_PROBE_DISABLE_LAN") {
+        cfg.discovery.lan.enabled = false;
+    }
     cfg.discovery.peer_cache_path = temp
         .join(format!("p2p-net-live-{role}-{nonce}.peers.json"))
         .to_string_lossy()
@@ -192,6 +209,44 @@ fn hold_duration() -> Option<Duration> {
         .and_then(|raw| raw.parse::<u64>().ok())
         .filter(|seconds| *seconds > 0)
         .map(Duration::from_secs)
+}
+
+fn heartbeat_interval_secs() -> u64 {
+    std::env::var("P2P_LIVE_PROBE_HEARTBEAT_SECS")
+        .ok()
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .filter(|seconds| *seconds > 0)
+        .unwrap_or(5)
+}
+
+fn env_flag(name: &str) -> bool {
+    std::env::var(name)
+        .ok()
+        .is_some_and(|value| matches!(value.trim(), "1" | "true" | "TRUE" | "yes" | "YES"))
+}
+
+fn expected_peer_count() -> Result<usize, Box<dyn std::error::Error>> {
+    let count = std::env::var("P2P_LIVE_PROBE_EXPECT_PEERS")
+        .unwrap_or_else(|_| "1".to_string())
+        .parse::<usize>()?;
+    if count == 0 {
+        return Err("P2P_LIVE_PROBE_EXPECT_PEERS must be at least 1".into());
+    }
+    Ok(count)
+}
+
+async fn connected_application_peers(
+    node: &p2p_net::NodeHandle,
+) -> Result<Vec<String>, p2p_net::NetError> {
+    let mut peers = node
+        .get_peers()
+        .await?
+        .into_iter()
+        .filter(|peer| peer.connected && peer.namespace.is_some())
+        .map(|peer| peer.peer_id)
+        .collect::<Vec<_>>();
+    peers.sort();
+    Ok(peers)
 }
 
 fn cleanup(cfg: &NodeConfig) {
