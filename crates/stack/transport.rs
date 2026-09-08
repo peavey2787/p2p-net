@@ -9,6 +9,7 @@ use libp2p_websocket as websocket;
 
 use super::behaviour::{build_behaviour, BehaviourBuildContext, MeshBehaviour};
 use super::dns_transport::OsDnsTransport;
+use super::quic_transport::DcutrQuicTransport;
 use crate::common::error::NetError;
 use crate::connectivity::webrtc::WEBRTC_DIRECT_TRANSPORT;
 use crate::{NodeConfig, ResolvedNodeConfig};
@@ -43,7 +44,12 @@ pub async fn build_swarm(
             yamux::Config::default,
         )
         .map_err(|e| NetError::Build(e.to_string()))?
-        .with_quic()
+        .with_other_transport(|key| {
+            DcutrQuicTransport(libp2p::quic::tokio::Transport::new(
+                libp2p::quic::Config::new(key),
+            ))
+        })
+        .map_err(|e| NetError::Build(e.to_string()))?
         .with_other_transport(|key| {
             let certificate = WebRtcCertificate::generate(&mut rand::thread_rng()).map_err(
                 |err| -> Box<dyn std::error::Error + Send + Sync + 'static> { Box::new(err) },

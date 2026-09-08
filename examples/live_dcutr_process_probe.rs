@@ -130,6 +130,8 @@ async fn run_parent() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut last_dcutr_events = HashSet::new();
     let mut last_target_dial_errors = HashSet::new();
+    let mut alice_reader = StatusReader::default();
+    let mut bob_reader = StatusReader::default();
     let success = loop {
         let remaining = TIMEOUT.saturating_sub(started.elapsed());
         if remaining.is_zero() {
@@ -137,8 +139,8 @@ async fn run_parent() -> Result<(), Box<dyn std::error::Error>> {
         }
         tokio::time::sleep(remaining.min(Duration::from_secs(2))).await;
         let alice_status =
-            read_fresh_status(&session.join("alice.status.json"), &tag, STATUS_MAX_AGE);
-        let bob_status = read_fresh_status(&session.join("bob.status.json"), &tag, STATUS_MAX_AGE);
+            alice_reader.read(&session.join("alice.status.json"), &tag, STATUS_MAX_AGE);
+        let bob_status = bob_reader.read(&session.join("bob.status.json"), &tag, STATUS_MAX_AGE);
         if let (Some(alice_status), Some(bob_status)) = (&alice_status, &bob_status) {
             println!(
                 "elapsed={}s alice_relays={} bob_relays={} connected={}/{} target_relay={}/{} target_direct={}/{} target_dcutr={:?}/{:?} enabled={}/{} dcutr_eligible={} attempts={} failures={} successes={}",
@@ -282,7 +284,8 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         cfg.discovery.relay_discovery.use_dht_relays = false;
         if manual_relay_dial {
             cfg.discovery.dht.enabled = false;
-            cfg.discovery.public_bootstrap.bootstrap_seed_peers.clear();
+            cfg.relay_peers = cfg.discovery.public_bootstrap.relay_peers.clone();
+            cfg.discovery.public_bootstrap = PublicBootstrapConfig::private_infrastructure_only();
         }
     }
     if direct_smoke_mode {
@@ -315,6 +318,7 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let mut target_relay_seen = false;
     let mut target_direct_after_relay = false;
     let mut last_direct_smoke_dial = None;
+    let mut other_reader = StatusReader::default();
     loop {
         let remaining = TIMEOUT.saturating_sub(started.elapsed());
         if remaining.is_zero() {
@@ -322,7 +326,7 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             return Err(format!("LIVE_DCUTR_RESULT=failed role={role} timeout=60s").into());
         }
         tokio::time::sleep(remaining.min(Duration::from_secs(1))).await;
-        let other_status = read_fresh_status(&other_status_path, tag, STATUS_MAX_AGE);
+        let other_status = other_reader.read(&other_status_path, tag, STATUS_MAX_AGE);
         let target_peer = other_status
             .as_ref()
             .and_then(|status| status.peer_id.parse::<PeerId>().ok());
@@ -620,19 +624,32 @@ fn build_safe_relay_dial_addr(
     }
 }
 
-fn read_fresh_status(path: &Path, session_id: &str, max_age: Duration) -> Option<ProcessStatus> {
-    let bytes = std::fs::read(path).ok()?;
-    let status: ProcessStatus = serde_json::from_slice(&bytes).ok()?;
-    if status.session_id != session_id {
-        return None;
+// Measure freshness on this process's monotonic clock. VM and host wall clocks
+// can differ; comparing their timestamps falsely hid a live connected peer.
+#[derive(Default)]
+struct StatusReader {
+    last_update: Option<(u128, Instant)>,
+}
+
+impl StatusReader {
+    fn read(&mut self, path: &Path, session_id: &str, max_age: Duration) -> Option<ProcessStatus> {
+        let bytes = std::fs::read(path).ok()?;
+        let status: ProcessStatus = serde_json::from_slice(&bytes).ok()?;
+        if status.session_id != session_id || status.updated_unix_ms == 0 {
+            return None;
+        }
+        if self
+            .last_update
+            .as_ref()
+            .is_none_or(|(stamp, _)| *stamp != status.updated_unix_ms)
+        {
+            self.last_update = Some((status.updated_unix_ms, Instant::now()));
+        }
+        if self.last_update.as_ref()?.1.elapsed() > max_age {
+            return None;
+        }
+        Some(status)
     }
-    if status.updated_unix_ms == 0 {
-        return None;
-    }
-    if now_unix_ms().saturating_sub(status.updated_unix_ms) > max_age.as_millis() {
-        return None;
-    }
-    Some(status)
 }
 
 fn now_unix_ms() -> u128 {

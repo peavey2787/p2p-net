@@ -3,10 +3,11 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use either::Either;
-use libp2p::core::{transport::PortUse, Endpoint};
+use libp2p::core::{transport::PortUse, ConnectedPoint, Endpoint};
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::{
-    dummy, ConnectionDenied, ConnectionId, FromSwarm, NetworkBehaviour, THandler, THandlerInEvent,
+    dummy, ConnectionDenied, ConnectionHandler, ConnectionHandlerEvent, ConnectionId, FromSwarm,
+    NetworkBehaviour, NotifyHandler, SubstreamProtocol, THandler, THandlerInEvent,
     THandlerOutEvent, ToSwarm,
 };
 use libp2p::{dcutr, Multiaddr, PeerId};
@@ -33,6 +34,8 @@ pub struct DcutrBehaviour {
     attempts_by_peer: HashMap<PeerId, u32>,
     last_attempt_by_peer: HashMap<PeerId, Instant>,
     allow_lan_candidates: bool,
+    deferred: HashMap<ConnectionId, (PeerId, ConnectedPoint)>,
+    pending_handlers: VecDeque<(PeerId, ConnectionId, THandler<dcutr::Behaviour>)>,
 }
 
 impl DcutrBehaviour {
@@ -47,6 +50,8 @@ impl DcutrBehaviour {
             attempts_by_peer: HashMap::new(),
             last_attempt_by_peer: HashMap::new(),
             allow_lan_candidates: true,
+            deferred: HashMap::new(),
+            pending_handlers: VecDeque::new(),
         }
     }
 
@@ -68,6 +73,47 @@ impl DcutrBehaviour {
             if self.allowed_peers.remove(&evicted) {
                 self.attempts_by_peer.remove(&evicted);
                 self.last_attempt_by_peer.remove(&evicted);
+            }
+        }
+        // Identify may verify an inbound circuit only after its handler was
+        // created. Enable DCUtR on that same circuit, without dropping the
+        // application connection or creating a competing relay circuit.
+        let connections = self
+            .deferred
+            .iter()
+            .filter_map(|(id, (remote, _))| (*remote == peer).then_some(*id))
+            .collect::<Vec<_>>();
+        for id in connections {
+            let Some((_, endpoint)) = self.deferred.remove(&id) else {
+                continue;
+            };
+            if !self.allow_relayed_upgrade(peer, true) {
+                continue;
+            }
+            let handler = match endpoint {
+                ConnectedPoint::Listener {
+                    local_addr,
+                    send_back_addr,
+                } => self.inner.handle_established_inbound_connection(
+                    id,
+                    peer,
+                    &local_addr,
+                    &send_back_addr,
+                ),
+                ConnectedPoint::Dialer {
+                    address,
+                    role_override,
+                    port_use,
+                } => self.inner.handle_established_outbound_connection(
+                    id,
+                    peer,
+                    &address,
+                    role_override,
+                    port_use,
+                ),
+            };
+            if let Ok(handler) = handler {
+                self.pending_handlers.push_back((peer, id, handler));
             }
         }
     }
@@ -137,7 +183,7 @@ fn is_quic_candidate(addr: &Multiaddr) -> bool {
 }
 
 impl NetworkBehaviour for DcutrBehaviour {
-    type ConnectionHandler = THandler<dcutr::Behaviour>;
+    type ConnectionHandler = VerifiedDcutrHandler;
     type ToSwarm = dcutr::Event;
 
     fn handle_established_inbound_connection(
@@ -152,14 +198,25 @@ impl NetworkBehaviour for DcutrBehaviour {
             .any(|protocol| matches!(protocol, Protocol::P2pCircuit))
             && !self.allow_relayed_upgrade(peer, true)
         {
-            return Ok(Either::Right(dummy::ConnectionHandler));
+            if !self.allowed_peers.contains(&peer) {
+                self.deferred.insert(
+                    connection_id,
+                    (
+                        peer,
+                        ConnectedPoint::Listener {
+                            local_addr: local_addr.clone(),
+                            send_back_addr: remote_addr.clone(),
+                        },
+                    ),
+                );
+            }
+            return Ok(VerifiedDcutrHandler(Either::Right(
+                dummy::ConnectionHandler,
+            )));
         }
-        self.inner.handle_established_inbound_connection(
-            connection_id,
-            peer,
-            local_addr,
-            remote_addr,
-        )
+        self.inner
+            .handle_established_inbound_connection(connection_id, peer, local_addr, remote_addr)
+            .map(VerifiedDcutrHandler)
     }
 
     fn handle_established_outbound_connection(
@@ -175,18 +232,40 @@ impl NetworkBehaviour for DcutrBehaviour {
             .any(|protocol| matches!(protocol, Protocol::P2pCircuit))
             && !self.allow_relayed_upgrade(peer, true)
         {
-            return Ok(Either::Right(dummy::ConnectionHandler));
+            if !self.allowed_peers.contains(&peer) {
+                self.deferred.insert(
+                    connection_id,
+                    (
+                        peer,
+                        ConnectedPoint::Dialer {
+                            address: addr.clone(),
+                            role_override,
+                            port_use,
+                        },
+                    ),
+                );
+            }
+            return Ok(VerifiedDcutrHandler(Either::Right(
+                dummy::ConnectionHandler,
+            )));
         }
-        self.inner.handle_established_outbound_connection(
-            connection_id,
-            peer,
-            addr,
-            role_override,
-            port_use,
-        )
+        self.inner
+            .handle_established_outbound_connection(
+                connection_id,
+                peer,
+                addr,
+                role_override,
+                port_use,
+            )
+            .map(VerifiedDcutrHandler)
     }
 
     fn on_swarm_event(&mut self, event: FromSwarm) {
+        if let FromSwarm::ConnectionClosed(closed) = &event {
+            self.deferred.remove(&closed.connection_id);
+            self.pending_handlers
+                .retain(|(_, id, _)| *id != closed.connection_id);
+        }
         if let FromSwarm::NewExternalAddrCandidate(candidate) = &event {
             if !self.accept_candidate(candidate.addr) {
                 return;
@@ -209,13 +288,132 @@ impl NetworkBehaviour for DcutrBehaviour {
         &mut self,
         cx: &mut Context<'_>,
     ) -> Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
-        self.inner.poll(cx)
+        if let Some((peer_id, connection_id, handler)) = self.pending_handlers.pop_front() {
+            return Poll::Ready(ToSwarm::NotifyHandler {
+                peer_id,
+                handler: NotifyHandler::One(connection_id),
+                event: DcutrHandlerCommand::Enable(Box::new(handler)),
+            });
+        }
+        self.inner
+            .poll(cx)
+            .map(|event| event.map_in(DcutrHandlerCommand::Protocol))
+    }
+}
+
+/// A disabled circuit handler can be activated once application verification
+/// succeeds. The relay circuit and all other application streams stay intact.
+pub struct VerifiedDcutrHandler(THandler<dcutr::Behaviour>);
+
+pub enum DcutrHandlerCommand {
+    Enable(Box<THandler<dcutr::Behaviour>>),
+    Protocol(THandlerInEvent<dcutr::Behaviour>),
+}
+
+impl std::fmt::Debug for DcutrHandlerCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Enable(_) => f.write_str("EnableVerifiedDcutr"),
+            Self::Protocol(event) => event.fmt(f),
+        }
+    }
+}
+
+impl ConnectionHandler for VerifiedDcutrHandler {
+    type FromBehaviour = DcutrHandlerCommand;
+    type ToBehaviour = THandlerOutEvent<dcutr::Behaviour>;
+    type InboundProtocol = <THandler<dcutr::Behaviour> as ConnectionHandler>::InboundProtocol;
+    type OutboundProtocol = <THandler<dcutr::Behaviour> as ConnectionHandler>::OutboundProtocol;
+    type InboundOpenInfo = <THandler<dcutr::Behaviour> as ConnectionHandler>::InboundOpenInfo;
+    type OutboundOpenInfo = <THandler<dcutr::Behaviour> as ConnectionHandler>::OutboundOpenInfo;
+
+    fn listen_protocol(&self) -> SubstreamProtocol<Self::InboundProtocol, Self::InboundOpenInfo> {
+        self.0.listen_protocol()
+    }
+    fn connection_keep_alive(&self) -> bool {
+        self.0.connection_keep_alive()
+    }
+    fn on_behaviour_event(&mut self, event: Self::FromBehaviour) {
+        match event {
+            DcutrHandlerCommand::Enable(handler) => {
+                if self.0.is_right() {
+                    self.0 = *handler;
+                }
+            }
+            DcutrHandlerCommand::Protocol(event) => self.0.on_behaviour_event(event),
+        }
+    }
+    fn poll(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<
+        ConnectionHandlerEvent<Self::OutboundProtocol, Self::OutboundOpenInfo, Self::ToBehaviour>,
+    > {
+        self.0.poll(cx)
+    }
+    fn poll_close(&mut self, cx: &mut Context<'_>) -> Poll<Option<Self::ToBehaviour>> {
+        self.0.poll_close(cx)
+    }
+    fn on_connection_event(
+        &mut self,
+        event: libp2p::swarm::handler::ConnectionEvent<
+            Self::InboundProtocol,
+            Self::OutboundProtocol,
+            Self::InboundOpenInfo,
+            Self::OutboundOpenInfo,
+        >,
+    ) {
+        self.0.on_connection_event(event)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn late_verification_activates_existing_relay_handler_once() {
+        let peer = PeerId::random();
+        let relay = PeerId::random();
+        let id = ConnectionId::new_unchecked(1);
+        let addr = format!("/ip4/8.8.8.8/udp/4001/quic-v1/p2p/{relay}/p2p-circuit")
+            .parse()
+            .unwrap();
+        let remote = format!("/p2p/{peer}").parse().unwrap();
+        let mut behaviour = DcutrBehaviour::new(PeerId::random(), 60, 3);
+        let mut handler = behaviour
+            .handle_established_inbound_connection(id, peer, &addr, &remote)
+            .unwrap();
+        assert!(handler.0.is_right());
+        assert_eq!(behaviour.deferred.len(), 1);
+        assert!(behaviour.attempts_by_peer.is_empty());
+
+        behaviour.allow_peer(peer);
+        assert!(behaviour.deferred.is_empty());
+        assert_eq!(behaviour.attempts_by_peer[&peer], 1);
+        let waker = futures::task::noop_waker();
+        let mut cx = Context::from_waker(&waker);
+        let Poll::Ready(ToSwarm::NotifyHandler {
+            peer_id,
+            handler: NotifyHandler::One(connection),
+            event,
+        }) = behaviour.poll(&mut cx)
+        else {
+            panic!("verification must activate the existing circuit");
+        };
+        assert_eq!(peer_id, peer);
+        assert_eq!(connection, id);
+        handler.on_behaviour_event(event);
+        assert!(handler.0.is_left());
+        assert!(matches!(
+            handler.poll(&mut cx),
+            Poll::Ready(ConnectionHandlerEvent::OutboundSubstreamRequest { .. })
+        ));
+
+        behaviour.allow_peer(peer);
+        assert!(behaviour.pending_handlers.is_empty());
+        assert_eq!(behaviour.attempts_by_peer[&peer], 1);
+    }
 
     #[test]
     fn wan_only_dcutr_does_not_offer_private_routes() {

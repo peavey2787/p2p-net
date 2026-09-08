@@ -4,7 +4,6 @@ use std::time::Duration;
 
 use libp2p::allow_block_list::{self, AllowedPeers, BlockedPeers};
 use libp2p::autonat;
-use libp2p::connection_limits;
 use libp2p::dcutr;
 use libp2p::gossipsub;
 use libp2p::identify;
@@ -21,14 +20,16 @@ use crate::connectivity::limits::ConnectionLimitsConfig;
 use crate::connectivity::relay::{RelayAccess, RelayServiceConfig};
 use crate::ResolvedNodeConfig;
 
-use super::{ApplicationKeepAlive, DcutrBehaviour, ExternalAddressCandidates};
+use super::{
+    ApplicationKeepAlive, DcutrBehaviour, ExternalAddressCandidates, PrioritizedConnectionLimits,
+};
 
 const KADEMLIA_QUERY_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[derive(NetworkBehaviour)]
 #[behaviour(to_swarm = "MeshEvent")]
 pub struct MeshBehaviour {
-    pub connection_limits: connection_limits::Behaviour,
+    pub connection_limits: PrioritizedConnectionLimits,
     pub application_keep_alive: ApplicationKeepAlive,
     pub relay_acl_blocked: Toggle<allow_block_list::Behaviour<BlockedPeers>>,
     pub relay_acl_allowed: Toggle<allow_block_list::Behaviour<AllowedPeers>>,
@@ -240,8 +241,7 @@ pub fn build_behaviour(ctx: BehaviourBuildContext<'_>) -> MeshBehaviour {
         }
         .into();
 
-    let connection_limits =
-        connection_limits::Behaviour::new(connection_limits_cfg.to_libp2p_limits());
+    let connection_limits = PrioritizedConnectionLimits::new(connection_limits_cfg);
 
     let rendezvous_client = (behaviour_policy.rendezvous_client
         && discovery_cfg.rendezvous.client_enabled)
