@@ -41,9 +41,6 @@ impl ExternalAddressCandidates {
     }
 
     pub fn add_candidate(&mut self, address: Multiaddr) {
-        if !supports_dcutr_port_reuse(&address) {
-            return;
-        }
         if remember_bounded(&mut self.candidate_seen, address.clone()) {
             self.pending
                 .push_back(ExternalAddressAction::Candidate(address));
@@ -87,25 +84,6 @@ fn is_relayed(address: &Multiaddr) -> bool {
     address
         .iter()
         .any(|protocol| matches!(protocol, libp2p::multiaddr::Protocol::P2pCircuit))
-}
-
-fn supports_dcutr_port_reuse(address: &Multiaddr) -> bool {
-    #[cfg(target_os = "windows")]
-    {
-        // rust-libp2p TCP uses listener-port reuse for DCUtR simultaneous-open.
-        // Windows does not provide the required SO_REUSEPORT behavior, so
-        // offering TCP/WS candidates only produces AddrInUse failures and can
-        // evict viable QUIC candidates from DCUtR's bounded candidate cache.
-        !address
-            .iter()
-            .any(|protocol| matches!(protocol, libp2p::multiaddr::Protocol::Tcp(_)))
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = address;
-        true
-    }
 }
 
 pub fn add_external_address_candidate(swarm: &mut Swarm<super::MeshBehaviour>, address: Multiaddr) {
@@ -176,18 +154,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn confirmed_addresses_stay_advertised_when_not_dcutr_candidates() {
+    fn tcp_addresses_are_candidates_on_every_native_platform() {
         let tcp: Multiaddr = "/ip4/203.0.113.1/tcp/4001".parse().unwrap();
         let mut behaviour = ExternalAddressCandidates::new();
 
         behaviour.add_confirmed(tcp.clone());
 
         assert!(behaviour.confirmed_seen.contains(&tcp));
-        if cfg!(target_os = "windows") {
-            assert!(!behaviour.candidate_seen.contains(&tcp));
-        } else {
-            assert!(behaviour.candidate_seen.contains(&tcp));
-        }
+        assert!(behaviour.candidate_seen.contains(&tcp));
     }
 
     #[test]

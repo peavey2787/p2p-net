@@ -14,19 +14,16 @@ use libp2p::{dcutr, Multiaddr, PeerId};
 
 use crate::connectivity::addr::is_public_direct_addr;
 
-const MAX_PUBLIC_QUIC_CANDIDATES: usize = 8;
+const MAX_PUBLIC_CANDIDATES_PER_TRANSPORT: usize = 8;
 const MAX_ALLOWED_DCUTR_PEERS: usize = 1024;
 
-/// Restricts DCUtR to transports that support listener-port reuse on every
-/// native platform shipped by p2p-net.
-///
-/// Identify can emit many observed addresses directly into every behaviour.
-/// Passing all of them to rust-libp2p DCUtR makes Windows attempt unsupported
-/// TCP simultaneous-open and can evict useful LAN/QUIC candidates from DCUtR's
-/// bounded cache.
+/// Offers bounded TCP and QUIC candidates to verified application peers.
+/// Separate transport budgets keep noisy NAT observations from excluding an
+/// alternative punching strategy. LAN candidates follow the node's opt-in.
 pub struct DcutrBehaviour {
     inner: dcutr::Behaviour,
-    public_quic_candidates: HashSet<Multiaddr>,
+    public_candidates: HashSet<Multiaddr>,
+    has_candidate: bool,
     retry_interval: Duration,
     max_attempts_per_peer: u32,
     allowed_peers: HashSet<PeerId>,
@@ -42,7 +39,8 @@ impl DcutrBehaviour {
     pub fn new(local_peer: PeerId, retry_interval_secs: u64, max_attempts_per_peer: u32) -> Self {
         Self {
             inner: dcutr::Behaviour::new(local_peer),
-            public_quic_candidates: HashSet::new(),
+            public_candidates: HashSet::new(),
+            has_candidate: false,
             retry_interval: Duration::from_secs(retry_interval_secs.max(1)),
             max_attempts_per_peer: max_attempts_per_peer.max(1),
             allowed_peers: HashSet::new(),
@@ -62,10 +60,9 @@ impl DcutrBehaviour {
     }
 
     pub fn allow_peer(&mut self, peer: PeerId) {
-        if !self.allowed_peers.insert(peer) {
-            return;
+        if self.allowed_peers.insert(peer) {
+            self.allowed_peer_order.push_back(peer);
         }
-        self.allowed_peer_order.push_back(peer);
         while self.allowed_peers.len() > MAX_ALLOWED_DCUTR_PEERS {
             let Some(evicted) = self.allowed_peer_order.pop_front() else {
                 break;
@@ -74,6 +71,13 @@ impl DcutrBehaviour {
                 self.attempts_by_peer.remove(&evicted);
                 self.last_attempt_by_peer.remove(&evicted);
             }
+        }
+        self.activate_deferred(peer);
+    }
+
+    fn activate_deferred(&mut self, peer: PeerId) {
+        if !self.has_candidate || !self.allowed_peers.contains(&peer) {
+            return;
         }
         // Identify may verify an inbound circuit only after its handler was
         // created. Enable DCUtR on that same circuit, without dropping the
@@ -119,19 +123,28 @@ impl DcutrBehaviour {
     }
 
     fn accept_candidate(&mut self, addr: &Multiaddr) -> bool {
-        if !is_quic_candidate(addr) {
+        if !is_dcutr_candidate(addr) {
             return false;
         }
         if !self.allow_lan_candidates && !is_public_direct_addr(addr) {
             return false;
         }
-        if !is_public_direct_addr(addr) || self.public_quic_candidates.contains(addr) {
+        if !is_public_direct_addr(addr) || self.public_candidates.contains(addr) {
+            self.has_candidate = true;
             return true;
         }
-        if self.public_quic_candidates.len() >= MAX_PUBLIC_QUIC_CANDIDATES {
+        let tcp = is_tcp_candidate(addr);
+        if self
+            .public_candidates
+            .iter()
+            .filter(|known| is_tcp_candidate(known) == tcp)
+            .count()
+            >= MAX_PUBLIC_CANDIDATES_PER_TRANSPORT
+        {
             return false;
         }
-        self.public_quic_candidates.insert(addr.clone());
+        self.public_candidates.insert(addr.clone());
+        self.has_candidate = true;
         true
     }
 
@@ -162,24 +175,35 @@ impl DcutrBehaviour {
     }
 }
 
-fn is_quic_candidate(addr: &Multiaddr) -> bool {
-    let mut has_udp = false;
-    let mut has_quic = false;
-    for protocol in addr.iter() {
-        match protocol {
-            Protocol::Udp(_) => has_udp = true,
-            Protocol::QuicV1 => has_quic = true,
-            Protocol::Tcp(_) | Protocol::Ws(_) | Protocol::Wss(_) | Protocol::P2pCircuit => {
-                return false
-            }
-            Protocol::Ip4(ip) if ip.is_loopback() || ip.is_link_local() => return false,
-            Protocol::Ip6(ip) if ip.is_loopback() => return false,
-            Protocol::Ip4(ip) if ip.is_unspecified() => return false,
-            Protocol::Ip6(ip) if ip.is_unspecified() => return false,
-            _ => {}
-        }
+fn is_tcp_candidate(addr: &Multiaddr) -> bool {
+    addr.iter().any(|p| matches!(p, Protocol::Tcp(_)))
+}
+
+fn is_dcutr_candidate(addr: &Multiaddr) -> bool {
+    let mut protocols = addr.iter();
+    match protocols.next() {
+        Some(Protocol::Ip4(ip))
+            if !ip.is_loopback() && !ip.is_link_local() && !ip.is_unspecified() => {}
+        Some(Protocol::Ip6(ip))
+            if !ip.is_loopback() && !ip.is_unspecified() && !ip.is_unicast_link_local() => {}
+        _ => return false,
     }
-    has_udp && has_quic
+    match protocols.next() {
+        Some(Protocol::Tcp(port)) if port != 0 => {}
+        Some(Protocol::Udp(port)) if port != 0 => {
+            if protocols.next() != Some(Protocol::QuicV1) {
+                return false;
+            }
+        }
+        _ => return false,
+    }
+    // WS, WebTransport and WebRTC have additional handshake requirements and
+    // are not bare TCP/QUIC DCUtR candidates. A terminal identity is permitted.
+    match protocols.next() {
+        None => true,
+        Some(Protocol::P2p(_)) => protocols.next().is_none(),
+        _ => false,
+    }
 }
 
 impl NetworkBehaviour for DcutrBehaviour {
@@ -196,9 +220,9 @@ impl NetworkBehaviour for DcutrBehaviour {
         if local_addr
             .iter()
             .any(|protocol| matches!(protocol, Protocol::P2pCircuit))
-            && !self.allow_relayed_upgrade(peer, true)
+            && (!self.has_candidate || !self.allow_relayed_upgrade(peer, true))
         {
-            if !self.allowed_peers.contains(&peer) {
+            if !self.has_candidate || !self.allowed_peers.contains(&peer) {
                 self.deferred.insert(
                     connection_id,
                     (
@@ -230,9 +254,9 @@ impl NetworkBehaviour for DcutrBehaviour {
         if addr
             .iter()
             .any(|protocol| matches!(protocol, Protocol::P2pCircuit))
-            && !self.allow_relayed_upgrade(peer, true)
+            && (!self.has_candidate || !self.allow_relayed_upgrade(peer, true))
         {
-            if !self.allowed_peers.contains(&peer) {
+            if !self.has_candidate || !self.allowed_peers.contains(&peer) {
                 self.deferred.insert(
                     connection_id,
                     (
@@ -266,10 +290,31 @@ impl NetworkBehaviour for DcutrBehaviour {
             self.pending_handlers
                 .retain(|(_, id, _)| *id != closed.connection_id);
         }
-        if let FromSwarm::NewExternalAddrCandidate(candidate) = &event {
-            if !self.accept_candidate(candidate.addr) {
+        let candidate = match &event {
+            FromSwarm::NewExternalAddrCandidate(candidate) => Some(candidate.addr),
+            FromSwarm::ExternalAddrConfirmed(confirmed) => Some(confirmed.addr),
+            _ => None,
+        };
+        if let Some(addr) = candidate {
+            if !self.accept_candidate(addr) {
                 return;
             }
+            // Swarm suppresses NewExternalAddrCandidate for already-confirmed
+            // addresses, while upstream DCUtR only consumes candidate events.
+            // Feed either source through the same bounded, WAN-aware policy.
+            self.inner
+                .on_swarm_event(FromSwarm::NewExternalAddrCandidate(
+                    libp2p::swarm::behaviour::NewExternalAddrCandidate { addr },
+                ));
+            let peers = self
+                .deferred
+                .values()
+                .map(|(peer, _)| *peer)
+                .collect::<HashSet<_>>();
+            for peer in peers {
+                self.activate_deferred(peer);
+            }
+            return;
         }
         self.inner.on_swarm_event(event);
     }
@@ -381,6 +426,10 @@ mod tests {
             .unwrap();
         let remote = format!("/p2p/{peer}").parse().unwrap();
         let mut behaviour = DcutrBehaviour::new(PeerId::random(), 60, 3);
+        let candidate = "/ip4/8.8.4.4/tcp/4001".parse().unwrap();
+        behaviour.on_swarm_event(FromSwarm::NewExternalAddrCandidate(
+            libp2p::swarm::behaviour::NewExternalAddrCandidate { addr: &candidate },
+        ));
         let mut handler = behaviour
             .handle_established_inbound_connection(id, peer, &addr, &remote)
             .unwrap();
@@ -416,6 +465,40 @@ mod tests {
     }
 
     #[test]
+    fn verified_circuit_waits_for_a_public_candidate_without_spending_budget() {
+        let peer = PeerId::random();
+        let relay = PeerId::random();
+        let mut behaviour = DcutrBehaviour::new(PeerId::random(), 60, 3).with_lan_candidates(false);
+        behaviour.allow_peer(peer);
+        let id = ConnectionId::new_unchecked(9);
+        let addr = format!("/ip4/8.8.8.8/tcp/4001/p2p/{relay}/p2p-circuit")
+            .parse()
+            .unwrap();
+        let remote = format!("/p2p/{peer}").parse().unwrap();
+        let handler = behaviour
+            .handle_established_inbound_connection(id, peer, &addr, &remote)
+            .unwrap();
+        assert!(handler.0.is_right());
+        assert!(behaviour.attempts_by_peer.is_empty());
+        let private = "/ip4/192.168.0.53/tcp/4001".parse().unwrap();
+        behaviour.on_swarm_event(FromSwarm::ExternalAddrConfirmed(
+            libp2p::swarm::behaviour::ExternalAddrConfirmed { addr: &private },
+        ));
+        assert!(behaviour.pending_handlers.is_empty());
+        let public = "/ip4/8.8.4.4/tcp/4001".parse().unwrap();
+        // No preceding NewExternalAddrCandidate: Swarm can suppress that
+        // notification for an address that has already been confirmed.
+        behaviour.on_swarm_event(FromSwarm::ExternalAddrConfirmed(
+            libp2p::swarm::behaviour::ExternalAddrConfirmed { addr: &public },
+        ));
+        assert!(behaviour.has_candidate);
+        assert!(behaviour.public_candidates.contains(&public));
+        assert!(behaviour.deferred.is_empty());
+        assert_eq!(behaviour.pending_handlers.len(), 1);
+        assert_eq!(behaviour.attempts_by_peer[&peer], 1);
+    }
+
+    #[test]
     fn wan_only_dcutr_does_not_offer_private_routes() {
         let mut behaviour = DcutrBehaviour::new(PeerId::random(), 60, 3).with_lan_candidates(false);
         for addr in [
@@ -434,20 +517,27 @@ mod tests {
     }
 
     #[test]
-    fn dcutr_candidates_are_quic_only() {
+    fn dcutr_candidates_support_tcp_and_quic_without_protocol_suffixes() {
         let quic: Multiaddr = "/ip4/192.168.1.2/udp/4001/quic-v1".parse().unwrap();
         let tcp: Multiaddr = "/ip4/192.168.1.2/tcp/4001".parse().unwrap();
         let loopback: Multiaddr = "/ip4/127.0.0.1/udp/4001/quic-v1".parse().unwrap();
 
-        assert!(is_quic_candidate(&quic));
-        assert!(!is_quic_candidate(&tcp));
-        assert!(!is_quic_candidate(&loopback));
+        assert!(is_dcutr_candidate(&quic));
+        assert!(is_dcutr_candidate(&tcp));
+        assert!(!is_dcutr_candidate(&loopback));
+        for addr in [
+            "/ip4/8.8.8.8/tcp/4001/ws",
+            "/ip4/8.8.8.8/udp/4001/quic-v1/webtransport",
+            "/ip4/8.8.8.8/tcp/0",
+        ] {
+            assert!(!is_dcutr_candidate(&addr.parse().unwrap()));
+        }
     }
 
     #[test]
     fn public_candidate_count_is_bounded() {
         let mut behaviour = DcutrBehaviour::new(PeerId::random(), 60, 3);
-        for suffix in 1..=MAX_PUBLIC_QUIC_CANDIDATES {
+        for suffix in 1..=MAX_PUBLIC_CANDIDATES_PER_TRANSPORT {
             let addr = format!("/ip4/8.8.8.{suffix}/udp/4001/quic-v1")
                 .parse()
                 .unwrap();
@@ -458,6 +548,11 @@ mod tests {
 
         assert!(!behaviour.accept_candidate(&overflow));
         assert!(behaviour.accept_candidate(&lan));
+        for suffix in 1..=MAX_PUBLIC_CANDIDATES_PER_TRANSPORT {
+            let addr = format!("/ip4/8.8.8.{suffix}/tcp/4001").parse().unwrap();
+            assert!(behaviour.accept_candidate(&addr));
+        }
+        assert!(!behaviour.accept_candidate(&"/ip4/9.9.9.9/tcp/4001".parse().unwrap()));
     }
 
     #[test]
