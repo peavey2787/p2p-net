@@ -268,6 +268,7 @@ pub fn build_behaviour(ctx: BehaviourBuildContext<'_>) -> MeshBehaviour {
                     resolved_cfg.dcutr_retry_interval_secs,
                     resolved_cfg.dcutr_max_attempts_per_peer,
                 )
+                .with_lan_candidates(discovery_cfg.lan.enabled)
             })
             .into(),
         external_address_candidates: ExternalAddressCandidates::new(),

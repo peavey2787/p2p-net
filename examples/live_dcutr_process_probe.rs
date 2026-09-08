@@ -1,10 +1,17 @@
 //! Two-process live DCUtR acceptance probe.
 //!
 //! `cargo run --release --example live_dcutr_process_probe`
+//!
+//! Children use production discovery by default. The shared directory carries
+//! observations only. `P2P_LIVE_DCUTR_MANUAL_DIAL=1` opts into exchanging relay
+//! addresses there to isolate circuit establishment from discovery. An optional
+//! `P2P_LIVE_DCUTR_RELAY` multiaddr pins the relay for that diagnostic mode.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use libp2p::multiaddr::Protocol;
@@ -13,11 +20,53 @@ use serde::{Deserialize, Serialize};
 
 const TIMEOUT: Duration = Duration::from_secs(60);
 const STATUS_MAX_AGE: Duration = Duration::from_secs(5);
-const VERIFIED_PUBLIC_RELAY: &str =
-    "/ip4/162.19.78.231/udp/4001/quic-v1/p2p/12D3KooWA5z81YbRuKMfdxKhn1MYxLvGq9XrLT5Lwo3EHLjQgLZH";
+
+// The dashboard holds only 24 pulses. During public DHT startup that window
+// can turn over between samples, hiding the target's connection or DCUtR event.
+// Capture the existing runtime event stream through a bounded, non-blocking
+// channel. A dropped event invalidates this diagnostic run.
+struct ProbeEvents {
+    sender: mpsc::SyncSender<String>,
+    dropped: Arc<AtomicUsize>,
+}
+
+impl tracing::Subscriber for ProbeEvents {
+    fn enabled(&self, metadata: &tracing::Metadata<'_>) -> bool {
+        metadata.target() == "p2p_net::event"
+    }
+
+    fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+        tracing::span::Id::from_u64(1)
+    }
+    fn record(&self, _: &tracing::span::Id, _: &tracing::span::Record<'_>) {}
+    fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
+    fn enter(&self, _: &tracing::span::Id) {}
+    fn exit(&self, _: &tracing::span::Id) {}
+
+    fn event(&self, event: &tracing::Event<'_>) {
+        struct Message(String);
+        impl tracing::field::Visit for Message {
+            fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+                if field.name() == "event" {
+                    self.0 = format!("{value:?}");
+                }
+            }
+        }
+        let mut message = Message(String::new());
+        event.record(&mut message);
+        if !message.0.is_empty() && self.sender.try_send(message.0).is_err() {
+            self.dropped.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct ProcessStatus {
+    elapsed_seconds: u64,
+    all_swarm_connections: usize,
+    application_connections: usize,
+    public_ip: Option<String>,
+    recent_events: Vec<String>,
     #[serde(default)]
     session_id: String,
     #[serde(default)]
@@ -141,6 +190,8 @@ async fn run_parent() -> Result<(), Box<dyn std::error::Error>> {
                 && bob_status.target_relay_seen
                 && alice_status.target_direct_after_relay
                 && bob_status.target_direct_after_relay
+                && alice_status.dcutr_successes > 0
+                && bob_status.dcutr_successes > 0
             {
                 break true;
             }
@@ -197,12 +248,15 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         .parse::<u16>()?;
     let direct_smoke_mode = args.get(8).is_some();
     let direct_smoke_base = args.get(8).filter(|arg| arg.as_str() != "-").cloned();
+    let manual_relay_dial = std::env::var("P2P_LIVE_DCUTR_MANUAL_DIAL")
+        .ok()
+        .is_some_and(|value| matches!(value.as_str(), "1" | "true" | "TRUE"));
     let other_role = if role == "alice" { "bob" } else { "alice" };
     let own_status_path = session.join(format!("{role}.status.json"));
     let other_status_path = session.join(format!("{other_role}.status.json"));
 
     let mut cfg = NodeConfig {
-        profile: NodeProfile::Lite,
+        profile: NodeProfile::Full,
         network_id,
         heartbeat_interval_secs: 5,
         identity_key_path: session
@@ -216,14 +270,21 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         .to_string_lossy()
         .to_string();
     cfg.discovery.namespace.tags = vec![tag.clone()];
-    cfg.discovery.dht.enabled = false;
-    cfg.discovery.public_bootstrap.auto_connect_discovered_peers = false;
-    cfg.discovery.public_bootstrap.relay_peers = vec![VERIFIED_PUBLIC_RELAY.to_string()];
+    cfg.discovery.lan.enabled = false;
+    cfg.discovery.public_bootstrap.auto_connect_discovered_peers = !manual_relay_dial;
     cfg.discovery.relay_discovery.use_cached_relays = false;
     cfg.discovery.relay_discovery.use_rendezvous_relays = false;
-    cfg.discovery.relay_discovery.use_dht_relays = false;
-    cfg.discovery.relay_discovery.min_reservations = 1;
-    cfg.discovery.relay_discovery.max_reservations = 1;
+    cfg.discovery.relay_discovery.use_dht_relays = true;
+    if let Ok(relay) = std::env::var("P2P_LIVE_DCUTR_RELAY") {
+        cfg.discovery.public_bootstrap.relay_peers = vec![relay];
+        cfg.discovery.relay_discovery.min_reservations = 1;
+        cfg.discovery.relay_discovery.max_reservations = 1;
+        cfg.discovery.relay_discovery.use_dht_relays = false;
+        if manual_relay_dial {
+            cfg.discovery.dht.enabled = false;
+            cfg.discovery.public_bootstrap.bootstrap_seed_peers.clear();
+        }
+    }
     if direct_smoke_mode {
         cfg.discovery.public_bootstrap = PublicBootstrapConfig::private_infrastructure_only();
         cfg.discovery.dht.enabled = false;
@@ -238,7 +299,14 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         format!("/ip4/0.0.0.0/tcp/{websocket_port}/ws"),
     ];
 
-    let node = start_node(cfg).await?;
+    let (event_sender, event_receiver) = mpsc::sync_channel(8192);
+    let dropped_events = Arc::new(AtomicUsize::new(0));
+    tracing::subscriber::set_global_default(ProbeEvents {
+        sender: event_sender,
+        dropped: Arc::clone(&dropped_events),
+    })?;
+    let started = Instant::now();
+    let node = tokio::time::timeout(TIMEOUT, start_node(cfg)).await??;
     let mut tried_routes = HashMap::new();
     let mut last_dial = None;
     let mut processed_connection_pulses = HashSet::new();
@@ -247,9 +315,13 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let mut target_relay_seen = false;
     let mut target_direct_after_relay = false;
     let mut last_direct_smoke_dial = None;
-    let started = Instant::now();
     loop {
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        let remaining = TIMEOUT.saturating_sub(started.elapsed());
+        if remaining.is_zero() {
+            node.shutdown().await;
+            return Err(format!("LIVE_DCUTR_RESULT=failed role={role} timeout=60s").into());
+        }
+        tokio::time::sleep(remaining.min(Duration::from_secs(1))).await;
         let other_status = read_fresh_status(&other_status_path, tag, STATUS_MAX_AGE);
         let target_peer = other_status
             .as_ref()
@@ -270,9 +342,17 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                 .and_then(|peer| peer.supports_dcutr)
         });
         let snapshot = node.snapshot.lock().await.clone();
+        let pulses = event_receiver.try_iter().collect::<Vec<_>>();
+        for pulse in &pulses {
+            println!("{role} elapsed={}s {pulse}", started.elapsed().as_secs());
+        }
+        if dropped_events.load(Ordering::Relaxed) > 0 {
+            node.shutdown().await;
+            return Err("live probe event capture overflowed; result cannot be verified".into());
+        }
         let target_label = target_peer.map(|peer| peer.to_string());
         if let Some(target) = &target_label {
-            for pulse in &snapshot.pulses {
+            for pulse in &pulses {
                 if !pulse.contains("connection endpoint")
                     || !pulse.contains(&format!("peer={target}"))
                     || !processed_connection_pulses.insert(pulse.clone())
@@ -285,7 +365,7 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                     target_direct_after_relay = true;
                 }
             }
-            for pulse in &snapshot.pulses {
+            for pulse in &pulses {
                 if pulse.contains("dcutr event")
                     && pulse.contains(target)
                     && pulse.contains("result: Ok")
@@ -295,8 +375,7 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             accumulated_dcutr_events.extend(
-                snapshot
-                    .pulses
+                pulses
                     .iter()
                     .filter(|pulse| {
                         pulse.contains("dcutr event")
@@ -306,8 +385,7 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                     .cloned(),
             );
             accumulated_target_dial_errors.extend(
-                snapshot
-                    .pulses
+                pulses
                     .iter()
                     .filter(|pulse| {
                         pulse.contains("outgoing connection error") && pulse.contains(target)
@@ -333,6 +411,11 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             .collect::<Vec<_>>();
         target_dial_errors.sort();
         let status = ProcessStatus {
+            elapsed_seconds: started.elapsed().as_secs(),
+            all_swarm_connections: snapshot.all_swarm_connections,
+            application_connections: snapshot.application_peer_connections,
+            public_ip: snapshot.public_ip_probe_addr.clone(),
+            recent_events: snapshot.pulses.iter().cloned().collect(),
             session_id: tag.to_string(),
             updated_unix_ms: now_unix_ms(),
             peer_id: node.peer_id.to_string(),
@@ -374,7 +457,8 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             .unwrap_or(true);
         // Establish exactly one relayed connection. Two simultaneous circuits
         // start competing DCUtR state machines that reuse the same QUIC port.
-        if role == "alice" && !direct_smoke_mode && !connected_target && retry {
+        if manual_relay_dial && role == "alice" && !direct_smoke_mode && !connected_target && retry
+        {
             if let Some(other) = other_status {
                 let destination = other.peer_id.parse::<PeerId>()?;
                 if destination != node.peer_id {
@@ -402,12 +486,21 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        if status.connected_target && (status.target_direct_after_relay || direct_smoke_mode) {
+        if started.elapsed() < TIMEOUT
+            && status.connected_target
+            && (direct_smoke_mode
+                || (status.target_direct_after_relay && status.dcutr_successes > 0))
+        {
+            println!(
+                "LIVE_DCUTR_RESULT={} role={role} elapsed={}s",
+                if direct_smoke_mode {
+                    "direct_smoke_connected"
+                } else {
+                    "connected_and_hole_punched"
+                },
+                started.elapsed().as_secs()
+            );
             tokio::time::sleep(Duration::from_secs(2)).await;
-            node.shutdown().await;
-            return Ok(());
-        }
-        if started.elapsed() >= TIMEOUT + Duration::from_secs(5) {
             node.shutdown().await;
             return Ok(());
         }

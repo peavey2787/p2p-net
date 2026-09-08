@@ -32,6 +32,7 @@ pub struct DcutrBehaviour {
     allowed_peer_order: VecDeque<PeerId>,
     attempts_by_peer: HashMap<PeerId, u32>,
     last_attempt_by_peer: HashMap<PeerId, Instant>,
+    allow_lan_candidates: bool,
 }
 
 impl DcutrBehaviour {
@@ -45,7 +46,14 @@ impl DcutrBehaviour {
             allowed_peer_order: VecDeque::new(),
             attempts_by_peer: HashMap::new(),
             last_attempt_by_peer: HashMap::new(),
+            allow_lan_candidates: true,
         }
+    }
+
+    /// Apply the node's LAN opt-in to the addresses offered for hole punching.
+    pub fn with_lan_candidates(mut self, enabled: bool) -> Self {
+        self.allow_lan_candidates = enabled;
+        self
     }
 
     pub fn allow_peer(&mut self, peer: PeerId) {
@@ -66,6 +74,9 @@ impl DcutrBehaviour {
 
     fn accept_candidate(&mut self, addr: &Multiaddr) -> bool {
         if !is_quic_candidate(addr) {
+            return false;
+        }
+        if !self.allow_lan_candidates && !is_public_direct_addr(addr) {
             return false;
         }
         if !is_public_direct_addr(addr) || self.public_quic_candidates.contains(addr) {
@@ -205,6 +216,24 @@ impl NetworkBehaviour for DcutrBehaviour {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wan_only_dcutr_does_not_offer_private_routes() {
+        let mut behaviour = DcutrBehaviour::new(PeerId::random(), 60, 3).with_lan_candidates(false);
+        for addr in [
+            "/ip4/192.168.137.59/udp/4001/quic-v1",
+            "/ip4/10.0.2.15/udp/4001/quic-v1",
+            "/ip4/172.17.0.1/udp/4001/quic-v1",
+            "/ip4/100.64.0.1/udp/4001/quic-v1",
+            "/ip6/fd00::1/udp/4001/quic-v1",
+        ] {
+            assert!(
+                !behaviour.accept_candidate(&addr.parse().unwrap()),
+                "{addr}"
+            );
+        }
+        assert!(behaviour.accept_candidate(&"/ip4/8.8.8.8/udp/4001/quic-v1".parse().unwrap()));
+    }
 
     #[test]
     fn dcutr_candidates_are_quic_only() {
