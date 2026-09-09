@@ -1,7 +1,7 @@
 use libp2p::swarm::ConnectionId;
 use libp2p::{PeerId, Swarm};
 
-use crate::stack::release_application_peer;
+use crate::stack::release_application_keep_alive;
 use crate::stack::MeshBehaviour;
 
 use super::super::super::push_pulse;
@@ -44,7 +44,7 @@ pub(crate) async fn handle_connection_closed(
             .behaviour_mut()
             .gossipsub
             .remove_explicit_peer(&peer_id);
-        release_application_peer(swarm, &peer_id);
+        release_application_keep_alive(swarm, &peer_id);
         if application_peer {
             ctx.dht_state.mark_auto_connect_disconnected(&peer_id);
         }

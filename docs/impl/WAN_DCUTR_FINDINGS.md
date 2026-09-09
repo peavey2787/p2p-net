@@ -52,6 +52,27 @@ and do **not** establish WAN traversal success. Earlier pinned-relay production
 captures already showed correct listener-port reuse, so this startup bug is not
 claimed as the sole explanation for all failures.
 
+## Production follow-through and reconnect priority
+
+`wan-20260909-tcp-ready` exercised the startup fix in production nodes with
+automatic public discovery, fresh namespaces and default 4001/4002 ports. Both
+had one application peer at 26 seconds and again at the 60-second deadline,
+but relay connections churned in between. Neither node recorded a direct
+upgrade. Windows' established TCP connections used only listener ports 4001
+and 4002 in the live sample. The Windows working set was approximately 104 MiB;
+Ubuntu RSS was approximately 78 MiB. These short samples cannot establish
+long-term memory stability.
+
+This run exposed a separate reconnect defect: after a relay close, the app
+peer's admission priority was removed, and its reconnect could be rejected at
+the lower infrastructure ceiling (56 outgoing connections with the default
+64 hard cap). Connection close now releases application keep-alive state but
+preserves the bounded intended-peer admission cache. Explicit disconnect
+suppression remains in the planner, and hard connection caps are unchanged.
+A focused regression filled the infrastructure ceiling, simulated the
+application keep-alive release, and verified that app admission still succeeds
+while unrelated infrastructure is rejected.
+
 ## Retry interpretation
 
 The configured per-peer cooldown gates p2p-net handler activations. Upstream

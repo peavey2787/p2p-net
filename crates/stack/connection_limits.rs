@@ -59,11 +59,6 @@ impl PrioritizedConnectionLimits {
         }
     }
 
-    pub fn release_application_peer(&mut self, peer: &PeerId) {
-        self.priority_peers.remove(peer);
-        self.priority_order.retain(|known| known != peer);
-    }
-
     fn select_admission_limits(&mut self, peer: Option<PeerId>) {
         // Swarm serializes these hooks through &mut self. Selecting the ceiling
         // for each admission reuses a single set of connection counters instead
