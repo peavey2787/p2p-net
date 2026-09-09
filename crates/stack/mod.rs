@@ -8,6 +8,7 @@ mod discovery;
 mod dns_transport;
 mod external_addresses;
 mod quic_transport;
+mod tcp_transport;
 mod transport;
 
 pub(crate) use application_keep_alive::ApplicationKeepAlive;

@@ -8,6 +8,11 @@
 //! `P2P_LIVE_DCUTR_RELAY` multiaddr pins the relay for that diagnostic mode.
 //! Set `P2P_LIVE_TCP_TRACE=1` to capture native TCP dial/bind diagnostics in
 //! the same bounded event stream. Transport tracing is off by default.
+//! `--tcp-control ROLE SESSION RELAY LOCAL_PORT PUBLIC_IPV4` instead runs the
+//! isolated stock-libp2p diagnostic described in `support/dcutr_tcp_control.rs`.
+
+#[path = "support/dcutr_tcp_control.rs"]
+mod dcutr_tcp_control;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -109,6 +114,9 @@ struct ProcessStatus {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = std::env::args().collect::<Vec<_>>();
+    if args.get(1).map(String::as_str) == Some("--tcp-control") {
+        return dcutr_tcp_control::run(&args[2..]).await;
+    }
     if args.get(1).map(String::as_str) == Some("--child") {
         return run_child(&args).await;
     }
