@@ -6,6 +6,8 @@
 //! observations only. `P2P_LIVE_DCUTR_MANUAL_DIAL=1` opts into exchanging relay
 //! addresses there to isolate circuit establishment from discovery. An optional
 //! `P2P_LIVE_DCUTR_RELAY` multiaddr pins the relay for that diagnostic mode.
+//! Set `P2P_LIVE_TCP_TRACE=1` to capture native TCP dial/bind diagnostics in
+//! the same bounded event stream. Transport tracing is off by default.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -28,11 +30,13 @@ const STATUS_MAX_AGE: Duration = Duration::from_secs(5);
 struct ProbeEvents {
     sender: mpsc::SyncSender<String>,
     dropped: Arc<AtomicUsize>,
+    tcp_trace: bool,
 }
 
 impl tracing::Subscriber for ProbeEvents {
     fn enabled(&self, metadata: &tracing::Metadata<'_>) -> bool {
         metadata.target() == "p2p_net::event"
+            || (self.tcp_trace && metadata.target().starts_with("libp2p_tcp"))
     }
 
     fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
@@ -44,15 +48,26 @@ impl tracing::Subscriber for ProbeEvents {
     fn exit(&self, _: &tracing::span::Id) {}
 
     fn event(&self, event: &tracing::Event<'_>) {
-        struct Message(String);
+        struct Message(String, bool);
         impl tracing::field::Visit for Message {
             fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-                if field.name() == "event" {
+                if self.1 {
+                    use std::fmt::Write;
+                    let _ = write!(&mut self.0, " {}={value:?}", field.name());
+                } else if field.name() == "event" {
                     self.0 = format!("{value:?}");
                 }
             }
         }
-        let mut message = Message(String::new());
+        let transport_trace = event.metadata().target().starts_with("libp2p_tcp");
+        let mut message = Message(
+            if transport_trace {
+                format!("tcp_trace {}", event.metadata().target())
+            } else {
+                String::new()
+            },
+            transport_trace,
+        );
         event.record(&mut message);
         if !message.0.is_empty() && self.sender.try_send(message.0).is_err() {
             self.dropped.fetch_add(1, Ordering::Relaxed);
@@ -307,6 +322,7 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     tracing::subscriber::set_global_default(ProbeEvents {
         sender: event_sender,
         dropped: Arc::clone(&dropped_events),
+        tcp_trace: std::env::var_os("P2P_LIVE_TCP_TRACE").is_some(),
     })?;
     let started = Instant::now();
     let node = tokio::time::timeout(TIMEOUT, start_node(cfg)).await??;
