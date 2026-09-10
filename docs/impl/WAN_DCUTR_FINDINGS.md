@@ -136,3 +136,36 @@ The Windows distribution was refreshed to the `cab7769` release build with an
 updated checksum and an explicit failed-WAN-acceptance status. No successful
 direct WAN upgrade, Android validation, or long-term memory-stability result
 is claimed by this investigation.
+
+## September 10: mapping control and earlier acceptance audit
+
+Windows still used PIA `us-east` (`37.19.197.248`) and the Ubuntu VM remained
+running on its approved bridge. No application-source change or full-validation
+run was made for these controls.
+
+Four standard STUN binding requests used the same Windows UDP socket, local
+port 47801. Google (`74.125.250.129:19302`) observed public port 11711,
+Cloudflare (`162.159.207.0:3478`) observed port 54892, and a final Google request
+again observed 11711. These measurements establish destination-dependent
+mapping on the tested Windows path. The corresponding Ubuntu requests all
+returned `172.56.251.136:31636`; that sample does not establish its filtering
+behavior. TCP STUN requests timed out on both machines and are inconclusive.
+
+A separate ten-second raw UDP control used freshly STUN-observed endpoints
+`37.19.197.248:48589` and `172.56.251.136:55374`. Each machine sent 100 packets
+to the other endpoint and recorded zero received peer packets. Raw output is
+under `target/wan-vm-build/exchange/udp-20260910-control/`. This bypasses the
+application and DCUtR state machines, but uses Python sockets rather than the
+app executable: per-executable firewall behavior and the exact filtering
+location remain unisolated. It is not a DCUtR acceptance result and does not
+prove mathematical impossibility of every traversal strategy.
+
+The earlier commit `3dbbdda` is titled "libp2p dicutr & webrtc hole punching
+success". Its default DCUtR parent probe spawned both child processes on the
+same host, while its candidate filter allowed private non-loopback addresses.
+That harness did not enforce the current distinct-host, WAN-only requirement.
+The commit title alone therefore cannot serve as a known-good WAN regression
+baseline; this audit does not assert which address a historical successful run
+actually used without its raw endpoint evidence.
+
+The requested direct Windows-VPN / Ubuntu-WAN result remains unachieved.
