@@ -75,6 +75,18 @@ the default values do not mean exactly three socket attempts, each 60 seconds
 apart. Activating a handler also does not schedule a later retry on an existing
 idle circuit when its cooldown expires.
 
+Native TCP listener-role dials also tolerate early `ConnectionRefused` and
+`AddrInUse` errors within an eight-second connect window, waiting at least
+250 ms between retries of the same advertised endpoint. This does not probe
+additional ports. Ordinary dialer-role failures are not retried this way.
+Reused-port TCP connects to the same destination are serialized while pending,
+so a later DCUtR round cannot bind over an earlier pending connect. Different
+destinations and new-port requests remain independent. Cancellation releases
+the pending slot; the swarm's overall connection timeout still applies.
+These socket retries are another reason the attempt counters are not physical
+socket-attempt counts. They do not guarantee that the advertised NAT mapping
+is usable from the other peer.
+
 The current `dcutr_attempts` and per-peer attempt counters are event-loop
 eligibility estimates, not authoritative handler-activation counts: they can
 include passive relay dialers and miss activation after late verification.
