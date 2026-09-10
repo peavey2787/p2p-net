@@ -91,7 +91,7 @@ impl DcutrBehaviour {
             let Some((_, endpoint)) = self.deferred.remove(&id) else {
                 continue;
             };
-            if !self.allow_relayed_upgrade(peer, true) {
+            if endpoint.is_listener() && !self.allow_relayed_upgrade(peer, true) {
                 continue;
             }
             let handler = match endpoint {
@@ -254,25 +254,27 @@ impl NetworkBehaviour for DcutrBehaviour {
         if addr
             .iter()
             .any(|protocol| matches!(protocol, Protocol::P2pCircuit))
-            && (!self.has_candidate || !self.allow_relayed_upgrade(peer, true))
+            && (!self.has_candidate || !self.allowed_peers.contains(&peer))
         {
-            if !self.has_candidate || !self.allowed_peers.contains(&peer) {
-                self.deferred.insert(
-                    connection_id,
-                    (
-                        peer,
-                        ConnectedPoint::Dialer {
-                            address: addr.clone(),
-                            role_override,
-                            port_use,
-                        },
-                    ),
-                );
-            }
+            self.deferred.insert(
+                connection_id,
+                (
+                    peer,
+                    ConnectedPoint::Dialer {
+                        address: addr.clone(),
+                        role_override,
+                        port_use,
+                    },
+                ),
+            );
             return Ok(VerifiedDcutrHandler(Either::Right(
                 dummy::ConnectionHandler,
             )));
         }
+        // The dialer of a relay circuit responds to DCUtR; the circuit's
+        // listener initiates it. Local initiation cooldowns must not remove a
+        // verified peer's responder protocol. Otherwise asymmetric circuit
+        // replacement turns a valid remote attempt into Unsupported.
         self.inner
             .handle_established_outbound_connection(
                 connection_id,
@@ -415,6 +417,68 @@ impl ConnectionHandler for VerifiedDcutrHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn verified_responder_remains_available_after_local_budget_is_spent() {
+        let peer = PeerId::random();
+        let relay = PeerId::random();
+        let mut behaviour = DcutrBehaviour::new(PeerId::random(), 60, 1);
+        let candidate = "/ip4/8.8.4.4/tcp/4001".parse().unwrap();
+        behaviour.on_swarm_event(FromSwarm::NewExternalAddrCandidate(
+            libp2p::swarm::behaviour::NewExternalAddrCandidate { addr: &candidate },
+        ));
+        behaviour.allow_peer(peer);
+        assert!(behaviour.allow_relayed_upgrade(peer, true));
+        assert!(!behaviour.allow_relayed_upgrade(peer, true));
+        let addr = format!("/ip4/8.8.8.8/tcp/4001/p2p/{relay}/p2p-circuit/p2p/{peer}")
+            .parse()
+            .unwrap();
+        let handler = behaviour
+            .handle_established_outbound_connection(
+                ConnectionId::new_unchecked(71),
+                peer,
+                &addr,
+                Endpoint::Dialer,
+                PortUse::Reuse,
+            )
+            .unwrap();
+        assert!(
+            handler.0.is_left(),
+            "verified responders must still negotiate DCUtR"
+        );
+        assert_eq!(behaviour.attempts_by_peer[&peer], 1);
+    }
+
+    #[test]
+    fn late_verified_responder_does_not_spend_local_initiation_budget() {
+        let peer = PeerId::random();
+        let relay = PeerId::random();
+        let mut behaviour = DcutrBehaviour::new(PeerId::random(), 60, 1);
+        let addr = format!("/ip4/8.8.8.8/tcp/4001/p2p/{relay}/p2p-circuit/p2p/{peer}")
+            .parse()
+            .unwrap();
+        let handler = behaviour
+            .handle_established_outbound_connection(
+                ConnectionId::new_unchecked(72),
+                peer,
+                &addr,
+                Endpoint::Dialer,
+                PortUse::Reuse,
+            )
+            .unwrap();
+        assert!(handler.0.is_right());
+        let candidate = "/ip4/8.8.4.4/tcp/4001".parse().unwrap();
+        behaviour.on_swarm_event(FromSwarm::NewExternalAddrCandidate(
+            libp2p::swarm::behaviour::NewExternalAddrCandidate { addr: &candidate },
+        ));
+        assert!(
+            behaviour.pending_handlers.is_empty(),
+            "unverified responders stay disabled"
+        );
+        behaviour.allow_peer(peer);
+        assert_eq!(behaviour.pending_handlers.len(), 1);
+        assert!(behaviour.attempts_by_peer.is_empty());
+    }
 
     #[test]
     fn late_verification_activates_existing_relay_handler_once() {

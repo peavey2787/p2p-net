@@ -32,8 +32,8 @@ Fields:
 - `enabled`: installs the DCUtR behaviour when the resolved node capability set also allows relay-client fallback.
 - `attempt_after_relay_connection`: treats intended relayed destination peers as eligible for a direct upgrade. rust-libp2p owns the protocol-level hole punch; p2p-net gates the peer and exposes counters.
 - `keep_relay_fallback`: keeps the relay circuit available when an upgrade fails or cannot be attempted. This is required when upgrade-after-relay is enabled.
-- `retry_interval_secs`: minimum spacing between policy-approved DCUtR handler activations for the same peer. It does not pace every wire-level attempt inside that handler.
-- `max_attempts_per_peer`: caps those handler activations while the peer remains in the bounded policy bookkeeping, not the total number of transport dials.
+- `retry_interval_secs`: minimum spacing between locally initiating DCUtR handler activations for the same peer. It does not pace every wire-level attempt inside that handler or disable verified passive responders.
+- `max_attempts_per_peer`: caps those locally initiating handler activations while the peer remains in the bounded policy bookkeeping, not the total number of transport dials or responses to a verified peer.
 
 ## Profile resolution
 
@@ -64,7 +64,10 @@ The dashboard also shows DCUtR enabled/attempt/success/failure/fallback/suppress
 
 This crate does not replace rust-libp2p's DCUtR protocol implementation. It wraps the behaviour with product-level policy before a relayed connection gets a DCUtR handler: only intended app/manual/cache-discovered destination peers are eligible, `retry_interval_secs` is enforced as a per-peer cooldown, and `max_attempts_per_peer` caps repeated relayed-upgrade attempts. Public relay servers are not namespace-filtered; the namespace/app-peer gate applies to the relayed destination peer behind the relay.
 
-The cooldown above applies to **handler activation**, not every protocol retry.
+The relay circuit's listener initiates DCUtR; its dialer responds. The local
+cooldown and budget apply only to **initiating handler activation**, not passive
+responses or every protocol retry. Verified responders remain available after
+local initiation is suppressed, including on replacement relay circuits.
 The installed `libp2p-dcutr` 0.14.1 can initiate up to three direct upgrade rounds
 inside one handler, retrying after a failed dial without waiting for
 `retry_interval_secs`. Each round can dial multiple candidate addresses. Thus
@@ -72,7 +75,12 @@ the default values do not mean exactly three socket attempts, each 60 seconds
 apart. Activating a handler also does not schedule a later retry on an existing
 idle circuit when its cooldown expires.
 
-`dcutr_attempts` counts policy-approved attempts started from eligible relayed connections. `dcutr_successes` and `dcutr_failures` count libp2p DCUtR result events, so operators can distinguish attempts started from result events completed.
+The current `dcutr_attempts` and per-peer attempt counters are event-loop
+eligibility estimates, not authoritative handler-activation counts: they can
+include passive relay dialers and miss activation after late verification.
+Likewise, `dcutr_retry_suppressed` describes this event-loop estimate and must
+not be used to infer that a verified passive responder is disabled.
+`dcutr_successes` and `dcutr_failures` count libp2p DCUtR result events.
 
 ## Isolating a live failure
 

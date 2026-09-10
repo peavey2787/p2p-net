@@ -75,8 +75,24 @@ while unrelated infrastructure is rejected.
 
 ## Retry interpretation
 
-The configured per-peer cooldown gates p2p-net handler activations. Upstream
+The configured per-peer cooldown gates locally initiating handler activations. Upstream
 `libp2p-dcutr` 0.14.1 can retry three rounds within a handler without that cooldown.
 Each round can dial several addresses. Neither the configured attempt budget
 nor the current result counters should be interpreted as a count of individual
 socket attempts. See [DCUtR policy](DCUTR_POLICY.md).
+
+## Responder availability
+
+The next production run, `wan-20260909-priority`, again ended at 60 seconds with
+both app peers connected through relay and neither connected directly. The
+target-peer rejection at the lower infrastructure cap did not recur. Ubuntu
+instead reported a DCUtR `Unsupported` result after relay replacement.
+
+The wrapper incorrectly applied local initiation cooldowns and budgets to
+passive responders too. An asymmetric reconnect could therefore disable the
+responder protocol while the other peer was still eligible to initiate.
+Verified outbound relay-circuit handlers now remain able to respond; inbound
+relay-circuit initiation still observes the cooldown and budget. Unverified
+destinations remain disabled. Two focused regressions cover responder
+availability after budget exhaustion and late verification without consuming
+an initiation attempt. All ten focused DCUtR tests passed.
