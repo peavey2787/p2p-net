@@ -96,3 +96,43 @@ relay-circuit initiation still observes the cooldown and budget. Unverified
 destinations remain disabled. Two focused regressions cover responder
 availability after budget exhaustion and late verification without consuming
 an initiation attempt. All ten focused DCUtR tests passed.
+
+### Live results for `cab7769`
+
+The normal release builds were run on Windows and Ubuntu, not a validation
+suite. A per-target no-LTO build experiment failed on Windows because the
+cached release dependencies require LTO; that experimental build was not used
+for these tests. Ubuntu's corresponding experiment was stopped before the
+normal release build.
+
+- `wan-20260909-responder`: automatic public application discovery succeeded.
+  Windows was the relay-circuit listener / DCUtR initiator. Both application
+  peers remained connected at 54 seconds; Windows reported
+  `AttemptsExceeded(3)`. Neither peer acquired a direct connection within 60
+  seconds, and both processes reported failure. Windows' final app count fell
+  to zero when Ubuntu shut down at its deadline, not during the earlier sample.
+- `wan-20260909-responder-reverse`: a pinned free public relay diagnostic
+  forced Windows to dial the relay circuit and act as the passive DCUtR
+  responder. Ubuntu reported `AttemptsExceeded(3)`. Both app peers remained
+  connected through relay at 60 seconds, with no direct connection in either
+  raw event log. This pinned diagnostic does not establish automatic discovery
+  acceptance. Windows' actual relay TCP socket used listener port 4001.
+
+Neither run reported `Unsupported`. Both progressed to transport attempts:
+Ubuntu recorded TCP connection refusals to the advertised Windows public
+candidates, Windows recorded TCP timeouts to Ubuntu, and QUIC handshakes timed
+out. These observations locate the remaining failure after DCUtR negotiation;
+they do not identify every intervening NAT/filter or prove that no transport
+implementation defect remains. The VPN and LAN policy were unchanged.
+
+The reverse diagnostic also exposed an evidence-collection limitation: the
+Windows relay endpoint event arrived before the other role's status file was
+available. Its derived `target_relay_seen` flag stayed false although the raw
+log proves the relay connection. Both raw logs were therefore checked directly
+for the exact other PeerId and `relayed=false`; neither contained a direct
+endpoint. Do not rely on that derived flag alone for early connections.
+
+The Windows distribution was refreshed to the `cab7769` release build with an
+updated checksum and an explicit failed-WAN-acceptance status. No successful
+direct WAN upgrade, Android validation, or long-term memory-stability result
+is claimed by this investigation.
