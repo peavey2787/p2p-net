@@ -1,4 +1,4 @@
-# WAN DCUtR investigation — September 9, 2026
+# WAN DCUtR investigation — September 9–10, 2026
 
 Direct WAN DCUtR has **not** passed acceptance on the tested Windows-VPN /
 Ubuntu-regular-Internet pair. Public relay connectivity is not direct success.
@@ -211,3 +211,82 @@ copied to `dist/windows`, with its previous binary and metadata preserved in
 `target/wan-vm-build/dist-before-7649d2c`. Its manifest explicitly records failed
 direct-WAN acceptance. Direct Windows-VPN / Ubuntu-WAN connectivity remains
 unresolved despite the narrower TCP collision correction.
+
+## September 10: measured mapping/filtering mismatch
+
+The new reproducible diagnostic is
+[`scripts/diagnostics/nat_behavior.py`](../../scripts/diagnostics/nat_behavior.py):
+
+```sh
+python scripts/diagnostics/nat_behavior.py --tcp-mapping
+```
+
+It uses standard STUN requests to `stun.voipgate.com:3478`, the default public
+service in [Pion's NAT diagnostic](https://github.com/pion/stun/blob/main/cmd/stun-nat-behaviour/README.md).
+The service advertised primary `185.125.180.70:3478` and alternate
+`185.125.180.71:3479`. Requests are restricted to these two service addresses
+and their two ports; no port scan, forwarding, firewall or VPN change occurs.
+Socket operations share a 60-second budget; DNS uses the OS resolver.
+
+Both hosts were tested, first with a UDP diagnostic and then with the final
+combined UDP/TCP implementation. Windows remained on PIA `us-east`, public
+`37.19.197.248`; Ubuntu remained on regular Internet, public `172.56.251.136`.
+The final generated results are in
+`target/wan-vm-build/exchange/nat-20260910-complete/{windows,linux}.json`.
+
+| Measurement | Windows VPN | Ubuntu regular Internet |
+| --- | --- | --- |
+| UDP mapping | Address-and-port-dependent | Endpoint-independent in the sample |
+| UDP filtering | Address-and-port-dependent | Address-and-port-dependent |
+| TCP mapping from one local listening port | Public ports 44097, 62852, 10146 for three destinations | Public port 18278 for all three destinations |
+
+In the UDP mapping check, Windows used one socket but obtained public ports
+52709, 37272 and 11939 for the three service destinations. Ubuntu's corresponding
+two-address check retained public port 1305. Mapping and filtering checks use
+separate fresh sockets, so mapping requests do not accidentally open the return
+paths before filtering is measured.
+
+The filtering result is not based solely on silence from an unverified server:
+
+- The diagnostic verifies response transaction IDs, source addresses, framing
+  and `RESPONSE-ORIGIN`, and rejects a missing/private/unusable `OTHER-ADDRESS`.
+- After alternate-source responses time out, it confirms direct binding replies
+  from all alternate endpoints. This addresses the false-classification issue
+  in [reported RFC 5780 erratum 7971](https://www.rfc-editor.org/errata/eid7971).
+- On Ubuntu, where the mapped port remains unchanged, it then repeats both
+  CHANGE-REQUESTs after explicitly opening the alternate return paths. Both
+  replies arrive from the requested alternate endpoints. This verifies that the
+  service supports the operation and that the earlier filtering result was not
+  simply a server silently ignoring the request.
+- Five small offline codec/guard checks pass, including rejection of a server
+  that responds from the original endpoint to a change-source request.
+
+This identifies a concrete obstacle for the current UDP strategy: Windows'
+public port observed by a relay/STUN server is not generally the source port
+used toward Ubuntu, while Ubuntu only accepts traffic from the exact endpoint
+it contacted. Merely synchronizing dials to those third-party-observed ports
+does not resolve that mismatch. Increasing the retry count does not make those
+ports destination-independent.
+
+These are Python-socket path measurements, not measurements made inside the
+app's QUIC socket. They do not locate every filtering device, characterize TCP
+filtering, rule out every remaining transport defect, or prove every conceivable
+traversal strategy impossible. They do provide evidence beyond an application
+timeout; TCP mapping is now measured too, unlike the earlier inconclusive
+Google/Cloudflare TCP STUN controls.
+
+### Fresh production acceptance after the controls
+
+`wan-20260910-nat-confirmed` ran the existing `7649d2c` production build on both
+hosts with automatic public discovery, a fresh identity/namespace, LAN disabled,
+and no manually exchanged relay address. Both app peers were connected through
+relay at 32–33 seconds. Windows reported `AttemptsExceeded(3)`; both processes
+failed their 60-second deadlines. Neither complete raw log contains a direct
+endpoint for the exact other PeerId, and both success counters remain zero.
+Ubuntu's last status still showed the app connection; Windows' final app count
+dropped at the other process's shutdown. That final sample does not establish
+an earlier spontaneous disconnect.
+
+No application binary was changed by this diagnostic-only follow-up. No full
+validation was run. Direct WAN DCUtR remains **unachieved**; neither relay
+connectivity nor these network measurements are reported as direct success.
