@@ -169,3 +169,45 @@ baseline; this audit does not assert which address a historical successful run
 actually used without its raw endpoint evidence.
 
 The requested direct Windows-VPN / Ubuntu-WAN result remains unachieved.
+
+## September 10: TCP retry overlap correction
+
+A prior working binary is not required to develop a correction. The next
+experiment used the observed fast TCP refusals and overlapping Windows
+connects as its starting evidence, without changing the VPN or enabling LAN.
+
+First, listener-role TCP connects were given an eight-second window for
+retrying early refusal/address-in-use errors against the same advertised
+endpoint, with a 250 ms delay. `wan-20260910-tcp-window` still failed at 60
+seconds. Linux reported `AttemptsExceeded(3)` at 26 seconds. Windows' next
+round could still start while its preceding ten-second connect was pending:
+target TCP dials were constructed around 2, 10 and 19 seconds, and target
+`10048` errors remained. Holding the listener side's refusal alone was
+insufficient.
+
+Commit `7649d2c` additionally serializes pending reused-port TCP connects to
+the same destination. Cancellation releases the waiting slot; established
+streams are never shared between Noise/Yamux handshakes. Weak references are
+reclaimed on subsequent lookups rather than retaining endpoint history.
+Different destinations and explicit new-port requests remain independent.
+Ordinary dialer-role refusals are not retried. The eight focused transport
+tests passed, including an actual refused socket followed by successful
+listener-port reuse, cancellation, independent endpoints, and stale-entry
+cleanup. These regressions are not WAN acceptance.
+
+`wan-20260910-tcp-gate` ran the updated production code on Windows and Ubuntu
+through the same pinned free public relay, with Ubuntu initiating DCUtR.
+Both connected as application peers through relay. The target Windows TCP
+collision errors did not recur, but TCP/QUIC direct attempts still failed and
+Linux again reported `AttemptsExceeded(3)`. Neither raw log contains a direct
+endpoint for the other PeerId, and both processes failed their 60-second
+deadline. Unrelated infrastructure peers still produced some address-in-use
+errors; this result does not claim to eliminate every such error globally.
+Windows' final app count dropped when Ubuntu exited at its deadline.
+
+Both runs were pinned-relay diagnostics, not automatic-discovery acceptance.
+No full-validation suite was run. The normal Windows app was rebuilt and
+copied to `dist/windows`, with its previous binary and metadata preserved in
+`target/wan-vm-build/dist-before-7649d2c`. Its manifest explicitly records failed
+direct-WAN acceptance. Direct Windows-VPN / Ubuntu-WAN connectivity remains
+unresolved despite the narrower TCP collision correction.
