@@ -75,6 +75,13 @@ the default values do not mean exactly three socket attempts, each 60 seconds
 apart. Activating a handler also does not schedule a later retry on an existing
 idle circuit when its cooldown expires.
 
+WAN TCP/QUIC observations are forwarded to libp2p-dcutr's existing 20-entry LRU
+candidate cache. There is no separate lifetime quota that freezes the first
+eight addresses of each transport. New NAT mappings and repeated observations
+can refresh the cache without an additional unbounded address history or
+confirmation/expiry loop. A handler takes its candidate snapshot when created;
+this does not replace the candidate list of an already-running handshake.
+
 Native TCP listener-role dials also tolerate early `ConnectionRefused` and
 `AddrInUse` errors within an eight-second connect window, waiting at least
 250 ms between retries of the same advertised endpoint. This does not probe

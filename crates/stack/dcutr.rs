@@ -14,15 +14,14 @@ use libp2p::{dcutr, Multiaddr, PeerId};
 
 use crate::connectivity::addr::is_public_direct_addr;
 
-const MAX_PUBLIC_CANDIDATES_PER_TRANSPORT: usize = 8;
 const MAX_ALLOWED_DCUTR_PEERS: usize = 1024;
 
 /// Offers bounded TCP and QUIC candidates to verified application peers.
-/// Separate transport budgets keep noisy NAT observations from excluding an
-/// alternative punching strategy. LAN candidates follow the node's opt-in.
+/// The upstream behaviour maintains a bounded, refreshing candidate cache.
+/// LAN candidates follow the node's opt-in; fresh WAN observations must not
+/// be rejected just because earlier NAT mappings filled a lifetime quota.
 pub struct DcutrBehaviour {
     inner: dcutr::Behaviour,
-    public_candidates: HashSet<Multiaddr>,
     has_candidate: bool,
     retry_interval: Duration,
     max_attempts_per_peer: u32,
@@ -39,7 +38,6 @@ impl DcutrBehaviour {
     pub fn new(local_peer: PeerId, retry_interval_secs: u64, max_attempts_per_peer: u32) -> Self {
         Self {
             inner: dcutr::Behaviour::new(local_peer),
-            public_candidates: HashSet::new(),
             has_candidate: false,
             retry_interval: Duration::from_secs(retry_interval_secs.max(1)),
             max_attempts_per_peer: max_attempts_per_peer.max(1),
@@ -129,21 +127,10 @@ impl DcutrBehaviour {
         if !self.allow_lan_candidates && !is_public_direct_addr(addr) {
             return false;
         }
-        if !is_public_direct_addr(addr) || self.public_candidates.contains(addr) {
-            self.has_candidate = true;
-            return true;
-        }
-        let tcp = is_tcp_candidate(addr);
-        if self
-            .public_candidates
-            .iter()
-            .filter(|known| is_tcp_candidate(known) == tcp)
-            .count()
-            >= MAX_PUBLIC_CANDIDATES_PER_TRANSPORT
-        {
-            return false;
-        }
-        self.public_candidates.insert(addr.clone());
+        // libp2p-dcutr 0.14.1 already uses a 20-entry LRU. Our former
+        // first-eight-per-transport gate prevented that cache from refreshing
+        // after NAT rebinding. Forward observations without retaining another
+        // address history or emitting any extra confirmation/expiry events.
         self.has_candidate = true;
         true
     }
@@ -173,10 +160,6 @@ impl DcutrBehaviour {
         self.last_attempt_by_peer.insert(peer, now);
         true
     }
-}
-
-fn is_tcp_candidate(addr: &Multiaddr) -> bool {
-    addr.iter().any(|p| matches!(p, Protocol::Tcp(_)))
 }
 
 fn is_dcutr_candidate(addr: &Multiaddr) -> bool {
@@ -556,7 +539,6 @@ mod tests {
             libp2p::swarm::behaviour::ExternalAddrConfirmed { addr: &public },
         ));
         assert!(behaviour.has_candidate);
-        assert!(behaviour.public_candidates.contains(&public));
         assert!(behaviour.deferred.is_empty());
         assert_eq!(behaviour.pending_handlers.len(), 1);
         assert_eq!(behaviour.attempts_by_peer[&peer], 1);
@@ -599,24 +581,22 @@ mod tests {
     }
 
     #[test]
-    fn public_candidate_count_is_bounded() {
-        let mut behaviour = DcutrBehaviour::new(PeerId::random(), 60, 3);
-        for suffix in 1..=MAX_PUBLIC_CANDIDATES_PER_TRANSPORT {
-            let addr = format!("/ip4/8.8.8.{suffix}/udp/4001/quic-v1")
-                .parse()
-                .unwrap();
-            assert!(behaviour.accept_candidate(&addr));
+    fn fresh_nat_mappings_remain_eligible_after_initial_candidates_fill() {
+        let mut behaviour = DcutrBehaviour::new(PeerId::random(), 60, 3)
+            .with_lan_candidates(false);
+        // Memory remains bounded by upstream's 20-entry LRU, rather than
+        // rejecting every fresh mapping after the first eight observations.
+        for port in 4001..4101 {
+            for suffix in [format!("tcp/{port}"), format!("udp/{port}/quic-v1")] {
+                let addr = format!("/ip4/8.8.8.8/{suffix}").parse().unwrap();
+                assert!(behaviour.accept_candidate(&addr), "fresh mapping {addr}");
+                behaviour.on_swarm_event(FromSwarm::NewExternalAddrCandidate(
+                    libp2p::swarm::behaviour::NewExternalAddrCandidate { addr: &addr },
+                ));
+            }
         }
-        let overflow: Multiaddr = "/ip4/9.9.9.9/udp/4001/quic-v1".parse().unwrap();
-        let lan: Multiaddr = "/ip4/192.168.1.2/udp/4001/quic-v1".parse().unwrap();
-
-        assert!(!behaviour.accept_candidate(&overflow));
-        assert!(behaviour.accept_candidate(&lan));
-        for suffix in 1..=MAX_PUBLIC_CANDIDATES_PER_TRANSPORT {
-            let addr = format!("/ip4/8.8.8.{suffix}/tcp/4001").parse().unwrap();
-            assert!(behaviour.accept_candidate(&addr));
-        }
-        assert!(!behaviour.accept_candidate(&"/ip4/9.9.9.9/tcp/4001".parse().unwrap()));
+        assert!(behaviour.accept_candidate(&"/ip4/9.9.9.9/tcp/4001".parse().unwrap()));
+        assert!(!behaviour.accept_candidate(&"/ip4/192.168.1.2/tcp/4001".parse().unwrap()));
     }
 
     #[test]
