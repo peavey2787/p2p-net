@@ -381,3 +381,45 @@ firewall or routing setting was changed. Raw evidence and the administrator
 transcript are under
 `target/wan-vm-build/exchange/wan-20260912-windows-capture-b/`. No application
 source/binary change or full-validation run was made in this capture follow-up.
+
+## September 12: recover guest execution and retest both WAN nodes
+
+The previous `tcp-20260912-allports` attempt is invalid: Ubuntu never started
+because VirtualBox had exhausted its guest sessions. It is not evidence of a
+two-node connection failure. On resuming, the VM was powered off. It was started
+headlessly, the approved transient source share restored, and guest execution
+verified before either new test. Windows stayed on PIA `us-east`; its current
+public address was `212.56.54.127`. Ubuntu remained on the approved regular-
+Internet bridge and reported `172.56.251.136`.
+
+`scripts/diagnostics/invoke_guest_command.ps1` now provides an attached,
+time-bounded `guestcontrol run` invocation instead of detached `start` calls.
+It accepts caller-supplied credentials without persisting them. A successful
+guest command, both failed live probes, and an intentional one-second timeout
+each left **zero active guest sessions**. The timeout returned after 1.2 seconds.
+This repairs diagnostic session accumulation; it is not a NAT-traversal fix.
+
+Two valid live attempts used the existing `efb9d19` binaries:
+
+- `wan-20260912-attached`: both production nodes ran for 60 seconds with fresh
+  identities, automatic public discovery and LAN disabled. Their relayed
+  application circuit appeared at about 19 seconds. Windows emitted
+  `AttemptsExceeded(3)` at 46 seconds. Both recorded zero DCUtR successes and no
+  direct target endpoint. The target's errors were TCP connect-window and QUIC
+  handshake timeouts, not connection-limit rejections. Windows' final app count
+  was zero after the other process reached its deadline; the earlier relay
+  connection is present in both logs.
+- `tcp-20260912-attached`: both stock TCP/DCUtR control processes ran for
+  60 seconds, established the intended public relayed circuit and used only
+  relay-observed public TCP candidates. Ubuntu received connection refusals
+  dialing Windows' observed port 60125. Windows' first dial to Ubuntu's observed
+  port 35093 timed out; overlapping stock retries returned `AddrInUse`. That
+  overlap is already mitigated in the production TCP wrapper, which this
+  deliberately stock control does not use. Neither control reported a direct
+  endpoint or DCUtR success. This is diagnostic evidence, not production
+  acceptance or proof that every hole-punching strategy must fail.
+
+Raw status and logs remain in the named directories under
+`target/wan-vm-build/exchange/`. No VPN location, firewall, routing or production
+transport change was made, and no full validation was run. Direct WAN DCUtR
+acceptance is still **unachieved**.
