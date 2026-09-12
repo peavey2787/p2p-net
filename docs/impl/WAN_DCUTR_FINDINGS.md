@@ -1,4 +1,4 @@
-# WAN DCUtR investigation — September 9–10, 2026
+# WAN DCUtR investigation — September 9–11, 2026
 
 Direct WAN DCUtR has **not** passed acceptance on the tested Windows-VPN /
 Ubuntu-regular-Internet pair. Public relay connectivity is not direct success.
@@ -290,3 +290,45 @@ an earlier spontaneous disconnect.
 No application binary was changed by this diagnostic-only follow-up. No full
 validation was run. Direct WAN DCUtR remains **unachieved**; neither relay
 connectivity nor these network measurements are reported as direct success.
+
+## September 11: remove the frozen DCUtR candidate quota
+
+Commit `efb9d19` corrects a real address-refresh defect: the wrapper permanently
+retained the first eight public TCP and eight QUIC candidates, rejecting all
+later distinct observations. Consequently, upstream's existing 20-entry LRU
+could not refresh after that quota filled. The duplicate lifetime cache is
+removed; the WAN/transport filter and app-peer admission rules remain. Fresh
+observations now reach upstream's bounded shared cache. This no longer imposes
+separate per-transport quotas. Existing handler snapshots are unchanged.
+
+The focused regression exercised 200 TCP/QUIC mapping observations and verified
+that fresh public addresses remain eligible while private addresses remain
+rejected with LAN disabled. It passed. Windows release app/probe builds and
+Ubuntu's release probe build completed; no full validation suite was run.
+
+`wan-20260911-candidate-refresh` then tested those builds using automatic public
+discovery, fresh identities, LAN disabled, unchanged Windows PIA `us-east`, and
+Ubuntu's regular-Internet bridge. Both had their target application peer through
+relay at 27–28 seconds. Neither raw log contains a direct endpoint for the other
+PeerId. Both failed the hard 60-second deadline, with zero DCUtR successes; no
+terminal DCUtR result was emitted before that deadline in this run.
+
+An additional Ubuntu capture on `enp0s3` was limited to Windows' WAN IP and
+TCP/UDP app port 4001, recording packet headers rather than payloads. It recorded
+1,179 packets with zero kernel drops. These include 227 incoming TCP resets
+from Windows' advertised public endpoints in response to Ubuntu's outgoing
+SYNs, but no incoming TCP SYN or UDP packet from that IP within the capture.
+The capture establishes that those direct TCP dials left Ubuntu and met resets;
+it does not identify whether Windows or an intervening device generated them.
+
+Windows PktMon access was denied even from the available escalated tool session.
+An administrator/UAC-approved targeted Windows capture is the next isolating
+check for the reset origin; no VPN, firewall or routing change is needed for
+that capture. The Ubuntu capture stopped automatically after 65 seconds.
+
+`dist/windows` now contains the rebuilt `efb9d19` normal app. Its manifest and
+checksum are updated and explicitly record failed direct-WAN acceptance. The
+prior executable and metadata are preserved in
+`target/wan-vm-build/dist-before-efb9d19`; local configuration, identities and
+peer caches were not replaced. This fixes the frozen-candidate defect, not the
+still-unresolved end-to-end direct connection.
