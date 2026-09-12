@@ -1,4 +1,4 @@
-# WAN DCUtR investigation — September 9–11, 2026
+# WAN DCUtR investigation — September 9–12, 2026
 
 Direct WAN DCUtR has **not** passed acceptance on the tested Windows-VPN /
 Ubuntu-regular-Internet pair. Public relay connectivity is not direct success.
@@ -332,3 +332,52 @@ prior executable and metadata are preserved in
 `target/wan-vm-build/dist-before-efb9d19`; local configuration, identities and
 peer caches were not replaced. This fixes the frozen-candidate defect, not the
 still-unresolved end-to-end direct connection.
+
+## September 12: simultaneous administrator Windows / Ubuntu captures
+
+The user approved a UAC-elevated Windows packet-header capture. The first helper
+stopped without changing filters because its empty-filter check expected
+"No filters" but Windows returned "Packet Filters: None". After correcting that
+check, `wan-20260912-windows-capture-b` ran the existing `efb9d19` release builds
+with automatic public discovery, fresh identities, LAN disabled and the same
+Windows VPN / Ubuntu regular-Internet paths.
+
+Windows PktMon captured only TCP SYN/RST packets involving Ubuntu's public
+`172.56.251.136` and app port 4001, across all components, limited to 54 bytes
+per record and an 8 MB circular log. It verified that no other capture or
+filters existed before starting. Ubuntu simultaneously captured headers for
+Windows' public `37.19.197.248` on app TCP/UDP port 4001.
+
+Results:
+
+- Windows recorded 36 outgoing SYN observations across four component/edge
+  appearances: **nine SYN transmissions**, not 36 distinct packets. They used
+  local `10.29.18.238:4001` toward `172.56.251.136:21429`, the public TCP mapping
+  reported in Ubuntu's Identify log. Component 1 is the **PIA Tunnel**, and the
+  same SYNs are visible there. There were no matching receive records or reset
+  records in Windows' filtered capture. PktMon reported no lost events.
+- Ubuntu recorded 25 outgoing TCP SYNs and 25 incoming TCP resets from the
+  advertised Windows public ports. For example, a SYN to port 30580 with
+  sequence 3807317937 was followed by a reset acknowledging 3807317938. Windows'
+  Identify log contains that advertised port. Ubuntu recorded no incoming SYN
+  or UDP packet from Windows' public IP. Its capture reported 270 packets and
+  zero kernel drops.
+- Both application peers stayed connected through relay at the final 60-second
+  sample, with zero direct successes. Windows emitted `AttemptsExceeded(3)`.
+  Neither raw application log contains a direct endpoint for the other PeerId;
+  both processes failed the 60-second acceptance deadline.
+
+The outgoing SYNs provide a positive visibility check at Windows' VPN interface:
+this is not a conclusion drawn from an entirely empty Windows trace. Ubuntu's
+resets are not visible as resets emitted by the captured Windows TCP path, and
+Windows' SYNs are not visible at Ubuntu's interface. This points to rejection
+or loss in the intervening VPN/NAT path, rather than an absent application dial.
+The captures do **not** identify the exact generating hop or rule out filtering
+inside the VPN client before packets reach the observed Windows interfaces.
+
+The Windows helper stopped capture, removed its temporary filters, and converted
+the ETL into `windows-peer.txt`. Ubuntu's capture stopped automatically. No VPN,
+firewall or routing setting was changed. Raw evidence and the administrator
+transcript are under
+`target/wan-vm-build/exchange/wan-20260912-windows-capture-b/`. No application
+source/binary change or full-validation run was made in this capture follow-up.
