@@ -73,6 +73,10 @@ pub struct RelayState {
     pub dcutr_retry_suppressed: usize,
     pub dcutr_attempts_by_peer: HashMap<PeerId, u32>,
     pub dcutr_last_attempt_by_peer: HashMap<PeerId, Instant>,
+    /// Peers for which an inbound, newly verified relay circuit caused us to
+    /// open one reciprocal circuit.  The opposite circuit orientation lets
+    /// DCUtR try both NAT roles without an unbounded reconnect loop.
+    pub reciprocal_dcutr_attempted_peers: HashSet<PeerId>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

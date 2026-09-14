@@ -8,14 +8,13 @@ use tokio::sync::Mutex;
 
 use crate::api::accounted_transport_bytes;
 use crate::common::error::NetError;
-use crate::connectivity::dht::{
-    start_dht_namespace_discovery_immediate, DhtNamespacePlan, DhtProviderState,
-};
+use crate::connectivity::dht::{DhtNamespacePlan, DhtProviderState};
 use crate::connectivity::peer_book::PeerBook;
 use crate::protocol::pulse::{collect_local_heartbeat, encode_heartbeat_wire};
-use crate::stack::{add_external_address_candidate, retain_application_peer, MeshBehaviour};
+use crate::stack::{
+    add_external_address_candidate, refresh_dcutr_candidate, retain_application_peer, MeshBehaviour,
+};
 
-use super::config::NodeConfig;
 use super::public_ip::PublicIpProbeResult;
 use super::push_pulse;
 use super::snapshot::NodeSnapshot;
@@ -74,27 +73,13 @@ pub(crate) fn publish_heartbeat(
 
 pub(crate) async fn apply_public_ip_probe_result(
     result: PublicIpProbeResult,
-    cfg: &NodeConfig,
     swarm: &mut Swarm<MeshBehaviour>,
     snapshot: &Arc<Mutex<NodeSnapshot>>,
-    dht_state: &mut DhtProviderState,
-    rendezvous_peer_count: usize,
 ) {
     for addr in &result.external_addresses {
+        refresh_dcutr_candidate(swarm, addr);
         add_external_address_candidate(swarm, addr.clone());
     }
-
-    let dht_plan = if result.external_addresses.is_empty() {
-        None
-    } else {
-        Some(start_dht_namespace_discovery_immediate(
-            swarm,
-            cfg.network_id,
-            &cfg.discovery,
-            rendezvous_peer_count,
-            dht_state,
-        ))
-    };
 
     let mut guard = snapshot.lock().await;
     guard.public_ip_probe_status = result.status.clone();
@@ -105,9 +90,6 @@ pub(crate) async fn apply_public_ip_probe_result(
 
     if let Some(pulse) = result.pulse_line() {
         push_pulse(&mut guard.pulses, pulse);
-    }
-    if let Some(plan) = dht_plan {
-        apply_dht_refresh_snapshot(&mut guard, dht_state, &plan, "public_ip_probe");
     }
 }
 

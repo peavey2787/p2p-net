@@ -25,6 +25,27 @@ use super::{
 };
 
 const KADEMLIA_QUERY_TIMEOUT: Duration = Duration::from_secs(20);
+// The IPFS DHT default (20) makes a fresh consumer wait for twenty remote
+// answers per lookup while it is also publishing provider and signed-address
+// records.  Three independent application provider keys at five replicas each
+// retain fifteen public copies without letting startup queries occupy every
+// connection slot until the 60-second acceptance deadline.
+const KADEMLIA_REPLICATION_FACTOR: usize = 5;
+
+fn autonat_config(serve_public_probes: bool) -> autonat::Config {
+    let mut config = autonat::Config::default();
+    if !serve_public_probes {
+        // AutoNAT v1 combines its client and server in one behaviour. A normal
+        // application node needs the client, but must not accept arbitrary
+        // dial-back requests from the public swarm: every accepted request
+        // creates a new outbound transport dial and can starve the intended
+        // application peer and DCUtR of connection slots. Dedicated public
+        // infrastructure roles retain the server side.
+        config.throttle_clients_global_max = 0;
+        config.throttle_clients_peer_max = 0;
+    }
+    config
+}
 
 #[derive(NetworkBehaviour)]
 #[behaviour(to_swarm = "MeshEvent")]
@@ -34,7 +55,7 @@ pub struct MeshBehaviour {
     pub relay_acl_blocked: Toggle<allow_block_list::Behaviour<BlockedPeers>>,
     pub relay_acl_allowed: Toggle<allow_block_list::Behaviour<AllowedPeers>>,
     pub gossipsub: gossipsub::Behaviour,
-    pub kademlia: kad::Behaviour<kad::store::MemoryStore>,
+    pub kademlia: Toggle<kad::Behaviour<kad::store::MemoryStore>>,
     pub autonat: autonat::Behaviour,
     pub dcutr: Toggle<DcutrBehaviour>,
     pub external_address_candidates: ExternalAddressCandidates,
@@ -186,10 +207,21 @@ pub fn build_behaviour(ctx: BehaviourBuildContext<'_>) -> MeshBehaviour {
     let store = kad::store::MemoryStore::new(local_peer);
     let mut kad_config = kad::Config::default();
     kad_config.set_query_timeout(KADEMLIA_QUERY_TIMEOUT);
+    kad_config.set_replication_factor(
+        NonZeroUsize::new(KADEMLIA_REPLICATION_FACTOR)
+            .expect("Kademlia replication factor is non-zero"),
+    );
+    // Seed insertion otherwise starts a full bucket crawl immediately. The
+    // scheduled provider queries can route from the seeds directly, while the
+    // separately configured periodic bootstrap maintains the server's routing
+    // table after startup has settled.
+    kad_config.set_automatic_bootstrap_throttle(None);
     kad_config.set_periodic_bootstrap_interval(
         discovery_cfg
             .dht
-            .periodic_bootstrap_interval_secs
+            .enabled
+            .then_some(discovery_cfg.dht.periodic_bootstrap_interval_secs)
+            .flatten()
             .map(Duration::from_secs),
     );
     kad_config.set_parallelism(
@@ -213,6 +245,10 @@ pub fn build_behaviour(ctx: BehaviourBuildContext<'_>) -> MeshBehaviour {
         identify::Behaviour::new(identify::Config::new(identify_protocol, local_key.public()));
 
     let relay_server_active = behaviour_policy.relay_server && relay_cfg.enabled;
+    let serve_public_autonat_probes = matches!(
+        resolved_cfg.role.as_str(),
+        "relay" | "mediator" | "rendezvous" | "bootstrap"
+    );
     let relay_server = relay_server_active
         .then(|| relay::Behaviour::new(local_peer, relay_cfg.to_libp2p_config()))
         .into();
@@ -258,8 +294,8 @@ pub fn build_behaviour(ctx: BehaviourBuildContext<'_>) -> MeshBehaviour {
         relay_acl_blocked,
         relay_acl_allowed,
         gossipsub,
-        kademlia,
-        autonat: autonat::Behaviour::new(local_peer, Default::default()),
+        kademlia: discovery_cfg.dht.enabled.then_some(kademlia).into(),
+        autonat: autonat::Behaviour::new(local_peer, autonat_config(serve_public_autonat_probes)),
         dcutr: behaviour_policy
             .dcutr
             .then(|| {
@@ -280,5 +316,25 @@ pub fn build_behaviour(ctx: BehaviourBuildContext<'_>) -> MeshBehaviour {
         ping: ping::Behaviour::new(
             ping::Config::new().with_interval(Duration::from_secs(ping_interval_secs)),
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::autonat_config;
+
+    #[test]
+    fn application_nodes_do_not_serve_public_autonat_dial_backs() {
+        let config = autonat_config(false);
+        assert_eq!(config.throttle_clients_global_max, 0);
+        assert_eq!(config.throttle_clients_peer_max, 0);
+        assert!(config.use_connected);
+    }
+
+    #[test]
+    fn relay_nodes_retain_the_autonat_server_defaults() {
+        let config = autonat_config(true);
+        assert!(config.throttle_clients_global_max > 0);
+        assert!(config.throttle_clients_peer_max > 0);
     }
 }

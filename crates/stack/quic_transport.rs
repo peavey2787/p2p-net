@@ -30,9 +30,11 @@ impl<T: Transport + Unpin> Transport for DcutrQuicTransport<T> {
     ) -> Result<(), TransportError<Self::Error>> {
         self.0.listen_on(id, addr)
     }
+
     fn remove_listener(&mut self, id: ListenerId) -> bool {
         self.0.remove_listener(id)
     }
+
     fn dial(
         &mut self,
         addr: Multiaddr,
@@ -43,6 +45,7 @@ impl<T: Transport + Unpin> Transport for DcutrQuicTransport<T> {
         }
         self.0.dial(addr, opts)
     }
+
     fn poll(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -56,7 +59,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn listener_role_requires_a_hole_punch_listener() {
+    async fn listener_role_uses_the_hole_punch_path() {
         let key = libp2p::identity::Keypair::generate_ed25519();
         let mut transport = DcutrQuicTransport(libp2p::quic::tokio::Transport::new(
             libp2p::quic::Config::new(&key),
@@ -72,8 +75,6 @@ mod tests {
                 port_use: PortUse::Reuse,
             },
         );
-        // The unadapted transport creates a client endpoint here. A genuine
-        // hole-punch listener must instead require an existing listener socket.
         assert!(matches!(
             result,
             Err(TransportError::Other(

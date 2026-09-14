@@ -26,7 +26,7 @@ use libp2p::PeerId;
 use tokio::sync::{broadcast, mpsc, Mutex};
 
 use crate::common::error::NetError;
-use crate::connectivity::dht::{start_dht_namespace_discovery, DhtProviderState};
+use crate::connectivity::dht::{DhtNamespacePlan, DhtProviderState};
 use crate::connectivity::identity;
 use crate::connectivity::rendezvous::RendezvousState;
 use crate::platform::{DesktopPlatformRuntime, NodeStorage, PlatformRuntime};
@@ -109,11 +109,13 @@ pub async fn start_node_with_platform(
         }
     }
 
-    seed_bootstrap(&mut swarm, &startup_plan.dial_addrs);
+    if cfg.discovery.dht.enabled {
+        seed_bootstrap(&mut swarm, &startup_plan.dial_addrs);
+    }
     let selected_relay_peers = relay_selection_plan.selected_addrs.clone();
     let relay_reservation_plan =
         if resolved_config.should_reserve_selected_relays && !selected_relay_peers.is_empty() {
-            reserve_selected_relays(&mut swarm, &selected_relay_peers)
+            reserve_selected_relays(&mut swarm, &selected_relay_peers, cfg.discovery.dht.enabled)
         } else {
             if resolved_config.should_seed_selected_relays && !selected_relay_peers.is_empty() {
                 seed_bootstrap(&mut swarm, &selected_relay_peers);
@@ -165,14 +167,17 @@ pub async fn start_node_with_platform(
         &mut rendezvous_state,
     );
 
-    let mut dht_state = DhtProviderState::default();
-    let dht_plan = start_dht_namespace_discovery(
-        &mut swarm,
-        cfg.network_id,
-        &cfg.discovery,
-        rendezvous_peers.len(),
-        &mut dht_state,
-    );
+    // Give relay reservations and the small bootstrap seed set a bounded head
+    // start before provider queries fan out through the public DHT. Starting
+    // all of that work here can occupy every infrastructure connection slot
+    // before the relay reservation has completed. The runtime's five-second
+    // startup schedule performs the first announce/query and then retries with
+    // backoff.
+    let dht_state = DhtProviderState::default();
+    let dht_plan = DhtNamespacePlan {
+        enabled: cfg.discovery.dht.enabled,
+        ..DhtNamespacePlan::default()
+    };
 
     let snapshot_revision = Arc::new(AtomicU64::new(1));
     let snapshot = Arc::new(Mutex::new(NodeSnapshot {

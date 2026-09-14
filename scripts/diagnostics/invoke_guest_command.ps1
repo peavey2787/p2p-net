@@ -13,7 +13,8 @@ param(
     [Parameter(Mandatory)][pscredential]$Credential,
     [Parameter(Mandatory)][string]$Executable,
     [string[]]$GuestArguments = @(),
-    [ValidateRange(1000, 300000)][int]$TimeoutMilliseconds = 75000,
+    [string]$WorkingDirectory,
+    [ValidateRange(1000, 900000)][int]$TimeoutMilliseconds = 75000,
     [string]$VBoxManage = 'C:\Program Files\Oracle\VirtualBox\VBoxManage.exe'
 )
 $ErrorActionPreference = 'Stop'
@@ -23,9 +24,17 @@ if (!(Test-Path -LiteralPath $VBoxManage -PathType Leaf)) {
 # VBoxManage accepts the password as a native argument; do not print the
 # expanded command or persist the credential in a command/transcript file.
 $password = $Credential.GetNetworkCredential().Password
-& $VBoxManage guestcontrol $VmName run --exe $Executable `
-    --username $Credential.UserName --password $password `
-    --timeout $TimeoutMilliseconds --wait-stdout --wait-stderr -- @GuestArguments
+$runArguments = @(
+    'guestcontrol', $VmName, 'run', '--exe', $Executable,
+    '--username', $Credential.UserName, '--password', $password,
+    '--timeout', $TimeoutMilliseconds, '--wait-stdout', '--wait-stderr'
+)
+if ($WorkingDirectory) {
+    $runArguments += @('--cwd', $WorkingDirectory)
+}
+$runArguments += '--'
+$runArguments += $GuestArguments
+& $VBoxManage @runArguments
 $code = $LASTEXITCODE
 if ($code -ne 0) {
     throw "Attached guest diagnostic failed (VBoxManage exit $code)."

@@ -2,7 +2,12 @@ use std::time::Duration;
 
 use tokio::time::Instant as TokioInstant;
 
-const DHT_STARTUP_BACKOFF_SECS: [u64; 4] = [5, 15, 30, 60];
+// Provider publication and lookup are independent Kademlia queries.  A peer's
+// first lookup can therefore complete just before the other peer's first
+// publication reaches the DHT.  Retry quickly during startup so that race is
+// resolved inside the live probe's 60-second connection budget, then fall back
+// to the configured steady-state interval.
+const DHT_STARTUP_BACKOFF_SECS: [u64; 6] = [5, 5, 10, 15, 30, 60];
 const DHT_EVENT_REFRESH_MIN_GAP_SECS: u64 = 5;
 
 #[derive(Debug)]
@@ -75,5 +80,23 @@ impl DhtRefreshSchedule {
         } else {
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DhtRefreshSchedule;
+
+    #[test]
+    fn startup_retries_fit_inside_the_sixty_second_acceptance_window() {
+        let mut schedule = DhtRefreshSchedule::new(300);
+        let mut intervals = vec![schedule.current_interval_secs()];
+        for _ in 0..6 {
+            schedule.record_refresh();
+            intervals.push(schedule.current_interval_secs());
+        }
+
+        assert_eq!(intervals, [5, 5, 10, 15, 30, 60, 300]);
+        assert_eq!(intervals[..4].iter().sum::<u64>(), 35);
     }
 }

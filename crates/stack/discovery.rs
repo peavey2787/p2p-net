@@ -89,13 +89,16 @@ pub fn seed_bootstrap(swarm: &mut Swarm<MeshBehaviour>, addrs: &[Multiaddr]) {
             let _ = swarm.dial(addr.clone());
         }
     }
-    let _ = swarm.behaviour_mut().kademlia.bootstrap();
+    // Adding the seed addresses is sufficient for provider queries to route.
+    // Do not also run an eager full-bucket bootstrap here; the configured
+    // periodic Kademlia bootstrap handles long-lived routing-table health.
 }
 
 /// Dial selected relays and request Circuit Relay v2 reservations.
 pub fn reserve_selected_relays(
     swarm: &mut Swarm<MeshBehaviour>,
     relay_addrs: &[Multiaddr],
+    seed_kademlia: bool,
 ) -> RelayReservationPlan {
     let mut plan = RelayReservationPlan::default();
 
@@ -108,7 +111,16 @@ pub fn reserve_selected_relays(
                 ));
                 continue;
             }
-            add_peer_address_to_discovery(swarm, peer, relay_addr.clone());
+            if seed_kademlia {
+                add_peer_address_to_discovery(swarm, peer, relay_addr.clone());
+            } else {
+                // Relay transport resolution does not require inserting the
+                // relay into Kademlia. `kad::Behaviour::add_address` starts an
+                // automatic low-peer bootstrap, even when application DHT
+                // discovery is disabled, which can launch dozens of unrelated
+                // dials during an isolated relay/DCUtR connection.
+                swarm.add_peer_address(peer, relay_addr.clone());
+            }
         }
 
         // The relay client transport owns the reservation connection. Calling
@@ -237,13 +249,20 @@ pub fn refresh_rendezvous(
 pub fn on_mesh_event(
     swarm: &mut Swarm<MeshBehaviour>,
     event: &MeshEvent,
-    _discovery_cfg: &DiscoveryConfig,
+    discovery_cfg: &DiscoveryConfig,
     peer_cache_writes: &mut PeerCacheWriteBatch,
     peer_book: &mut PeerBook,
     identify_addresses: &mut IdentifyAddressState,
 ) {
     if let MeshEvent::Identify(ev) = event {
-        on_identify_event(swarm, ev, peer_cache_writes, peer_book, identify_addresses);
+        on_identify_event(
+            swarm,
+            ev,
+            discovery_cfg.dht.enabled,
+            peer_cache_writes,
+            peer_book,
+            identify_addresses,
+        );
     }
 }
 
@@ -381,16 +400,16 @@ pub fn add_peer_address_to_discovery(
     peer: PeerId,
     addr: Multiaddr,
 ) {
-    swarm
-        .behaviour_mut()
-        .kademlia
-        .add_address(&peer, addr.clone());
+    if let Some(kademlia) = swarm.behaviour_mut().kademlia.as_mut() {
+        kademlia.add_address(&peer, addr.clone());
+    }
     swarm.add_peer_address(peer, addr);
 }
 
 fn on_identify_event(
     swarm: &mut Swarm<MeshBehaviour>,
     event: &identify::Event,
+    dht_discovery_enabled: bool,
     peer_cache_writes: &mut PeerCacheWriteBatch,
     peer_book: &mut PeerBook,
     identify_addresses: &mut IdentifyAddressState,
@@ -413,7 +432,9 @@ fn on_identify_event(
                 })
         });
         for addr in info.listen_addrs.iter().take(MAX_IDENTIFY_ADDRS_PER_PEER) {
-            identify_addresses.record(swarm, *peer_id, addr.clone());
+            if dht_discovery_enabled {
+                identify_addresses.record(swarm, *peer_id, addr.clone());
+            }
             if distribute_to_swarm {
                 swarm.add_peer_address(*peer_id, addr.clone());
                 peer_book.record_addr(*peer_id, addr.clone(), PeerSource::Connected);

@@ -1,9 +1,10 @@
-//! Public IP probing and external address synthesis.
+//! Public IP probing and optional operator-asserted external address synthesis.
 //!
 //! libp2p can learn public reachability from Identify/AutoNAT, but consumer
 //! app mode also needs a practical first-launch public-IP hint for dashboards
-//! and direct external-address advertisement. This module keeps that optional
-//! HTTP probe separate from node orchestration.
+//! An HTTP response proves only the public IP, never that a NAT preserves a
+//! local listener port. Address synthesis is therefore opt-in for operators
+//! that know their ports are forwarded or preserved.
 
 use std::net::IpAddr;
 use std::time::Duration;
@@ -32,7 +33,9 @@ pub struct PublicIpProbeConfig {
     pub endpoints: Vec<String>,
     /// Per-endpoint timeout in seconds.
     pub timeout_secs: u64,
-    /// Synthesize public external multiaddrs from configured listen ports.
+    /// Assert that configured listen ports are externally preserved/forwarded
+    /// and synthesize public multiaddrs from them. Leave disabled behind an
+    /// ordinary NAT, CGNAT, or VPN; Identify/AutoNAT supply observed mappings.
     pub advertise_listen_addresses: bool,
 }
 
@@ -45,7 +48,7 @@ impl Default for PublicIpProbeConfig {
                 .map(|endpoint| (*endpoint).to_string())
                 .collect(),
             timeout_secs: 2,
-            advertise_listen_addresses: true,
+            advertise_listen_addresses: false,
         }
     }
 }
@@ -174,7 +177,10 @@ async fn fetch_public_ip(client: &reqwest::Client, endpoint: &str) -> Result<IpA
         .map_err(|err| format!("invalid public IP response `{}`: {err}", text.trim()))
 }
 
-fn synthesize_external_addresses(ip: IpAddr, listen_addresses: &[String]) -> Vec<Multiaddr> {
+pub(crate) fn synthesize_external_addresses(
+    ip: IpAddr,
+    listen_addresses: &[String],
+) -> Vec<Multiaddr> {
     let mut addresses = Vec::new();
     for raw in listen_addresses {
         let Ok(addr) = raw.parse::<Multiaddr>() else {
@@ -231,7 +237,7 @@ mod tests {
         assert!(cfg.enabled);
         assert!(!cfg.endpoints.is_empty());
         assert_eq!(cfg.timeout_secs, 2);
-        assert!(cfg.advertise_listen_addresses);
+        assert!(!cfg.advertise_listen_addresses);
     }
 
     #[test]

@@ -12,7 +12,7 @@ use crate::connectivity::relay::{RelayReservationPlan, RelayState};
 use crate::connectivity::relay_discovery::RelaySelectionPlan;
 use crate::stack::MeshBehaviour;
 
-use super::dial::{auto_dial_peer_from_book, AutoDialOutcome, AutoDialStats};
+use super::dial::{auto_dial_dht_provider, AutoDialOutcome, AutoDialStats};
 use super::{NodeConfig, ResolvedNodeConfig};
 
 const UNVERIFIED_RELAY_TIMEOUT: Duration = Duration::from_secs(15);
@@ -77,7 +77,7 @@ pub(crate) fn maintain_application_connections(
         if !dht_state.should_auto_connect_provider_result(&peer) {
             continue;
         }
-        let outcome = auto_dial_peer_from_book(
+        let outcome = auto_dial_dht_provider(
             peer,
             local_peer,
             true,

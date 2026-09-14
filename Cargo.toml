@@ -19,8 +19,11 @@ documentation = "https://docs.rs/p2p-net"
 publish = true
 exclude = [
     ".cargo/**",
+    "external/libp2p-dcutr/**",
     "external/libp2p-dns/**",
+    "external/libp2p-kad/**",
     "external/libp2p-mdns-placeholder/**",
+    "external/libp2p-quic/**",
     "external/libp2p-webrtc/**",
 ]
 

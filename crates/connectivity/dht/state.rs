@@ -424,6 +424,8 @@ impl DhtProviderState {
         let query_id = swarm
             .behaviour_mut()
             .kademlia
+            .as_mut()
+            .expect("enabled DHT has a Kademlia behaviour")
             .get_closest_peers(peer.to_bytes());
         self.start_provider_addr_lookup(query_id, peer, now);
         true

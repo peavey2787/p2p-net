@@ -1,8 +1,10 @@
-# WAN DCUtR investigation — September 9–12, 2026
+# WAN DCUtR investigation — September 9–13, 2026
 
-Direct WAN DCUtR has **not** passed acceptance on the tested Windows-VPN /
-Ubuntu-regular-Internet pair. Public relay connectivity is not direct success.
-No full-validation suite was run.
+Direct WAN DCUtR now passes acceptance on the tested Windows-VPN /
+Ubuntu-regular-Internet pair. The September 13 results at the end of this file
+supersede the earlier unresolved status. Public relay connectivity alone was
+not counted as success; both peers had to record a later direct connection and
+a successful DCUtR result. No full-validation suite was run.
 
 ## Conditions
 
@@ -422,4 +424,43 @@ Two valid live attempts used the existing `efb9d19` binaries:
 Raw status and logs remain in the named directories under
 `target/wan-vm-build/exchange/`. No VPN location, firewall, routing or production
 transport change was made, and no full validation was run. Direct WAN DCUtR
-acceptance is still **unachieved**.
+acceptance was still **unachieved at that point**; the September 13 result
+below supersedes this intermediate conclusion.
+
+## September 13: automatic discovery and direct WAN acceptance
+
+The final correction separates quick application discovery from long-lived
+routing-table maintenance. Inserting public bootstrap seeds no longer triggers
+rust-libp2p's automatic full-bucket bootstrap during startup, and p2p-net no
+longer explicitly launches a duplicate eager bootstrap. Application provider
+announce/lookups route from the known seeds immediately. The configured
+periodic bootstrap remains enabled for routing-table maintenance, and the Full
+role remains a Kademlia server. Provider discovery again uses three independent
+keys, with a replication factor of five per query and bounded startup retries
+at 5, 10, 20, and 35 seconds.
+
+The connection fix also removes DCUtR's relay-direction dependency. After an
+inbound relayed connection proves the exact application namespace through
+Identify, the recipient opens one bounded reciprocal circuit to the same app
+peer. That gives DCUtR both NAT orientations without allowing random relayed
+peers into the application set or namespace-filtering the public relay itself.
+
+Two consecutive fresh-identity runs used production `start_node(NodeConfig)`
+through `live_dcutr_process_probe`, automatic public-DHT discovery, the free
+public relay at `38.146.27.201`, and LAN discovery disabled. The shared folder
+carried only status observations; neither node consumed the other node's ID or
+addresses for dialing. Windows stayed behind PIA `us-east` at
+`37.19.197.182`; Ubuntu used regular Internet at `172.56.251.136`.
+
+| Run | Windows direct | Ubuntu direct | Relay seen first | DCUtR result |
+| --- | ---: | ---: | --- | --- |
+| `wan-20260913-auto-no-bootstrap-f` | 16 s | 39 s | both peers | `Ok` on both peers |
+| `wan-20260913-auto-no-bootstrap-g` | 13 s | 33 s | both peers | `Ok` on both peers |
+
+Every final status contained one exact application peer,
+`target_relay_seen=true`, `target_direct_after_relay=true`, one DCUtR attempt,
+zero DCUtR failures, and one DCUtR success. These are direct WAN QUIC
+connections established after the relayed circuit, not LAN or relay-only
+successes. Both runs completed inside each process's hard 60-second deadline.
+Raw generated statuses remain under `target/wan-vm-build/exchange/` and are not
+version-controlled.

@@ -45,16 +45,18 @@ impl IdentifyAddressState {
             return;
         }
         addresses.push_back(address.clone());
-        swarm.behaviour_mut().kademlia.add_address(&peer, address);
+        let Some(kademlia) = swarm.behaviour_mut().kademlia.as_mut() else {
+            return;
+        };
+        kademlia.add_address(&peer, address);
 
         while addresses.len() > MAX_IDENTIFY_ADDRS_PER_PEER {
             let Some(expired) = addresses.pop_front() else {
                 break;
             };
-            swarm
-                .behaviour_mut()
-                .kademlia
-                .remove_address(&peer, &expired);
+            if let Some(kademlia) = swarm.behaviour_mut().kademlia.as_mut() {
+                kademlia.remove_address(&peer, &expired);
+            }
         }
 
         if is_new_peer {
@@ -68,10 +70,9 @@ impl IdentifyAddressState {
                 continue;
             };
             for expired in expired_addresses {
-                swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .remove_address(&expired_peer, &expired);
+                if let Some(kademlia) = swarm.behaviour_mut().kademlia.as_mut() {
+                    kademlia.remove_address(&expired_peer, &expired);
+                }
             }
         }
     }

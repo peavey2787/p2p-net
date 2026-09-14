@@ -112,6 +112,8 @@ pub fn publish_local_peer_address_records_with_addresses(
         match swarm
             .behaviour_mut()
             .kademlia
+            .as_mut()
+            .expect("enabled DHT has a Kademlia behaviour")
             .put_record(record, kad::Quorum::One)
         {
             Ok(query_id) => {
@@ -136,7 +138,12 @@ pub(crate) fn start_peer_address_record_lookup(
         return false;
     }
     let key = dht_peer_address_record_key(namespace, &peer);
-    let id = swarm.behaviour_mut().kademlia.get_record(key);
+    let id = swarm
+        .behaviour_mut()
+        .kademlia
+        .as_mut()
+        .expect("enabled DHT has a Kademlia behaviour")
+        .get_record(key);
     state.track_get_address_record(id, peer, namespace.to_string());
     true
 }

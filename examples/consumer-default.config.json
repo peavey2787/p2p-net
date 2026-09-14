@@ -107,6 +107,6 @@
       "https://ifconfig.me/ip"
     ],
     "timeout_secs": 2,
-    "advertise_listen_addresses": true
+    "advertise_listen_addresses": false
   }
 }

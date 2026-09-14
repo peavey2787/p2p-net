@@ -306,7 +306,7 @@ Acceptance criteria:
 Implemented notes:
 
 - `runtime_tasks` now owns small periodic/public-IP-triggered runtime tasks so `runtime.rs` remains focused on the event loop.
-- Public IP probe results add public external addresses to the swarm and immediately trigger a DHT namespace refresh.
+- Public IP probe results add public external-address candidates to the swarm and can accelerate the next DHT namespace refresh, subject to the five-second relay/bootstrap head start.
 - The runtime performs bounded DHT namespace refreshes according to `discovery.dht.refresh_interval_secs` so provider announce/query does not depend on one startup moment.
 - If `discovery.public_bootstrap.relay_peers` is empty, resolved public bootstrap seed peers are also considered best-effort public relay candidates. Nodes that support Circuit Relay v2 can accept reservations; nodes that do not support it fail visibly without blocking DHT discovery or direct dials.
 - Peer-book source accounting records these derived relay candidates as public relay discovery candidates when public relay fallback is selected.

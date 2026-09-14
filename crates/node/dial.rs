@@ -1,5 +1,7 @@
 use std::collections::{HashSet, VecDeque};
+use std::num::NonZeroU8;
 
+use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::{PeerId, Swarm};
 
 use crate::common::error::NetError;
@@ -218,7 +220,15 @@ pub(crate) fn auto_dial_dht_provider(
     // Dialing by PeerId lets NetworkBehaviour::handle_pending_outbound_connection
     // contribute those addresses instead of waiting for a later peer-book event
     // that may never arrive.
-    match swarm.dial(peer) {
+    // Kademlia may contribute several transport variants for one logical
+    // relay route. Dialing its default eight candidates concurrently sends a
+    // burst of Circuit Relay CONNECT requests for the same target, and public
+    // relays are allowed to reject that burst. Try behaviour-supplied routes
+    // one at a time; the first working circuit still completes immediately.
+    let opts = DialOpts::peer_id(peer)
+        .override_dial_concurrency_factor(NonZeroU8::MIN)
+        .build();
+    match swarm.dial(opts) {
         Ok(()) => AutoDialOutcome::AddressResolutionStarted(
             "source=kademlia address_resolution=behaviour".to_string(),
         ),

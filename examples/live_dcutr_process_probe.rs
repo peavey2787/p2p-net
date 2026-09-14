@@ -107,6 +107,8 @@ struct ProcessStatus {
     dcutr_failures: usize,
     dcutr_successes: usize,
     dcutr_events: Vec<String>,
+    #[serde(default)]
+    quic_dcutr_events: Vec<String>,
     target_dial_errors: Vec<String>,
     direct_candidates: Vec<String>,
 }
@@ -276,6 +278,12 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let manual_relay_dial = std::env::var("P2P_LIVE_DCUTR_MANUAL_DIAL")
         .ok()
         .is_some_and(|value| matches!(value.as_str(), "1" | "true" | "TRUE"));
+    let relay_dialer = std::env::var("P2P_LIVE_DCUTR_DIALER")
+        .unwrap_or_else(|_| "alice".to_string())
+        .to_ascii_lowercase();
+    if relay_dialer != "alice" && relay_dialer != "bob" {
+        return Err("P2P_LIVE_DCUTR_DIALER must be `alice` or `bob`".into());
+    }
     let other_role = if role == "alice" { "bob" } else { "alice" };
     let own_status_path = session.join(format!("{role}.status.json"));
     let other_status_path = session.join(format!("{other_role}.status.json"));
@@ -338,6 +346,7 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let mut last_dial = None;
     let mut processed_connection_pulses = HashSet::new();
     let mut accumulated_dcutr_events = HashSet::new();
+    let mut accumulated_quic_dcutr_events = HashSet::new();
     let mut accumulated_target_dial_errors = HashSet::new();
     let mut target_relay_seen = false;
     let mut target_direct_after_relay = false;
@@ -379,6 +388,12 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             return Err("live probe event capture overflowed; result cannot be verified".into());
         }
         let target_label = target_peer.map(|peer| peer.to_string());
+        accumulated_quic_dcutr_events.extend(
+            pulses
+                .iter()
+                .filter(|pulse| pulse.contains("quic dcutr"))
+                .cloned(),
+        );
         if let Some(target) = &target_label {
             for pulse in &pulses {
                 if !pulse.contains("connection endpoint")
@@ -427,6 +442,11 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         direct_candidates.dedup();
         let mut dcutr_events = accumulated_dcutr_events.iter().cloned().collect::<Vec<_>>();
         dcutr_events.sort();
+        let mut quic_dcutr_events = accumulated_quic_dcutr_events
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        quic_dcutr_events.sort();
         let relay_events = snapshot
             .pulses
             .iter()
@@ -462,6 +482,7 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             dcutr_failures: snapshot.dcutr_failures,
             dcutr_successes: snapshot.dcutr_successes,
             dcutr_events,
+            quic_dcutr_events,
             target_dial_errors,
             direct_candidates,
         };
@@ -485,7 +506,11 @@ async fn run_child(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             .unwrap_or(true);
         // Establish exactly one relayed connection. Two simultaneous circuits
         // start competing DCUtR state machines that reuse the same QUIC port.
-        if manual_relay_dial && role == "alice" && !direct_smoke_mode && !connected_target && retry
+        if manual_relay_dial
+            && role == relay_dialer.as_str()
+            && !direct_smoke_mode
+            && !connected_target
+            && retry
         {
             if let Some(other) = other_status {
                 let destination = other.peer_id.parse::<PeerId>()?;

@@ -28,7 +28,7 @@ fn public_fallback_is_enabled_by_default_for_normal_app_mode() {
     assert!(cfg.listeners.websocket);
     assert!(cfg.listeners.webrtc_direct);
     assert!(cfg.public_ip_probe.enabled);
-    assert!(cfg.public_ip_probe.advertise_listen_addresses);
+    assert!(!cfg.public_ip_probe.advertise_listen_addresses);
     assert!(cfg.discovery.rendezvous.client_enabled);
     assert!(!cfg.discovery.rendezvous.server_enabled);
     assert!(!cfg.discovery.lan.enabled);

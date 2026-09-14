@@ -52,8 +52,9 @@ pub struct DhtDiscoveryConfig {
     pub periodic_bootstrap_interval_secs: Option<u64>,
     /// Maximum peers an iterative Kademlia query waits on concurrently.
     pub query_parallelism: usize,
-    /// Redundant provider keys used per namespace. One retains interoperability
-    /// through replica zero while reducing announce/query and key-derivation work.
+    /// Redundant provider keys used per namespace. The consumer default uses
+    /// one stable key plus overlapping current/previous rolling keys so a
+    /// single slow or incomplete public-DHT lookup cannot hide an app peer.
     pub provider_key_replicas: usize,
     /// Bound startup work when many app tags are configured.
     pub max_namespaces_per_refresh: usize,
@@ -144,29 +145,6 @@ pub fn start_dht_namespace_discovery(
     )
 }
 
-/// Force one namespace refresh after a material reachability change such as
-/// learning a new public external address. This intentionally resets only the
-/// announce/query refresh timestamps; query bookkeeping and discovered peers
-/// remain intact.
-pub(crate) fn start_dht_namespace_discovery_immediate(
-    swarm: &mut Swarm<MeshBehaviour>,
-    network_id: u32,
-    discovery_cfg: &DiscoveryConfig,
-    rendezvous_peer_count: usize,
-    state: &mut DhtProviderState,
-) -> DhtNamespacePlan {
-    state.provider_announce_started_unix_secs.clear();
-    state.provider_query_started_unix_secs.clear();
-    start_dht_namespace_discovery_with_interval(
-        swarm,
-        network_id,
-        discovery_cfg,
-        rendezvous_peer_count,
-        state,
-        1,
-    )
-}
-
 pub fn start_dht_namespace_discovery_with_interval(
     swarm: &mut Swarm<MeshBehaviour>,
     network_id: u32,
@@ -228,7 +206,12 @@ pub fn start_dht_namespace_discovery_with_interval(
                 )
             {
                 state.announce_attempts = state.announce_attempts.saturating_add(1);
-                match swarm.behaviour_mut().kademlia.start_providing(key.clone()) {
+                let kademlia = swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .as_mut()
+                    .expect("enabled DHT has a Kademlia behaviour");
+                match kademlia.start_providing(key.clone()) {
                     Ok(query_id) => {
                         state.track_start_providing_for_key(query_id, &namespace, &tracking_key);
                         state
@@ -248,7 +231,12 @@ pub fn start_dht_namespace_discovery_with_interval(
             if dht_cfg.should_discover(rendezvous_peer_count)
                 && state.should_query_key(&tracking_key, now, query_refresh_interval)
             {
-                let query_id = swarm.behaviour_mut().kademlia.get_providers(key);
+                let query_id = swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .as_mut()
+                    .expect("enabled DHT has a Kademlia behaviour")
+                    .get_providers(key);
                 state.track_get_providers_for_key(query_id, &namespace, &tracking_key);
                 state
                     .provider_query_started_unix_secs
@@ -386,13 +374,16 @@ fn now_unix_secs() -> u64 {
 }
 
 fn add_peer_addr_to_kademlia(swarm: &mut Swarm<MeshBehaviour>, peer: &PeerId, addr: Multiaddr) {
+    let Some(kademlia) = swarm.behaviour_mut().kademlia.as_mut() else {
+        return;
+    };
     if addr
         .iter()
         .any(|protocol| matches!(protocol, libp2p::multiaddr::Protocol::P2p(_)))
     {
-        swarm.behaviour_mut().kademlia.add_address(peer, addr);
+        kademlia.add_address(peer, addr);
     } else {
-        swarm.behaviour_mut().kademlia.add_address(
+        kademlia.add_address(
             peer,
             addr.with(libp2p::multiaddr::Protocol::P2p(peer.to_owned())),
         );

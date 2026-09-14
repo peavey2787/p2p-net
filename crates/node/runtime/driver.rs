@@ -9,7 +9,6 @@ use libp2p::{PeerId, Swarm};
 use tokio::time::MissedTickBehavior;
 
 use crate::api::PeerSource;
-use crate::connectivity::dht::publish_local_peer_address_records;
 use crate::connectivity::lan::{LanDiscoveryReceive, LanDiscoverySocket, LanPeerAnnouncement};
 use crate::stack::{add_peer_address_to_discovery, allow_dcutr_peer, MeshBehaviour};
 
@@ -212,30 +211,20 @@ pub(super) async fn run_node_runtime(ctx: NodeRuntimeContext) {
                 let refreshed_dht = !public_ip_result.external_addresses.is_empty();
                 apply_public_ip_probe_result(
                     public_ip_result,
-                    &cfg,
                     &mut swarm,
                     &snapshot,
-                    &mut runtime_state.dht_state,
-                    rendezvous_peers.len(),
                 ).await;
                 snapshot_revision.fetch_add(1, Ordering::Relaxed);
                 if refreshed_dht {
-                    let publish = publish_local_peer_address_records(
-                        &mut swarm,
-                        &discovery_signing_key,
-                        cfg.network_id,
-                        &cfg.discovery,
-                        &mut runtime_state.dht_state,
-                    );
-                    for err in publish.errors {
-                        runtime_state.observability.pulse(format!(
-                            "dht signed peer address publish error: {err}"
-                        ));
+                    // Publication is performed by the scheduled DHT refresh.
+                    // Keep the initial five-second relay/bootstrap head start
+                    // instead of launching another full query wave as soon as
+                    // the HTTP public-IP probe returns.
+                    if runtime_state.dht_refresh_schedule.request_event_refresh() {
+                        dht_refresh_sleep
+                            .as_mut()
+                            .reset(runtime_state.dht_refresh_schedule.next_due());
                     }
-                    runtime_state.dht_refresh_schedule.record_refresh();
-                    dht_refresh_sleep
-                        .as_mut()
-                        .reset(runtime_state.dht_refresh_schedule.next_due());
                 }
             }
             maybe_shutdown = shutdown_rx.recv() => {

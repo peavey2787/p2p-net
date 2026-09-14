@@ -40,12 +40,12 @@ Raw contact tags must not be published by default. The namespace model hashes ap
 
 ## Announcement
 
-When `discovery.dht.enabled` and `discovery.dht.announce` are true, startup calls Kademlia `start_providing(namespace_key)` for each derived namespace, bounded by `max_namespaces_per_refresh`. Startup refresh retries use 5/15/30/60-second backoff, recovery from zero connected peers may accelerate a pending refresh with a 5-second minimum gap, and steady-state refreshes use `refresh_interval_secs`. Ordinary additional connections do not restart the refresh timer. Already-announced namespaces are not blindly re-submitted on every application heartbeat.
-`periodic_bootstrap_interval_secs` controls libp2p Kademlia's separate routing-table bootstrap timer (`null` disables it), while `query_parallelism` bounds how many peers an iterative query waits on concurrently. `provider_key_replicas` selects one to three deterministic provider keys per namespace. Replica zero is common to every supported setting, while the production/full-node default remains three replicas. These controls are independent of namespace refresh timing.
+When `discovery.dht.enabled` and `discovery.dht.announce` are true, the runtime calls Kademlia `start_providing(namespace_key)` for each derived namespace, bounded by `max_namespaces_per_refresh`. The first refresh waits five seconds so bootstrap connections and relay reservations are not starved by public-DHT query fan-out. Further startup refreshes run 5, 10, 15, 30, and 60 seconds apart, recovery from zero connected peers may accelerate a pending refresh with a five-second minimum gap, and steady-state refreshes use `refresh_interval_secs`. Ordinary additional connections do not restart the refresh timer. Already-announced namespaces are not blindly re-submitted on every application heartbeat.
+`periodic_bootstrap_interval_secs` controls libp2p Kademlia's separate routing-table bootstrap timer (`null` disables it), while `query_parallelism` bounds how many peers an iterative query waits on concurrently. `provider_key_replicas` selects one to three deterministic provider keys per namespace. Replica zero is common to every supported setting. The default is three (one stable key plus overlapping current/previous rolling keys) so a slow or incomplete lookup for one key does not hide an application peer during startup. Operators can select one or two to trade discovery redundancy for less DHT traffic. These controls are independent of namespace refresh timing.
 
 ## Discovery
 
-When `discovery.dht.enabled` and `discovery.dht.discover` are true, startup calls Kademlia `get_providers(namespace_key)` for each derived namespace. The normal default keeps `discover_with_rendezvous_peers = true`, so DHT discovery continues alongside optional rendezvous infrastructure rather than becoming unavailable merely because a rendezvous peer is configured. Operators may disable that setting when they intentionally want rendezvous-only discovery.
+When `discovery.dht.enabled` and `discovery.dht.discover` are true, the first scheduled startup refresh calls Kademlia `get_providers(namespace_key)` for each derived namespace. The normal default keeps `discover_with_rendezvous_peers = true`, so DHT discovery continues alongside optional rendezvous infrastructure rather than becoming unavailable merely because a rendezvous peer is configured. Operators may disable that setting when they intentionally want rendezvous-only discovery.
 
 Repeated runtime refreshes are throttled by:
 
@@ -58,7 +58,7 @@ Repeated runtime refreshes are throttled by:
 }
 ```
 
-Startup discovery still runs immediately; the interval controls repeated announce/query work after startup and public-IP probe refreshes.
+Startup discovery begins after a five-second relay/bootstrap head start; the interval controls repeated announce/query work after the startup backoff sequence.
 
 ## Runtime results
 
@@ -66,4 +66,4 @@ Provider lookup results update internal DHT provider state, observability counte
 
 For each discovered provider, the runtime also tries to recover dialable addresses from Kademlia routing/provider information. A supplemental identity-signed `PeerRecord` is published under a namespace+peer key when the local node has a public direct or confirmed relay route; readers verify that the signed record identity exactly matches the provider peer before accepting any address. Relay reservation addresses are target-bound as `/p2p-circuit/p2p/<target>` before use. Public DHTs may apply their own record-storage policy, so signed records supplement rather than replace normal provider-address recovery.
 
-When a new public or relay external address is confirmed, provider/address publication is refreshed immediately (subject to in-flight bounds), which prevents a startup provider record with no useful route from remaining stale for the full steady-state interval. Auto-dial retries are bounded and retain relay fallback while DCUtR attempts a direct upgrade.
+When a new public or relay external address is confirmed, the next provider/address publication can be accelerated to the five-second event-refresh boundary (subject to in-flight bounds). This prevents a provider record with no useful route from remaining stale for the full steady-state interval without letting HTTP probing or relay events start overlapping DHT query waves. Auto-dial retries are bounded and retain relay fallback while DCUtR attempts a direct upgrade.

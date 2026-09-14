@@ -1658,8 +1658,6 @@ dependencies = [
 [[package]]
 name = "libp2p-dcutr"
 version = "0.14.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b4107305e12158af3e66960b6181789c547394c9c9a8696f721521602bfc73a"
 dependencies = [
  "asynchronous-codec",
  "either",
@@ -1760,8 +1758,6 @@ dependencies = [
 [[package]]
 name = "libp2p-kad"
 version = "0.48.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13d3fd632a5872ec804d37e7413ceea20588f69d027a0fa3c46f82574f4dee60"
 dependencies = [
  "asynchronous-codec",
  "bytes",
@@ -1851,8 +1847,6 @@ dependencies = [
 [[package]]
 name = "libp2p-quic"
 version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9dcc597d70bf7f6f30cbe07081802c836184e48416e89e9ce73a0ba2c56a319e"
 dependencies = [
  "futures",
  "futures-timer",
@@ -2017,30 +2011,6 @@ dependencies = [
  "libp2p-swarm",
  "tokio",
  "tracing",
-]
-
-[[package]]
-name = "p2p-net-webrtc"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "futures",
- "futures-timer",
- "hex",
- "if-watch",
- "libp2p-core",
- "libp2p-identity",
- "libp2p-noise",
- "libp2p-webrtc-utils",
- "multihash",
- "rand 0.8.6",
- "rcgen",
- "stun",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
- "webrtc",
 ]
 
 [[package]]
@@ -2450,6 +2420,30 @@ dependencies = [
  "p2p-net",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "p2p-net-webrtc"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures",
+ "futures-timer",
+ "hex",
+ "if-watch",
+ "libp2p-core",
+ "libp2p-identity",
+ "libp2p-noise",
+ "libp2p-webrtc-utils",
+ "multihash",
+ "rand 0.8.6",
+ "rcgen",
+ "stun",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "webrtc",
 ]
 
 [[package]]

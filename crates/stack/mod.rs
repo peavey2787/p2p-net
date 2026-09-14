@@ -53,6 +53,15 @@ pub(crate) fn allow_dcutr_peer(swarm: &mut libp2p::Swarm<MeshBehaviour>, peer: l
     }
 }
 
+pub(crate) fn refresh_dcutr_candidate(
+    swarm: &mut libp2p::Swarm<MeshBehaviour>,
+    address: &libp2p::Multiaddr,
+) {
+    if let Some(dcutr) = swarm.behaviour_mut().dcutr.as_mut() {
+        dcutr.refresh_candidate(address);
+    }
+}
+
 #[cfg(test)]
 mod reconnect_tests {
     use super::*;

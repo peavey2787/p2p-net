@@ -19,6 +19,8 @@ use crate::{NodeConfig, ResolvedNodeConfig};
 // application-keep-alive behaviour retains verified app peers while unrelated
 // public infrastructure remains subject to this short idle window.
 const SWARM_IDLE_CONNECTION_TIMEOUT_SECS: u64 = 45;
+const QUIC_HANDSHAKE_TIMEOUT_SECS: u64 = 10;
+const QUIC_MAX_IDLE_TIMEOUT_MS: u32 = 10_000;
 
 fn swarm_idle_connection_timeout() -> Duration {
     Duration::from_secs(SWARM_IDLE_CONNECTION_TIMEOUT_SECS)
@@ -52,9 +54,10 @@ pub async fn build_swarm(
         })
         .map_err(|e| NetError::Build(e.to_string()))?
         .with_other_transport(|key| {
-            DcutrQuicTransport(libp2p::quic::tokio::Transport::new(
-                libp2p::quic::Config::new(key),
-            ))
+            let mut config = libp2p::quic::Config::new(key);
+            config.handshake_timeout = Duration::from_secs(QUIC_HANDSHAKE_TIMEOUT_SECS);
+            config.max_idle_timeout = QUIC_MAX_IDLE_TIMEOUT_MS;
+            DcutrQuicTransport(libp2p::quic::tokio::Transport::new(config))
         })
         .map_err(|e| NetError::Build(e.to_string()))?
         .with_other_transport(|key| {
@@ -102,10 +105,12 @@ pub async fn build_swarm(
     if behaviour_policy.gossipsub {
         active.push("gossipsub");
     }
-    if behaviour_policy.kademlia_server {
-        active.push("kademlia-server");
-    } else if behaviour_policy.kademlia_client {
-        active.push("kademlia-client");
+    if cfg.discovery.dht.enabled {
+        if behaviour_policy.kademlia_server {
+            active.push("kademlia-server");
+        } else if behaviour_policy.kademlia_client {
+            active.push("kademlia-client");
+        }
     }
     if behaviour_policy.relay_client {
         active.push("relay-client");

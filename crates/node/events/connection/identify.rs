@@ -1,15 +1,20 @@
 use libp2p::multiaddr::Protocol;
+use std::net::IpAddr;
+
 use libp2p::{identify, Multiaddr, PeerId, Swarm};
 
 use crate::api::PeerSource;
 use crate::connectivity::addr::is_local_direct_addr;
-use crate::connectivity::relay::{relay_peer_id, relay_reservation_addr, RelayState};
+use crate::connectivity::relay::{
+    is_p2p_circuit_addr, relay_dial_addr_for_peer, relay_peer_id, relay_reservation_addr,
+    RelayState,
+};
 use crate::connectivity::relay_discovery::{
     relay_candidate_addr, supported_relay_addr_score, RelayCandidateSource,
 };
 use crate::stack::{
-    add_external_address_candidate, add_peer_address_to_discovery, retain_application_peer,
-    MeshBehaviour,
+    add_external_address_candidate, add_peer_address_to_discovery, refresh_dcutr_candidate,
+    retain_application_peer, MeshBehaviour,
 };
 
 use super::super::super::push_pulse;
@@ -73,21 +78,57 @@ pub(crate) async fn handle_identify_observed_addr(
         );
     }
 
+    // A public relay reservation can receive arbitrary circuits. Observations
+    // from those unverified peers are authenticated to the wrong application
+    // and, on endpoint-dependent NATs, each reports a different disposable
+    // mapping. Accept public mapping evidence only from the selected relay
+    // infrastructure or from a peer that passed the application handshake.
+    let trusted_observer = application_compatible
+        || ctx
+            .relay_state
+            .relay_client_attempted_peers
+            .contains(peer_id)
+        || ctx.relay_state.relay_client_reservations.contains(peer_id);
     let observed_addr = &info.observed_addr;
     let classification = classify_listen_addr(observed_addr);
-    let observed_addr_changed = ctx
-        .identify_addresses
-        .record_observed_local_addr(observed_addr);
-    if should_advertise_observed_addr(observed_addr, classification, ctx.relay_state)
-        && (observed_addr_changed || classification.is_relayed())
-    {
-        // A relayed address can become valid after its reservation is confirmed,
-        // so re-check relayed observations even when the multiaddr is unchanged.
-        // ExternalAddressCandidates performs its own bounded deduplication.
-        add_external_address_candidate(swarm, observed_addr.clone());
+    let observed_addr_changed = trusted_observer
+        && ctx
+            .identify_addresses
+            .record_observed_local_addr(observed_addr);
+    if trusted_observer {
+        if should_advertise_observed_addr(observed_addr, classification, ctx.relay_state)
+            && (observed_addr_changed || classification.is_relayed())
+        {
+            // A relayed address can become valid after its reservation is confirmed,
+            // so re-check relayed observations even when the multiaddr is unchanged.
+            // ExternalAddressCandidates performs its own bounded deduplication.
+            add_external_address_candidate(swarm, observed_addr.clone());
+        }
+        if public_ip_from_observation(observed_addr, classification).is_some() {
+            // Preserve the exact authenticated mapping, including its observed
+            // port. Copying only the public IP onto local listener ports is not
+            // valid behind NAT/CGNAT/VPN and can displace the usable mapping.
+            refresh_dcutr_candidate(swarm, observed_addr);
+        }
     }
 
-    if !observed_addr_changed && relay_pulse.is_none() && !application_compatible {
+    // DCUtR assigns different simultaneous-open roles to the two ends of a
+    // relay circuit.  Endpoint-dependent NATs are not necessarily punchable
+    // in both orientations.  If this peer reached us before discovery had put
+    // it in the application peer book, exact Identify verification proves it
+    // is safe to open one reciprocal circuit.  That gives both endpoints one
+    // bounded chance in each role and removes discovery-order dependence.
+    let reciprocal_pulse = if application_compatible && was_pending_relay_verification {
+        maybe_open_reciprocal_relay(*peer_id, info, swarm, ctx)
+    } else {
+        None
+    };
+
+    if !observed_addr_changed
+        && relay_pulse.is_none()
+        && reciprocal_pulse.is_none()
+        && !application_compatible
+    {
         return;
     }
 
@@ -97,6 +138,9 @@ pub(crate) async fn handle_identify_observed_addr(
     }
     guard.apply_relay_state(ctx.relay_state);
     if let Some(pulse) = relay_pulse {
+        push_pulse(&mut guard.pulses, pulse);
+    }
+    if let Some(pulse) = reciprocal_pulse {
         push_pulse(&mut guard.pulses, pulse);
     }
     if application_compatible {
@@ -125,6 +169,104 @@ pub(crate) async fn handle_identify_observed_addr(
             ListenAddrClass::LocalOnly => {}
         }
     }
+}
+
+fn maybe_open_reciprocal_relay(
+    peer_id: PeerId,
+    info: &identify::Info,
+    swarm: &mut Swarm<MeshBehaviour>,
+    ctx: &mut SwarmEventContext<'_>,
+) -> Option<String> {
+    if !ctx.dcutr_policy.enabled
+        || !ctx.dcutr_policy.attempt_after_relay_connection
+        || !ctx
+            .relay_state
+            .reciprocal_dcutr_attempted_peers
+            .insert(peer_id)
+    {
+        return None;
+    }
+
+    // Prefer the peer's own advertised reservation.  When both applications
+    // reserved the same public relay, our confirmed local reservation is also
+    // a valid relay prefix and provides a deterministic fallback.
+    let advertised = info
+        .listen_addrs
+        .iter()
+        .filter(|addr| is_p2p_circuit_addr(addr))
+        .filter(|addr| relayed_route_has_public_relay_endpoint(addr))
+        .filter_map(|addr| relay_dial_addr_for_peer(addr, peer_id))
+        .min_by_key(reciprocal_relay_score);
+    let shared_relay = ctx
+        .relay_state
+        .relayed_listen_addrs
+        .iter()
+        .filter_map(|addr| addr.parse::<Multiaddr>().ok())
+        .filter(|addr| relayed_route_has_public_relay_endpoint(addr))
+        .filter_map(|addr| relay_prefix_for_peer(&addr, peer_id))
+        .min_by_key(reciprocal_relay_score);
+    let Some(addr) = advertised.or(shared_relay) else {
+        ctx.relay_state
+            .reciprocal_dcutr_attempted_peers
+            .remove(&peer_id);
+        return Some(format!(
+            "dcutr reciprocal relay deferred peer={peer_id}; no verified public relay route"
+        ));
+    };
+
+    match swarm.dial(addr.clone()) {
+        Ok(()) => Some(format!(
+            "dcutr reciprocal relay dial started peer={peer_id} addr={addr}; trying opposite NAT orientation"
+        )),
+        Err(error) => {
+            ctx.relay_state
+                .reciprocal_dcutr_attempted_peers
+                .remove(&peer_id);
+            Some(format!(
+                "dcutr reciprocal relay dial failed peer={peer_id} addr={addr} error={error}"
+            ))
+        }
+    }
+}
+
+fn relay_prefix_for_peer(addr: &Multiaddr, peer_id: PeerId) -> Option<Multiaddr> {
+    let mut route = Multiaddr::empty();
+    let mut saw_circuit = false;
+    for protocol in addr.iter() {
+        if saw_circuit {
+            break;
+        }
+        saw_circuit = matches!(protocol, Protocol::P2pCircuit);
+        route.push(protocol);
+    }
+    saw_circuit.then(|| route.with(Protocol::P2p(peer_id)))
+}
+
+fn reciprocal_relay_score(addr: &Multiaddr) -> u8 {
+    if addr
+        .iter()
+        .any(|protocol| matches!(protocol, Protocol::QuicV1 | Protocol::Quic))
+    {
+        0
+    } else if addr
+        .iter()
+        .any(|protocol| matches!(protocol, Protocol::Tcp(_)))
+    {
+        1
+    } else {
+        2
+    }
+}
+
+fn public_ip_from_observation(addr: &Multiaddr, classification: ListenAddrClass) -> Option<IpAddr> {
+    if classification != ListenAddrClass::PublicDirect {
+        return None;
+    }
+    addr.iter().find_map(|protocol| match protocol {
+        Protocol::Ip4(ip) => Some(IpAddr::V4(ip)),
+        Protocol::Ip6(ip) => Some(IpAddr::V6(ip)),
+        _ => None,
+    })
 }
 
 fn should_advertise_observed_addr(

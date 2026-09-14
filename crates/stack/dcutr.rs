@@ -135,6 +135,36 @@ impl DcutrBehaviour {
         true
     }
 
+    fn ingest_candidate(&mut self, addr: &Multiaddr) {
+        if !self.accept_candidate(addr) {
+            return;
+        }
+        // Swarm suppresses NewExternalAddrCandidate for already-confirmed
+        // addresses, while upstream DCUtR only consumes candidate events.
+        // Feeding the candidate again is intentional: the patched upstream
+        // cache moves an existing address to the MRU position, preventing a
+        // stable listener address from being displaced by one-off symmetric
+        // NAT observations.
+        self.inner
+            .on_swarm_event(FromSwarm::NewExternalAddrCandidate(
+                libp2p::swarm::behaviour::NewExternalAddrCandidate { addr },
+            ));
+        let peers = self
+            .deferred
+            .values()
+            .map(|(peer, _)| *peer)
+            .collect::<HashSet<_>>();
+        for peer in peers {
+            self.activate_deferred(peer);
+        }
+    }
+
+    /// Refresh a known transport candidate even when the swarm has already
+    /// confirmed it and therefore will not emit another candidate event.
+    pub(crate) fn refresh_candidate(&mut self, addr: &Multiaddr) {
+        self.ingest_candidate(addr);
+    }
+
     fn allow_relayed_upgrade(&mut self, peer: PeerId, require_allowlist: bool) -> bool {
         if require_allowlist && !self.allowed_peers.contains(&peer) {
             return false;
@@ -281,24 +311,7 @@ impl NetworkBehaviour for DcutrBehaviour {
             _ => None,
         };
         if let Some(addr) = candidate {
-            if !self.accept_candidate(addr) {
-                return;
-            }
-            // Swarm suppresses NewExternalAddrCandidate for already-confirmed
-            // addresses, while upstream DCUtR only consumes candidate events.
-            // Feed either source through the same bounded, WAN-aware policy.
-            self.inner
-                .on_swarm_event(FromSwarm::NewExternalAddrCandidate(
-                    libp2p::swarm::behaviour::NewExternalAddrCandidate { addr },
-                ));
-            let peers = self
-                .deferred
-                .values()
-                .map(|(peer, _)| *peer)
-                .collect::<HashSet<_>>();
-            for peer in peers {
-                self.activate_deferred(peer);
-            }
+            self.ingest_candidate(addr);
             return;
         }
         self.inner.on_swarm_event(event);
@@ -582,8 +595,7 @@ mod tests {
 
     #[test]
     fn fresh_nat_mappings_remain_eligible_after_initial_candidates_fill() {
-        let mut behaviour = DcutrBehaviour::new(PeerId::random(), 60, 3)
-            .with_lan_candidates(false);
+        let mut behaviour = DcutrBehaviour::new(PeerId::random(), 60, 3).with_lan_candidates(false);
         // Memory remains bounded by upstream's 20-entry LRU, rather than
         // rejecting every fresh mapping after the first eight observations.
         for port in 4001..4101 {
