@@ -216,6 +216,12 @@ fn repository_layout_matches_modular_baseline() {
         "GitHub Actions must use least-privilege checkout credentials"
     );
 
+    let attributes = fs::read_to_string(root.join(".gitattributes")).expect("Git attributes");
+    assert!(
+        attributes.lines().any(|line| line == "*.rs text eol=lf"),
+        "Rust source line endings must be identical on Windows, Linux, and macOS checkouts"
+    );
+
     let toolchain = fs::read_to_string(root.join("rust-toolchain.toml")).expect("toolchain pin");
     assert!(
         toolchain.contains("channel = \"1.98.0\""),

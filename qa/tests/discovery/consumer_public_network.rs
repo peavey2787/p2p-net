@@ -42,8 +42,10 @@ fn public_fallback_decisions_cover_bootstrap_rendezvous_and_relay() {
 
 #[test]
 fn live_two_node_probe_uses_production_auto_discovery_without_manual_dial() {
-    let source =
-        fs::read_to_string("examples/live_two_node_probe.rs").expect("read live two-node probe");
+    let source = read_source(
+        "examples/live_two_node_probe.rs",
+        "read live two-node probe",
+    );
     assert!(source.contains("Duration::from_secs(60)"));
     assert!(source.contains("LIVE_TWO_NODE_RESULT=auto_connected"));
     assert!(source.contains("peer_is_application_connected"));
@@ -62,8 +64,10 @@ fn live_two_node_probe_uses_production_auto_discovery_without_manual_dial() {
 
 #[test]
 fn cross_machine_live_probe_uses_true_default_network_and_namespace() {
-    let source = fs::read_to_string("examples/live_single_node_probe.rs")
-        .expect("read cross-machine live node probe");
+    let source = read_source(
+        "examples/live_single_node_probe.rs",
+        "read cross-machine live node probe",
+    );
     assert!(source.contains("Duration::from_secs(60)"));
     assert!(source.contains("LIVE_SINGLE_NODE_RESULT=connected"));
     assert!(source.contains("NodeConfig::default()"));
@@ -237,4 +241,10 @@ fn relay_addr(relay: PeerId, target: PeerId, port: u16) -> Multiaddr {
     format!("/ip4/127.0.0.1/tcp/{port}/p2p/{relay}/p2p-circuit/p2p/{target}")
         .parse()
         .expect("valid relayed peer address")
+}
+
+fn read_source(path: &str, context: &str) -> String {
+    fs::read_to_string(path)
+        .unwrap_or_else(|error| panic!("{context}: {error}"))
+        .replace("\r\n", "\n")
 }
