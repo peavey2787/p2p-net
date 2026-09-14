@@ -217,10 +217,10 @@ unresolved despite the narrower TCP collision correction.
 ## September 10: measured mapping/filtering mismatch
 
 The new reproducible diagnostic is
-[`scripts/diagnostics/nat_behavior.py`](../../scripts/diagnostics/nat_behavior.py):
+[`qa/tools/diagnostics/nat_behavior.py`](../../qa/tools/diagnostics/nat_behavior.py):
 
 ```sh
-python scripts/diagnostics/nat_behavior.py --tcp-mapping
+python qa/tools/diagnostics/nat_behavior.py --tcp-mapping
 ```
 
 It uses standard STUN requests to `stun.voipgate.com:3478`, the default public
@@ -394,7 +394,7 @@ verified before either new test. Windows stayed on PIA `us-east`; its current
 public address was `212.56.54.127`. Ubuntu remained on the approved regular-
 Internet bridge and reported `172.56.251.136`.
 
-`scripts/diagnostics/invoke_guest_command.ps1` now provides an attached,
+`qa/tools/diagnostics/invoke_guest_command.ps1` now provides an attached,
 time-bounded `guestcontrol run` invocation instead of detached `start` calls.
 It accepts caller-supplied credentials without persisting them. A successful
 guest command, both failed live probes, and an intentional one-second timeout

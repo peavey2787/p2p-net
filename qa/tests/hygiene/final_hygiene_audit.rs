@@ -95,18 +95,25 @@ fn final_audit_document_matches_current_layout() {
         .expect("final hygiene audit doc");
     let roadmap = fs::read_to_string(root.join("docs/roadmap.md")).expect("roadmap doc");
 
-    for required in [
-        "crates/connectivity/dns.rs — 450 lines",
-        "crates/node/mod.rs — 450 lines",
-        "crates/connectivity/relay.rs — 15 lines",
-        "`qa/tests/` is domain-grouped",
-        "crates/node/startup/addrs.rs — 251 lines",
+    for path in [
+        "crates/connectivity/dns.rs",
+        "crates/connectivity/dht/state.rs",
+        "crates/node/mod.rs",
+        "crates/connectivity/relay.rs",
+        "crates/node/startup/addrs.rs",
+        "crates/stack/dcutr.rs",
+        "crates/stack/tcp_transport.rs",
     ] {
+        let required = format!("{path} — {} lines", lines(&root.join(path)));
         assert!(
-            audit.contains(required) || roadmap.contains(required),
+            audit.contains(&required) || roadmap.contains(&required),
             "final audit docs should mention `{required}`"
         );
     }
+    assert!(
+        audit.contains("`qa/tests/` is domain-grouped"),
+        "final audit must retain the QA layout statement"
+    );
 }
 
 fn lines(path: &Path) -> usize {

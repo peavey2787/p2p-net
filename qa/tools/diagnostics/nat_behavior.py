@@ -6,7 +6,7 @@ separate fresh sockets. Server/source checks prevent ignored CHANGE-REQUESTs
 and unusable OTHER-ADDRESS responses from being classified as NAT behavior.
 
 The default is the public server used by Pion's stun-nat-behaviour example.
-Run on each host: python scripts/diagnostics/nat_behavior.py --tcp-mapping
+Run on each host: python qa/tools/diagnostics/nat_behavior.py --tcp-mapping
 The optional TCP check observes mappings only, not TCP filtering behavior.
 """
 

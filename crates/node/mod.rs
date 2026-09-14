@@ -109,9 +109,7 @@ pub async fn start_node_with_platform(
         }
     }
 
-    if cfg.discovery.dht.enabled {
-        seed_bootstrap(&mut swarm, &startup_plan.dial_addrs);
-    }
+    seed_bootstrap(&mut swarm, &startup_plan.dial_addrs);
     let selected_relay_peers = relay_selection_plan.selected_addrs.clone();
     let relay_reservation_plan =
         if resolved_config.should_reserve_selected_relays && !selected_relay_peers.is_empty() {
@@ -167,12 +165,9 @@ pub async fn start_node_with_platform(
         &mut rendezvous_state,
     );
 
-    // Give relay reservations and the small bootstrap seed set a bounded head
-    // start before provider queries fan out through the public DHT. Starting
-    // all of that work here can occupy every infrastructure connection slot
-    // before the relay reservation has completed. The runtime's five-second
-    // startup schedule performs the first announce/query and then retries with
-    // backoff.
+    // Give relay reservations and bootstrap seeds a five-second head start.
+    // The runtime then starts provider announce/query with bounded retries,
+    // preserving relay and application connection headroom during startup.
     let dht_state = DhtProviderState::default();
     let dht_plan = DhtNamespacePlan {
         enabled: cfg.discovery.dht.enabled,

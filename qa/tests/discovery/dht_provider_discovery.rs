@@ -105,9 +105,22 @@ fn dht_provider_discovery_is_wired_through_startup_and_events() {
     assert!(dht_rs.contains("DhtProviderState"));
 
     let node_rs = fs::read_to_string("crates/node/mod.rs").expect("read node module");
-    assert!(node_rs.contains("start_dht_namespace_discovery"));
     assert!(node_rs.contains("DhtProviderState::default"));
     assert!(node_rs.contains("dht_provider_peers_discovered"));
+
+    let runtime_rs = fs::read_to_string("crates/node/runtime.rs").expect("read node runtime");
+    assert!(runtime_rs.contains("DhtRefreshSchedule::new"));
+
+    let driver_rs =
+        fs::read_to_string("crates/node/runtime/driver.rs").expect("read runtime driver");
+    assert!(driver_rs.contains("periodic::refresh_dht"));
+    assert!(driver_rs.contains("dht_refresh_schedule.next_due()"));
+
+    let periodic_rs =
+        fs::read_to_string("crates/node/runtime/periodic.rs").expect("read periodic runtime");
+    assert!(periodic_rs.contains("start_dht_namespace_discovery_with_interval"));
+    assert!(periodic_rs.contains("publish_local_peer_address_records"));
+    assert!(periodic_rs.contains("dht_refresh_schedule.record_refresh()"));
 
     let events_rs = fs::read_to_string("crates/node/events.rs").expect("read event dispatcher");
     assert!(events_rs.contains("MeshEvent::Kademlia"));
@@ -143,7 +156,9 @@ fn dht_provider_auto_connect_is_policy_gated_and_deduped() {
 
     let dial_rs = fs::read_to_string("crates/node/dial.rs").expect("read node dial module");
     assert!(dial_rs.contains("source=kademlia address_resolution=behaviour"));
-    assert!(dial_rs.contains("swarm.dial(peer)"));
+    assert!(dial_rs.contains("DialOpts::peer_id(peer)"));
+    assert!(dial_rs.contains("override_dial_concurrency_factor(NonZeroU8::MIN)"));
+    assert!(dial_rs.contains("swarm.dial(opts)"));
 
     let connection_rs =
         fs::read_to_string("crates/node/events/connection.rs").expect("read connection events");

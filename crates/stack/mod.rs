@@ -72,8 +72,10 @@ mod reconnect_tests {
 
     #[tokio::test]
     async fn transient_disconnect_keeps_app_admission_headroom() {
-        let mut config = crate::NodeConfig::default();
-        config.listen_addresses = vec!["/ip4/127.0.0.1/tcp/0".into()];
+        let mut config = crate::NodeConfig {
+            listen_addresses: vec!["/ip4/127.0.0.1/tcp/0".into()],
+            ..Default::default()
+        };
         config.connection_limits.max_established_outgoing = Some(4);
         let resolved =
             crate::resolve_node_config(&config, &crate::EnvironmentReport::detect(&config))

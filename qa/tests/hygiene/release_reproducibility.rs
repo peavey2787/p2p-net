@@ -115,6 +115,11 @@ fn canonical_release_runners_verify_two_clean_builds() {
             && linux_validation.contains("cmp -s \"$ROOT/Cargo.lock\""),
         "validation must transactionally restore lockfile writes from unlocked tooling, re-prove locked metadata after each tool, and retain a final Cargo.lock immutability backstop"
     );
+    assert!(
+        windows_validation.contains("set \"CARGO_PROFILE_TEST_DEBUG=0\"")
+            && linux_validation.contains("export CARGO_PROFILE_TEST_DEBUG=0"),
+        "canonical CI runners must disable test debug symbols consistently so the Windows all-feature matrix cannot exceed MSVC PDB capacity"
+    );
 
     let gitignore = read(&root, ".gitignore");
     assert!(
@@ -150,6 +155,12 @@ fn validation_evidence_wrapper_handles_empty_and_singleton_argument_sets() {
             && wrapper.contains("post_validation_release_input_sha256=")
             && wrapper.contains("release_inputs_stable="),
         "Windows evidence must bind to the pre-validation source and record post-validation input drift"
+    );
+    assert!(
+        wrapper.contains("function Get-FileSha256")
+            && wrapper.contains("[System.Security.Cryptography.SHA256]::Create()")
+            && !wrapper.contains("Get-FileHash -LiteralPath (Join-Path $Root \"Cargo.lock\")"),
+        "Windows evidence hashing must use the .NET SHA-256 API available in every supported PowerShell host"
     );
     assert!(
         linux_wrapper.contains("PRE_RELEASE_INPUT_SHA256")

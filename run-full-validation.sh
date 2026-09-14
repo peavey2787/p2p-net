@@ -260,6 +260,9 @@ echo "This is the canonical Linux one-file validation runner. It verifies the co
 
 export CARGO_INCREMENTAL=0
 export CARGO_BUILD_PIPELINING=false
+# Test debug symbols do not affect test semantics and can exceed MSVC's PDB
+# capacity for the all-feature transport graph. Keep every CI runner aligned.
+export CARGO_PROFILE_TEST_DEBUG=0
 
 command -v rustc >/dev/null 2>&1 || { echo "rustc was not found on PATH." >&2; exit 1; }
 command -v cargo >/dev/null 2>&1 || { echo "cargo was not found on PATH." >&2; exit 1; }

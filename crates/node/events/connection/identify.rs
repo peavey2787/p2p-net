@@ -202,7 +202,7 @@ fn maybe_open_reciprocal_relay(
         .relayed_listen_addrs
         .iter()
         .filter_map(|addr| addr.parse::<Multiaddr>().ok())
-        .filter(|addr| relayed_route_has_public_relay_endpoint(addr))
+        .filter(relayed_route_has_public_relay_endpoint)
         .filter_map(|addr| relay_prefix_for_peer(&addr, peer_id))
         .min_by_key(reciprocal_relay_score);
     let Some(addr) = advertised.or(shared_relay) else {

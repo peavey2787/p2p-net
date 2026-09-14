@@ -85,6 +85,9 @@ echo This is the canonical Windows one-file validation runner. It verifies the c
 
 set "CARGO_INCREMENTAL=0"
 set "CARGO_BUILD_PIPELINING=false"
+rem Test debug symbols do not affect test semantics and can exceed MSVC's PDB
+rem capacity for the all-feature transport graph. Keep CI linking deterministic.
+set "CARGO_PROFILE_TEST_DEBUG=0"
 
 where rustc >nul 2>&1
 if errorlevel 1 (

@@ -1,10 +1,10 @@
 # Final hygiene audit
 
-Date: 2026-07-02
+Date: 2026-09-14
 
 ## Scope
 
-This audit re-ran the guideline review that produced the completed cleanup roadmap and was refreshed after the consumer public-network roadmap Step 2 added public rendezvous observability and fallback source accounting.
+This audit re-ran the guideline review that produced the completed cleanup roadmap and was refreshed after the CI layout guard moved diagnostic tooling under `qa/tools/diagnostics/` and large inline test modules were split from runtime sources.
 
 The audit covered:
 
@@ -35,22 +35,22 @@ No remaining guideline violations were found in the static audit. The original a
 Longest file overall, excluding `.git/`:
 
 ```text
-Cargo.lock — 5,882 lines
+Cargo.lock — 4,683 lines
 ```
 
 Longest runtime source files:
 
 ```text
 crates/protocol/pulse.rs — 494 lines
-crates/connectivity/dns.rs — 450 lines
+crates/connectivity/dht/state.rs — 485 lines
+crates/connectivity/dns.rs — 467 lines
+crates/node/events.rs — 461 lines
+crates/stack/discovery.rs — 457 lines
+crates/connectivity/lan.rs — 450 lines
 crates/node/mod.rs — 450 lines
-crates/stack/discovery.rs — 436 lines
-crates/node/events/connection.rs — 435 lines
 crates/bindings/mod.rs — 431 lines
 crates/api/mod.rs — 426 lines
-crates/connectivity/dht.rs — 404 lines
-crates/node/runtime/driver.rs — 394 lines
-crates/connectivity/connection_strategy.rs — 362 lines
+crates/node/events/connection.rs — 418 lines
 ```
 
 Former hotspot status:
@@ -63,10 +63,11 @@ crates/node/config_validation.rs — 173 lines
 crates/node/metrics.rs — 11 lines
 crates/node/metrics/prometheus.rs — 24 lines
 crates/node/runtime.rs — 135 lines
-crates/node/runtime/driver.rs — 394 lines
+crates/node/runtime/driver.rs — 383 lines
 crates/node/runtime/observability.rs — 38 lines
-crates/node/runtime/dht_schedule.rs — 79 lines
-crates/node/runtime/periodic.rs — 118 lines
+crates/node/runtime/dht_schedule.rs — 88 lines
+crates/node/runtime/dht_schedule_tests.rs — 14 lines
+crates/node/runtime/periodic.rs — 133 lines
 crates/node/snapshot.rs — 235 lines
 crates/node/snapshot/helpers.rs — 17 lines
 crates/node/startup.rs — 104 lines
@@ -76,7 +77,13 @@ crates/connectivity/relay/address.rs — 68 lines
 crates/connectivity/relay/config.rs — 272 lines
 crates/connectivity/relay/policy.rs — 17 lines
 crates/connectivity/relay/schedule.rs — 173 lines
-crates/connectivity/relay/state.rs — 128 lines
+crates/connectivity/relay/state.rs — 132 lines
+crates/connectivity/dht/state.rs — 485 lines
+crates/connectivity/dht/state_tests.rs — 18 lines
+crates/stack/dcutr.rs — 415 lines
+crates/stack/dcutr_tests.rs — 246 lines
+crates/stack/tcp_transport.rs — 358 lines
+crates/stack/tcp_transport_tests.rs — 260 lines
 ```
 
 ## Structure result
@@ -143,9 +150,9 @@ That test locks in the cleanup by checking:
 - duplicate cleanup helpers do not return;
 - this final audit document remains present and aligned with the final module layout.
 
-## Validation limitation
+## Validation
 
-The edit sandbox does not include `cargo`, `rustc`, or `rustfmt`, so Rust compilation, formatting, clippy, cargo-deny, cargo-audit, and soak tests must be verified on a machine with the Rust toolchain installed:
+The canonical Windows runner was executed with Rust 1.98.0. Workspace tests, dashboard-feature tests, Clippy with warnings denied, cargo-audit, cargo-deny, hostile relay load, connection churn, and the final one-minute soak all passed. Run the same GitHub CI entry point locally with:
 
 ```cmd
 run-full-validation.cmd

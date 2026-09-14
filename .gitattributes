@@ -1,0 +1,2 @@
+/run-full-validation.cmd text eol=crlf
+/qa/evidence/run-validation-with-evidence.ps1 -text whitespace=cr-at-eol

@@ -50,6 +50,19 @@ function Capture-Line {
     return "unknown"
 }
 
+function Get-FileSha256 {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        return ([System.BitConverter]::ToString($sha.ComputeHash($stream))).Replace("-", "").ToLowerInvariant()
+    }
+    finally {
+        $stream.Dispose()
+        $sha.Dispose()
+    }
+}
+
 function Write-Manifest {
     param([int]$ExitCode)
     $finishedUtc = (Get-Date).ToUniversalTime().ToString("o")
@@ -65,7 +78,7 @@ function Write-Manifest {
     $gitStatus = @(& git -C $Root status --porcelain=v1 --untracked-files=all 2>$null)
     [System.IO.File]::WriteAllLines($GitStatusPath, $gitStatus, [System.Text.UTF8Encoding]::new($false))
     $lockHash = if (Test-Path -LiteralPath (Join-Path $Root "Cargo.lock")) {
-        (Get-FileHash -LiteralPath (Join-Path $Root "Cargo.lock") -Algorithm SHA256).Hash.ToLowerInvariant()
+        Get-FileSha256 -Path (Join-Path $Root "Cargo.lock")
     } else { "missing" }
     [System.IO.File]::WriteAllText($LockHashPath, ($lockHash + "  Cargo.lock`n"), [System.Text.ASCIIEncoding]::new())
 
