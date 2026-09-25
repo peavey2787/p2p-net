@@ -11,10 +11,12 @@ async fn node_start_shutdown_smoke() {
     let cfg = test_node_config("swarm-smoke");
     let key_path = cfg.identity_key_path.clone();
     let cache_path = cfg.discovery.peer_cache_path.clone();
+    let cert_path = cfg.webrtc_certificate_path.clone();
     let handle = start_node(cfg).await.expect("start node");
     handle.shutdown().await;
     cleanup_file(&key_path);
     cleanup_file(&cache_path);
+    cleanup_file(&cert_path);
 }
 
 #[tokio::test]
@@ -22,6 +24,7 @@ async fn persistent_key_produces_same_peer_id_across_restarts() {
     let cfg = test_node_config("persistent-peer-id");
     let key_path = cfg.identity_key_path.clone();
     let cache_path = cfg.discovery.peer_cache_path.clone();
+    let cert_path = cfg.webrtc_certificate_path.clone();
 
     let first = start_node(cfg.clone()).await.expect("start first node");
     let first_peer = first.peer_id;
@@ -33,6 +36,7 @@ async fn persistent_key_produces_same_peer_id_across_restarts() {
 
     cleanup_file(&key_path);
     cleanup_file(&cache_path);
+    cleanup_file(&cert_path);
     assert_eq!(first_peer, second_peer);
 }
 
@@ -68,6 +72,8 @@ async fn same_lan_nodes_auto_connect_without_manual_dial_within_60s() {
     let alice_cache = alice_cfg.discovery.peer_cache_path.clone();
     let bob_key = bob_cfg.identity_key_path.clone();
     let bob_cache = bob_cfg.discovery.peer_cache_path.clone();
+    let alice_cert = alice_cfg.webrtc_certificate_path.clone();
+    let bob_cert = bob_cfg.webrtc_certificate_path.clone();
 
     let alice = start_node(alice_cfg).await.expect("start LAN alice node");
     let bob = start_node(bob_cfg).await.expect("start LAN bob node");
@@ -82,6 +88,8 @@ async fn same_lan_nodes_auto_connect_without_manual_dial_within_60s() {
     cleanup_file(&alice_cache);
     cleanup_file(&bob_key);
     cleanup_file(&bob_cache);
+    cleanup_file(&alice_cert);
+    cleanup_file(&bob_cert);
 }
 
 #[tokio::test]
@@ -92,6 +100,8 @@ async fn native_webrtc_direct_transport_connects_two_start_node_instances_within
     let alice_cache = alice_cfg.discovery.peer_cache_path.clone();
     let bob_key = bob_cfg.identity_key_path.clone();
     let bob_cache = bob_cfg.discovery.peer_cache_path.clone();
+    let alice_cert = alice_cfg.webrtc_certificate_path.clone();
+    let bob_cert = bob_cfg.webrtc_certificate_path.clone();
 
     let alice = start_node(alice_cfg).await.expect("start alice node");
     let bob = start_node(bob_cfg).await.expect("start bob node");
@@ -128,12 +138,23 @@ async fn native_webrtc_direct_transport_connects_two_start_node_instances_within
     cleanup_file(&alice_cache);
     cleanup_file(&bob_key);
     cleanup_file(&bob_cache);
+    cleanup_file(&alice_cert);
+    cleanup_file(&bob_cert);
 }
 
 fn test_node_config(prefix: &str) -> NodeConfig {
     NodeConfig {
         identity_key_path: std::env::temp_dir()
             .join(format!("p2p-net-{prefix}-{}.key", libp2p::PeerId::random()))
+            .to_string_lossy()
+            .to_string(),
+        // The default certificate path is one shared file in the current
+        // directory, which concurrently starting test nodes would race on.
+        webrtc_certificate_path: std::env::temp_dir()
+            .join(format!(
+                "p2p-net-{prefix}-{}.webrtc-cert.pem",
+                libp2p::PeerId::random()
+            ))
             .to_string_lossy()
             .to_string(),
         discovery: DiscoveryConfig {

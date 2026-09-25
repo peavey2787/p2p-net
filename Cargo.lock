@@ -2681,6 +2681,7 @@ dependencies = [
  "rand 0.8.8",
  "reqwest",
  "rkyv",
+ "rustls",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",

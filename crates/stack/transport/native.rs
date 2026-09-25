@@ -41,12 +41,21 @@ fn load_or_create_webrtc_certificate(
         .map_err(|err| NetError::Build(format!("invalid raced WebRTC certificate: {err}")))
 }
 
+/// dtls resolves rustls' process-level CryptoProvider, which rustls can only infer
+/// when exactly one backend is compiled in. libp2p-quic enables aws-lc-rs and dtls
+/// enables ring, so pick ring (dtls' own backend) explicitly. An `Err` means the
+/// embedding application already installed a provider, which we respect.
+fn ensure_rustls_crypto_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 pub(super) async fn build_swarm(
     local_key: libp2p::identity::Keypair,
     cfg: &NodeConfig,
     resolved_cfg: &ResolvedNodeConfig,
     storage: &dyn NodeStorage,
 ) -> Result<(libp2p::Swarm<MeshBehaviour>, TransportPlan), NetError> {
+    ensure_rustls_crypto_provider();
     let local_peer = libp2p::PeerId::from(local_key.public());
     let relay_cfg = cfg.relay.clone();
     let certificate = load_or_create_webrtc_certificate(storage, &cfg.webrtc_certificate_path)?;

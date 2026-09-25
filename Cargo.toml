@@ -332,6 +332,11 @@ libp2p = { version = "0.57", default-features = false, features = ["tokio", "tcp
 libp2p-websocket = "0.46.0"
 socket2 = "0.6"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# libp2p-quic/libp2p-tls enable rustls' aws-lc-rs backend while dtls (WebRTC)
+# enables ring. With both compiled in, rustls cannot pick a process-default
+# CryptoProvider and dtls panics during the handshake, so the native transport
+# installs one explicitly (see crates/stack/transport/native.rs).
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 webrtc = { version = "0.17.0", optional = true }
 # Security floor for the WebRTC 0.17 stack (SECURITY.md, bincode exit).
 rkyv = { version = ">=0.8.18, <0.9", default-features = false }

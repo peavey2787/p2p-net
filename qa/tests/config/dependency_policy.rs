@@ -1,8 +1,16 @@
+/// Cargo.lock as checked out, with CRLF normalized to LF. Windows runners check
+/// the repository out with `core.autocrlf=true`, which would otherwise make every
+/// multi-line `name = ...\nversion = ...` assertion below fail (or, for negative
+/// assertions, pass vacuously).
+fn committed_lockfile() -> String {
+    include_str!("../../../Cargo.lock").replace("\r\n", "\n")
+}
+
 #[test]
 fn crates_io_manifest_is_publishable_without_manifest_patches() {
     let manifest = include_str!("../../../Cargo.toml");
     let cargo_config = include_str!("../../../.cargo/config.toml");
-    let lockfile = include_str!("../../../Cargo.lock");
+    let lockfile = committed_lockfile();
     let dns_patch = include_str!("../../../external/libp2p-dns/Cargo.toml");
     let mdns_patch = include_str!("../../../external/libp2p-mdns-placeholder/Cargo.toml");
     // The native transport (the only one with a WebSocket listener) is split out per target.
@@ -238,7 +246,7 @@ fn dns_resolution_is_owned_by_p2p_net_including_manual_dials() {
 #[test]
 fn direct_webrtc_probe_stays_on_the_audited_dependency_generation() {
     let manifest = include_str!("../../../Cargo.toml");
-    let lockfile = include_str!("../../../Cargo.lock");
+    let lockfile = committed_lockfile();
     let probe = include_str!("../../../examples/live_webrtc_oob_probe.rs");
 
     assert!(
