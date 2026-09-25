@@ -136,6 +136,9 @@ enum Event {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
+    // libp2p-quic compiles in rustls' aws-lc-rs backend and dtls compiles in ring,
+    // so rustls cannot infer a process default and dtls would panic mid-handshake.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let start = Instant::now();
     let result = async {
         let cli = parse_cli()?;
