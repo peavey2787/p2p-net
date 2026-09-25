@@ -29,15 +29,22 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-default = ["dns"]
+default = ["dns", "native-tests"]
 # DNS is enabled by default through p2p-net's own bounded resolver. /dns,
 # /dns4, /dns6 and /dnsaddr are resolved before dialing, including manual
 # connect_peer calls. We intentionally do not enable libp2p's Hickory-backed
 # dns/mdns features, which keeps the published dependency graph self-contained
 # and avoids a hidden resolver policy.
 dns = []
+# Test-target selectors only; they do not enable production runtime code. Native
+# tests stay available under ordinary `cargo test`. The browser release gate
+# disables defaults and enables only `browser-tests`; wasm-pack builds the web
+# package and Playwright executes the browser runtime checks.
+native-tests = []
+browser-tests = []
 dashboard = ["dep:crossterm", "tokio/signal"]
 webrtc-oob-probe = ["dep:webrtc"]
+fuzzing = []
 
 [profile.release]
 lto = "thin"
@@ -46,6 +53,7 @@ codegen-units = 1
 [lib]
 name = "p2p_net"
 path = "crates/lib.rs"
+crate-type = ["rlib", "cdylib"]
 
 [[example]]
 name = "p2p_node"
@@ -71,166 +79,218 @@ bench = false
 [[test]]
 name = "api_primitives"
 path = "qa/tests/api/api_primitives.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "bindings"
 path = "qa/tests/api/bindings.rs"
+required-features = ["native-tests"]
 
 # config integration tests
 [[test]]
 name = "config_defaults"
 path = "qa/tests/config/config_defaults.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "dependency_policy"
 path = "qa/tests/config/dependency_policy.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "environment_detection"
 path = "qa/tests/config/environment_detection.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "windows_build"
 path = "qa/tests/config/windows_build.rs"
+required-features = ["native-tests"]
 
 # discovery integration tests
 [[test]]
 name = "connection_strategy"
 path = "qa/tests/discovery/connection_strategy.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "consumer_public_network"
 path = "qa/tests/discovery/consumer_public_network.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "dht_provider_discovery"
 path = "qa/tests/discovery/dht_provider_discovery.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "discovery"
 path = "qa/tests/discovery/discovery.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "discovery_namespace"
 path = "qa/tests/discovery/discovery_namespace.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "network_resurrection"
 path = "qa/tests/discovery/network_resurrection.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "peer_book"
 path = "qa/tests/discovery/peer_book.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "rendezvous"
 path = "qa/tests/discovery/rendezvous.rs"
+required-features = ["native-tests"]
 
 # hygiene integration tests
 [[test]]
 name = "codebase_hygiene"
 path = "qa/tests/hygiene/codebase_hygiene.rs"
+required-features = ["native-tests"]
+
+[[test]]
+name = "supply_chain_policy"
+path = "qa/tests/hygiene/supply_chain_policy.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "codebase_architecture_hygiene"
 path = "qa/tests/hygiene/codebase_architecture_hygiene.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "final_hygiene_audit"
 path = "qa/tests/hygiene/final_hygiene_audit.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "release_reproducibility"
 path = "qa/tests/hygiene/release_reproducibility.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "platform_app_architecture"
 path = "qa/tests/hygiene/platform_app_architecture.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "platform_app_windows"
 path = "qa/tests/hygiene/platform_app_windows.rs"
+required-features = ["native-tests"]
 
 # observability integration tests
 [[test]]
 name = "observability"
 path = "qa/tests/observability/observability.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "dashboard_runtime"
 path = "qa/tests/observability/dashboard_runtime.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "dashboard_rendering"
 path = "qa/tests/observability/dashboard_rendering.rs"
+required-features = ["native-tests"]
 
 # operator integration tests
 [[test]]
 name = "operator_docs"
 path = "qa/tests/operator/operator_docs.rs"
+required-features = ["native-tests"]
 
 # relay integration tests
 [[test]]
 name = "dcutr_policy"
 path = "qa/tests/relay/dcutr_policy.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "mediator_role"
 path = "qa/tests/relay/mediator_role.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "relay_client"
 path = "qa/tests/relay/relay_client.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "relay_discovery"
 path = "qa/tests/relay/relay_discovery.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "relay_server_limits"
 path = "qa/tests/relay/relay_server_limits.rs"
+required-features = ["native-tests"]
 
 # runtime integration tests
 [[test]]
 name = "behaviour_policy"
 path = "qa/tests/runtime/behaviour_policy.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "capability_resolver"
 path = "qa/tests/runtime/capability_resolver.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "event_responsibility"
 path = "qa/tests/runtime/event_responsibility.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "platform_runtime"
 path = "qa/tests/runtime/platform_runtime.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "swarm_smoke"
 path = "qa/tests/runtime/swarm_smoke.rs"
+required-features = ["native-tests"]
+
+
+[[test]]
+name = "browser_wasm"
+path = "qa/tests/wasm/browser_wasm.rs"
+required-features = ["browser-tests"]
 
 # security integration tests
 [[test]]
 name = "hostile_network"
 path = "qa/tests/security/hostile_network.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "message_security"
 path = "qa/tests/security/message_security.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "multi_node_hostile"
 path = "qa/tests/security/multi_node_hostile.rs"
+required-features = ["native-tests"]
 
 [[test]]
 name = "pulse_validation"
 path = "qa/tests/security/pulse_validation.rs"
+required-features = ["native-tests"]
 
 [dependencies]
 futures = "0.3"
 either = "1"
+# std::time::{Instant, SystemTime} panic on wasm32-unknown-unknown; web-time re-exports
+# std on native and uses performance.now()/Date.now() in the browser.
+web-time = "1.1"
 # Keep the patched event-listener release in the manifest's resolution constraints.
 # This crate is already transitive; the direct security floor makes Cargo.lock
 # reproducible without relying on a hand-edited transitive package entry.
@@ -239,12 +299,9 @@ event-listener = ">=5.4.2, <6"
 # HTTP/2 implementation in the manifest constraints so lock regeneration cannot
 # silently resolve back to a vulnerable release.
 h2 = ">=0.4.16, <0.5"
-libp2p = { version = "0.56", default-features = false, features = [
-    "tokio",
-    "tcp",
+libp2p = { version = "0.57", default-features = false, features = [
     "noise",
     "yamux",
-    "quic",
     "gossipsub",
     "kad",
     "identify",
@@ -254,23 +311,74 @@ libp2p = { version = "0.56", default-features = false, features = [
     "dcutr",
     "rsa",
     "macros",
+    "serde",
 ] }
-libp2p-rendezvous = "0.17.1"
-libp2p-websocket = "0.45.1"
+libp2p-rendezvous = "0.18.0"
 crossterm = { version = "0.28", optional = true, features = ["event-stream"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 hex = "0.4"
 thiserror = "2"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "fs", "io-util", "net"] }
 tracing = "0.1"
 blake3 = "1"
 rand = "0.8"
 sha2 = "0.10"
+url = "2"
+tokio = { version = "1", features = ["sync"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "fs", "io-util", "net"] }
+libp2p = { version = "0.57", default-features = false, features = ["tokio", "tcp", "quic"] }
+libp2p-websocket = "0.46.0"
 socket2 = "0.6"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-webrtc = { version = "0.12.0", optional = true }
-libp2p-webrtc = { package = "p2p-net-webrtc", version = "0.1.0", path = "external/libp2p-webrtc", features = ["tokio"] }
+webrtc = { version = "0.17.0", optional = true }
+# Security floor for the WebRTC 0.17 stack (SECURITY.md, bincode exit).
+rkyv = { version = ">=0.8.18, <0.9", default-features = false }
+libp2p-webrtc = { package = "p2p-net-webrtc", version = "0.1.0", path = "external/libp2p-webrtc", features = ["tokio", "pem"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+libp2p = { version = "0.57", default-features = false, features = ["webrtc-websys", "websocket-websys", "webtransport-websys"] }
+# rust-libp2p 0.57 caps wasm-bindgen-futures at 0.4.58 because the
+# corresponding wasm-bindgen ABI generation is 0.2.108 / js-sys 0.3.85.
+# Consumer workspaces must align any direct WASM pins (including HYDRA-style
+# companion crates) to this exact family; older =0.2.100/=0.3.77/=0.4.50 pins
+# cannot coexist with the libp2p 0.57 browser graph.
+# futures-timer 3.0.4 moved its WASM backend to gloo-timers 0.4.0, which
+# requires js-sys >=0.3.91 and is therefore incompatible with that libp2p
+# generation. Pin 3.0.3, whose WASM backend uses gloo-timers 0.2.6.
+wasm-bindgen = "=0.2.108"
+wasm-bindgen-futures = "=0.4.58"
+serde-wasm-bindgen = "=0.6.5"
+js-sys = "=0.3.85"
+futures-timer = { version = "=3.0.3", features = ["wasm-bindgen"] }
+getrandom = { version = "=0.2.17", features = ["js"] }
+web-sys = { version = "=0.3.85", features = [
+    "BroadcastChannel",
+    "Crypto",
+    "DomException",
+    "Document",
+    "Event",
+    "EventTarget",
+    "IdbCursorWithValue",
+    "IdbDatabase",
+    "IdbFactory",
+    "IdbObjectStore",
+    "IdbOpenDbRequest",
+    "IdbRequest",
+    "IdbTransaction",
+    "IdbTransactionMode",
+    "Navigator",
+    "Performance",
+    "Headers",
+    "Request",
+    "RequestInit",
+    "RequestMode",
+    "Response",
+    "StorageManager",
+    "Window",
+    "VisibilityState",
+] }
 
 [dev-dependencies]
 base64 = "0.22"

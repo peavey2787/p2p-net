@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::task::{Context, Poll};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 use either::Either;
 use libp2p::core::{transport::PortUse, Endpoint};

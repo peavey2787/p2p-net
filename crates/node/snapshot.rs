@@ -9,6 +9,7 @@ use crate::connectivity::relay::{RelayServiceHealth, RelayState};
 mod helpers;
 
 pub(crate) use helpers::network_label;
+#[cfg(not(target_arch = "wasm32"))]
 use helpers::push_unique_recent;
 
 #[derive(Debug, Clone, Default, serde::Serialize)]
@@ -163,6 +164,7 @@ pub struct NodeSnapshot {
 }
 
 impl NodeSnapshot {
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn record_public_external_addr(&mut self, addr: impl Into<String>) {
         let addr = addr.into();
         push_unique_recent(&mut self.public_direct_listen_addresses, addr.clone());

@@ -1,20 +1,26 @@
 //! Small runtime-loop tasks kept outside `runtime.rs` so the loop remains SRP-focused.
 
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::Arc;
 
 use libp2p::gossipsub::IdentTopic;
 use libp2p::{PeerId, Swarm};
+#[cfg(not(target_arch = "wasm32"))]
 use tokio::sync::Mutex;
 
 use crate::api::accounted_transport_bytes;
 use crate::common::error::NetError;
-use crate::connectivity::dht::{
-    start_dht_namespace_discovery_immediate, DhtNamespacePlan, DhtProviderState,
-};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::connectivity::dht::start_dht_namespace_discovery_immediate;
+use crate::connectivity::dht::{DhtNamespacePlan, DhtProviderState};
 use crate::protocol::pulse::{collect_local_heartbeat, encode_heartbeat_wire};
-use crate::stack::{add_external_address_candidate, MeshBehaviour};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::stack::add_external_address_candidate;
+use crate::stack::MeshBehaviour;
 
+#[cfg(not(target_arch = "wasm32"))]
 use super::config::NodeConfig;
+#[cfg(not(target_arch = "wasm32"))]
 use super::public_ip::PublicIpProbeResult;
 use super::push_pulse;
 use super::snapshot::NodeSnapshot;
@@ -42,6 +48,7 @@ pub(crate) fn publish_heartbeat(
     })
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) async fn apply_public_ip_probe_result(
     result: PublicIpProbeResult,
     cfg: &NodeConfig,

@@ -5,7 +5,7 @@
 //! discovery running alongside rendezvous so public rendezvous and DHT
 //! resurrection can complement each other.
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use web_time::{SystemTime, UNIX_EPOCH};
 
 use crate::common::error::config_error;
 use libp2p::kad::{self, QueryId};

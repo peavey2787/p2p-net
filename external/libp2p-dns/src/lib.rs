@@ -1,6 +1,6 @@
 //! Local `libp2p-dns` patch for p2p-net.
 //!
-//! rust-libp2p 0.56's top-level Tokio WebSocket builder expects the
+//! rust-libp2p 0.57's top-level Tokio WebSocket builder expects the
 //! `libp2p-dns` crate when its `websocket` feature is enabled. p2p-net avoids
 //! that builder and uses `libp2p-websocket` directly. This local crate exists
 //! only for Cargo's workspace lock-resolution of weak optional feature edges,
@@ -46,7 +46,7 @@ pub mod tokio {
 
         /// Create a DNS transport using an explicit resolver configuration.
         ///
-        /// The local patch keeps the rust-libp2p 0.56 API compatible while
+        /// The local patch keeps the rust-libp2p 0.57 API compatible while
         /// avoiding Hickory. The supplied config values are intentionally unused
         /// because ordinary DNS uses Tokio's OS resolver and `/dnsaddr` is
         /// handled by p2p-net's own configurable pre-resolver.

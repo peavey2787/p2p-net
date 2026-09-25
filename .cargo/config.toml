@@ -1,6 +1,6 @@
 # Workspace-local lock-resolution patches.
 #
-# rust-libp2p 0.56's `tokio` feature contains weak feature references to its
+# rust-libp2p 0.57's `tokio` feature contains weak feature references to its
 # optional DNS and mDNS crates. Cargo includes those optional packages while
 # generating a workspace lockfile even though p2p-net does not enable the
 # libp2p `dns` or `mdns` features at runtime. Pointing only those resolution

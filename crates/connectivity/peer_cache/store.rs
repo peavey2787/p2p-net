@@ -1,5 +1,5 @@
 use std::collections::{HashSet, VecDeque};
-use std::time::{SystemTime, UNIX_EPOCH};
+use web_time::{SystemTime, UNIX_EPOCH};
 
 use libp2p::{Multiaddr, PeerId};
 
@@ -10,7 +10,9 @@ use super::addr_policy::{
 };
 use super::model::{CachedPeerAddr, CachedPeerIdentity, PeerCacheFile, CACHE_VERSION};
 use crate::connectivity::discovery::DiscoveryConfig;
-use crate::platform::{DesktopPlatformRuntime, NodeStorage};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::platform::DesktopPlatformRuntime;
+use crate::platform::NodeStorage;
 
 const MAX_PENDING_CACHE_MUTATIONS: usize = 4096;
 
@@ -90,6 +92,7 @@ impl PeerCacheWriteBatch {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn load_last_addrs(cfg: &DiscoveryConfig, limit: usize) -> Vec<Multiaddr> {
     load_last_addrs_with_storage(cfg, limit, &DesktopPlatformRuntime::default())
 }
@@ -106,6 +109,7 @@ pub fn load_last_addrs_with_storage(
         .collect()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn load_entries(cfg: &DiscoveryConfig) -> Vec<CachedPeerAddr> {
     load_entries_with_storage(cfg, &DesktopPlatformRuntime::default())
 }
@@ -120,6 +124,7 @@ pub fn load_entries_with_storage(
     valid_dialable_entries_from_file(cfg, &file, now_unix_secs())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn load_identities(cfg: &DiscoveryConfig) -> Vec<CachedPeerIdentity> {
     load_identities_with_storage(cfg, &DesktopPlatformRuntime::default())
 }
@@ -134,6 +139,7 @@ pub fn load_identities_with_storage(
     valid_identities_from_file(cfg, &file, now_unix_secs())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn record_seen_peer_addr(cfg: &DiscoveryConfig, peer: &PeerId, addr: &Multiaddr) {
     record_seen_peer_addr_with_storage(cfg, peer, addr, &DesktopPlatformRuntime::default());
 }
@@ -147,6 +153,7 @@ pub fn record_seen_peer_addr_with_storage(
     record_seen_peer_addr_inner(cfg, peer, addr, None, storage);
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn record_seen_peer_addr_with_expiry(
     cfg: &DiscoveryConfig,
     peer: &PeerId,
@@ -172,6 +179,7 @@ pub fn record_seen_peer_addr_with_expiry_with_storage(
     record_seen_peer_addr_inner(cfg, peer, addr, Some(expires_unix_secs), storage);
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn record_peer_addr_failure(cfg: &DiscoveryConfig, peer: &PeerId) {
     record_peer_addr_failure_with_storage(cfg, peer, &DesktopPlatformRuntime::default());
 }

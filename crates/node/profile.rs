@@ -8,6 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::config::NodeConfig;
+use crate::connectivity::connection_strategy::TransportCapabilities;
 
 /// User-facing node profile. `Auto` delegates role selection to the central
 /// capability resolver using advisory environment facts.
@@ -83,6 +84,8 @@ pub enum NodeRole {
     Rendezvous,
     Bootstrap,
     MobileLite,
+    /// Browser/WASM role: outbound browser transports, DHT/relay/rendezvous clients only.
+    WasmLite,
 }
 
 impl NodeRole {
@@ -95,6 +98,7 @@ impl NodeRole {
             Self::Rendezvous => "rendezvous",
             Self::Bootstrap => "bootstrap",
             Self::MobileLite => "mobile_lite",
+            Self::WasmLite => "wasm_lite",
         }
     }
 }
@@ -122,14 +126,17 @@ impl BehaviourSet {
             role,
             NodeRole::Relay | NodeRole::Mediator | NodeRole::Rendezvous | NodeRole::Bootstrap
         );
-        let lite = matches!(role, NodeRole::Lite | NodeRole::MobileLite);
+        let lite = matches!(
+            role,
+            NodeRole::Lite | NodeRole::MobileLite | NodeRole::WasmLite
+        );
 
         Self {
             gossipsub: true,
             kademlia_client: true,
             kademlia_server: !lite,
-            autonat: true,
-            dcutr: true,
+            autonat: !matches!(role, NodeRole::WasmLite),
+            dcutr: !matches!(role, NodeRole::WasmLite),
             relay_client: true,
             relay_server: matches!(role, NodeRole::Relay | NodeRole::Mediator)
                 || cfg.relay.enabled
@@ -181,6 +188,7 @@ pub struct ResolvedNodeConfig {
     pub mediator_advertise_for_dcutr: bool,
     pub rendezvous_client_enabled: bool,
     pub rendezvous_server_enabled: bool,
+    pub transport_capabilities: TransportCapabilities,
 }
 
 impl ResolvedNodeConfig {
@@ -213,14 +221,19 @@ impl ResolvedNodeConfig {
         effective: NodeConfig,
     ) -> Self {
         let mut enabled_behaviours = BehaviourSet::for_role(role, &effective);
-        enabled_behaviours.dcutr = effective.dcutr.enabled && enabled_behaviours.relay_client;
+        // Narrow the role default: a role that forbids DCUtR (wasm_lite) never
+        // gains it from `dcutr.enabled`, which defaults to true.
+        enabled_behaviours.dcutr &= effective.dcutr.enabled && enabled_behaviours.relay_client;
         let has_relay_peers = !effective.relay_peers.is_empty();
         let has_public_relay_candidates =
             effective.discovery.public_bootstrap.has_relay_candidates();
         let has_public_dht_relay_discovery = effective.discovery.public_bootstrap.mode.is_enabled()
             && effective.discovery.relay_discovery.use_dht_relays;
-        let lite_role = matches!(role, NodeRole::Lite | NodeRole::MobileLite);
-        let mobile_lite = matches!(role, NodeRole::MobileLite);
+        let lite_role = matches!(
+            role,
+            NodeRole::Lite | NodeRole::MobileLite | NodeRole::WasmLite
+        );
+        let no_public_listeners = matches!(role, NodeRole::MobileLite | NodeRole::WasmLite);
         let has_relay_selection_source = lite_role
             || has_relay_peers
             || has_public_relay_candidates
@@ -228,7 +241,7 @@ impl ResolvedNodeConfig {
         let relay_discovery_enabled = effective.discovery.relay_discovery.enabled
             && enabled_behaviours.relay_client
             && has_relay_selection_source;
-        let should_listen = !mobile_lite
+        let should_listen = !no_public_listeners
             && effective
                 .enabled_listen_addresses()
                 .map(|addresses| !addresses.is_empty())
@@ -266,6 +279,11 @@ impl ResolvedNodeConfig {
             dcutr_keep_relay_fallback: effective.dcutr.keep_relay_fallback,
             dcutr_retry_interval_secs: effective.dcutr.retry_interval_secs,
             dcutr_max_attempts_per_peer: effective.dcutr.max_attempts_per_peer,
+            transport_capabilities: if matches!(role, NodeRole::WasmLite) {
+                TransportCapabilities::browser()
+            } else {
+                TransportCapabilities::native()
+            },
             enabled_behaviours,
         }
     }

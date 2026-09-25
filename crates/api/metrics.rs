@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 
 use libp2p::PeerId;
+use serde::Serialize;
 
 /// Conservative per-message accounting allowance for transport framing,
 /// validation, and pubsub metadata around the serialized application payload.
@@ -19,7 +20,7 @@ pub(crate) const CONNECTION_HANDSHAKE_ESTIMATE_BYTES: u64 = 1536;
 const MAX_TRACKED_PEER_BANDWIDTH: usize = 512;
 const MAX_TRACKED_TOPIC_BANDWIDTH: usize = 256;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct NodeMetrics {
     /// Seconds since this node runtime started.
     pub uptime_seconds: u64,
@@ -31,7 +32,7 @@ pub struct NodeMetrics {
     pub compute: ComputeMetrics,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct BandwidthMetrics {
     /// Total accounted egress bytes, including app payloads plus conservative
     /// transport framing/handshake estimates where exact byte totals are not
@@ -48,7 +49,7 @@ pub struct BandwidthMetrics {
     pub topic_stats: HashMap<String, TopicBandwidth>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct PeerBandwidth {
     /// Accounted egress bytes to this peer.
     pub bytes_sent: u64,
@@ -56,7 +57,7 @@ pub struct PeerBandwidth {
     pub bytes_recv: u64,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct TopicBandwidth {
     /// Accounted egress bytes on this topic.
     pub bytes_sent: u64,
@@ -64,7 +65,7 @@ pub struct TopicBandwidth {
     pub bytes_recv: u64,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct StorageMetrics {
     /// Count of node-managed chunks/write payloads persisted by the runtime.
     pub total_chunks_stored: u64,
@@ -72,7 +73,7 @@ pub struct StorageMetrics {
     pub total_bytes_stored: u64,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct ComputeMetrics {
     /// Simple monotonic estimate of runtime command/tick work.
     pub execution_cycles_estimated: u64,

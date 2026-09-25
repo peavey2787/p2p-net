@@ -1,25 +1,22 @@
 use std::time::Duration;
 
-use libp2p::core::upgrade::Version;
 use libp2p::identity::Keypair;
 use libp2p::swarm::Swarm;
-use libp2p::{noise, tcp, yamux, SwarmBuilder, Transport};
-use libp2p_webrtc::tokio::{Certificate as WebRtcCertificate, Transport as WebRtcTransport};
-use libp2p_websocket as websocket;
 
-use super::behaviour::{build_behaviour, BehaviourBuildContext, MeshBehaviour};
-use super::dns_transport::OsDnsTransport;
+use super::behaviour::MeshBehaviour;
 use crate::common::error::NetError;
-use crate::connectivity::webrtc::WEBRTC_DIRECT_TRANSPORT;
+use crate::platform::NodeStorage;
 use crate::{NodeConfig, ResolvedNodeConfig};
 
-// Keep idle expiry safely beyond the configured Ping cadence. Otherwise a
-// low-frequency keepalive policy can continuously tear down healthy idle
-// connections just before their next ping, causing rediscovery/redial churn.
+#[cfg(not(target_arch = "wasm32"))]
+mod native;
+#[cfg(target_arch = "wasm32")]
+mod wasm;
+
 const MIN_SWARM_IDLE_CONNECTION_TIMEOUT_SECS: u64 = 30;
 const SWARM_IDLE_TIMEOUT_PING_MULTIPLIER: u64 = 2;
 
-fn swarm_idle_connection_timeout(ping_interval_secs: u64) -> Duration {
+pub(super) fn swarm_idle_connection_timeout(ping_interval_secs: u64) -> Duration {
     Duration::from_secs(
         ping_interval_secs
             .saturating_mul(SWARM_IDLE_TIMEOUT_PING_MULTIPLIER)
@@ -36,60 +33,38 @@ pub async fn build_swarm(
     local_key: Keypair,
     cfg: &NodeConfig,
     resolved_cfg: &ResolvedNodeConfig,
+    storage: &dyn NodeStorage,
 ) -> Result<(Swarm<MeshBehaviour>, TransportPlan), NetError> {
-    let local_peer = libp2p::PeerId::from(local_key.public());
-    let relay_cfg = cfg.relay.clone();
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        native::build_swarm(local_key, cfg, resolved_cfg, storage).await
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = storage;
+        wasm::build_swarm(local_key, cfg, resolved_cfg).await
+    }
+}
 
-    let builder = SwarmBuilder::with_existing_identity(local_key)
-        .with_tokio()
-        .with_tcp(
-            tcp::Config::default().nodelay(true),
-            noise::Config::new,
-            yamux::Config::default,
-        )
-        .map_err(|e| NetError::Build(e.to_string()))?
-        .with_quic()
-        .with_other_transport(|key| {
-            let certificate = WebRtcCertificate::generate(&mut rand::thread_rng()).map_err(
-                |err| -> Box<dyn std::error::Error + Send + Sync + 'static> { Box::new(err) },
-            )?;
-            Ok::<_, Box<dyn std::error::Error + Send + Sync + 'static>>(WebRtcTransport::new(
-                key.clone(),
-                certificate,
-            ))
-        })
-        .map_err(|e| NetError::Build(e.to_string()))?
-        .with_other_transport(|key| {
-            let noise = noise::Config::new(key).map_err(
-                |err| -> Box<dyn std::error::Error + Send + Sync + 'static> { Box::new(err) },
-            )?;
-            let tcp = tcp::tokio::Transport::new(tcp::Config::default().nodelay(true));
-            let websocket = websocket::Config::new(OsDnsTransport::new(tcp))
-                .upgrade(Version::V1Lazy)
-                .authenticate(noise)
-                .multiplex(yamux::Config::default());
-            Ok::<_, Box<dyn std::error::Error + Send + Sync + 'static>>(websocket)
-        })
-        .map_err(|e| NetError::Build(e.to_string()))?
-        .with_relay_client(noise::Config::new, yamux::Config::default)
-        .map_err(|e| NetError::Build(e.to_string()))?;
+pub(super) fn transport_plan(cfg: &NodeConfig, resolved_cfg: &ResolvedNodeConfig) -> TransportPlan {
+    use crate::connectivity::webrtc::WEBRTC_DIRECT_TRANSPORT;
 
-    // Only report transports/capabilities that are actually enabled by the
-    // resolved profile policy. WebRTC-direct is a real swarm transport here,
-    // so it shares the same peer routing and connection state as TCP/QUIC/WS.
     let behaviour_policy = &resolved_cfg.enabled_behaviours;
     let mut active = Vec::new();
-    if cfg.listeners.quic {
+    if cfg.listeners.quic && resolved_cfg.transport_capabilities.quic {
         active.push("quic");
     }
-    if cfg.listeners.tcp {
+    if cfg.listeners.tcp && resolved_cfg.transport_capabilities.tcp {
         active.push("tcp");
     }
-    if cfg.listeners.websocket {
+    if resolved_cfg.transport_capabilities.secure_websocket {
         active.push("websocket");
     }
-    if cfg.listeners.webrtc_direct {
+    if resolved_cfg.transport_capabilities.webrtc_direct {
         active.push(WEBRTC_DIRECT_TRANSPORT);
+    }
+    if resolved_cfg.transport_capabilities.webtransport {
+        active.push("webtransport");
     }
     if behaviour_policy.gossipsub {
         active.push("gossipsub");
@@ -108,8 +83,6 @@ pub async fn build_swarm(
     if behaviour_policy.dcutr {
         active.push("dcutr");
     }
-    #[cfg(feature = "dns")]
-    active.push("dns");
     if !cfg.discovery.bootstrap_seed_peers.is_empty() {
         active.push("bootstrap-seeds");
     }
@@ -131,48 +104,15 @@ pub async fn build_swarm(
     {
         active.push("relay-reservations");
     }
-    if behaviour_policy.relay_server && relay_cfg.enabled {
+    if behaviour_policy.relay_server && cfg.relay.enabled {
         active.push("relay-server");
         if resolved_cfg.mediator_enabled {
             active.push("mediator");
         }
         active.push("relay-acl");
-        if relay_cfg.schedule.enabled {
+        if cfg.relay.schedule.enabled {
             active.push("relay-schedule");
         }
     }
-
-    let mut swarm = builder
-        .with_behaviour(|key, relay_behaviour| {
-            build_behaviour(BehaviourBuildContext {
-                local_key: key,
-                local_peer,
-                relay_behaviour,
-                network_id: cfg.network_id,
-                gossipsub_heartbeat_interval_secs: cfg.gossipsub_heartbeat_interval_secs,
-                ping_interval_secs: cfg.ping_interval_secs,
-                relay_cfg: &relay_cfg,
-                connection_limits_cfg: &cfg.connection_limits,
-                discovery_cfg: &cfg.discovery,
-                resolved_cfg,
-            })
-        })
-        .map_err(|e| NetError::Build(e.to_string()))?
-        .with_swarm_config(|swarm_cfg| {
-            swarm_cfg
-                .with_idle_connection_timeout(swarm_idle_connection_timeout(cfg.ping_interval_secs))
-        })
-        .build();
-
-    let listen_addrs = cfg.enabled_listen_addresses()?;
-    for addr in &listen_addrs {
-        swarm
-            .listen_on(addr.clone())
-            .map_err(|e| NetError::Listen {
-                addr: addr.to_string(),
-                reason: e.to_string(),
-            })?;
-    }
-
-    Ok((swarm, TransportPlan { active }))
+    TransportPlan { active }
 }

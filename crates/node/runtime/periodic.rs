@@ -24,7 +24,7 @@ pub(super) async fn tick_runtime(
     heartbeat_topic: &IdentTopic,
     snapshot: &Arc<Mutex<NodeSnapshot>>,
     runtime_state: &mut RuntimeState,
-    started_at: std::time::Instant,
+    started_at: web_time::Instant,
 ) {
     events::enforce_relay_schedule(&cfg.relay, swarm, snapshot, &mut runtime_state.relay_state)
         .await;

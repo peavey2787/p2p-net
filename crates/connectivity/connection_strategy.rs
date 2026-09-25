@@ -15,6 +15,80 @@ use crate::connectivity::dcutr::DcutrPolicy;
 use crate::connectivity::peer_book::PeerBook;
 use crate::connectivity::relay::is_p2p_circuit_addr;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TransportCapabilities {
+    pub tcp: bool,
+    pub quic: bool,
+    pub webrtc_direct: bool,
+    pub secure_websocket: bool,
+    pub webtransport: bool,
+    pub circuit_relay: bool,
+}
+
+impl TransportCapabilities {
+    pub const fn native() -> Self {
+        Self {
+            tcp: true,
+            quic: true,
+            webrtc_direct: true,
+            secure_websocket: true,
+            webtransport: false,
+            circuit_relay: true,
+        }
+    }
+
+    pub const fn browser() -> Self {
+        Self {
+            tcp: false,
+            quic: false,
+            webrtc_direct: true,
+            secure_websocket: true,
+            // WebTransport is compiled in for an incremental follow-up but is
+            // not advertised/dial-selected until the swarm builder enables it.
+            webtransport: false,
+            circuit_relay: true,
+        }
+    }
+
+    #[must_use]
+    pub fn allows(&self, addr: &Multiaddr) -> bool {
+        let raw = addr.to_string();
+        let transport = raw.split("/p2p-circuit").next().unwrap_or(raw.as_str());
+        let is_relay = raw.contains("/p2p-circuit");
+        if is_relay && !self.circuit_relay {
+            return false;
+        }
+        if transport.contains("/webrtc-direct") {
+            return self.webrtc_direct;
+        }
+        if transport.contains("/webtransport") {
+            return self.webtransport;
+        }
+        if transport.contains("/wss") || transport.contains("/tls/ws") {
+            return self.secure_websocket;
+        }
+        if transport.contains("/quic") {
+            return self.quic;
+        }
+        if transport.contains("/tcp/") {
+            return self.tcp;
+        }
+        // Native remains open to memory/custom transports; browser policy is
+        // deliberately an allow-list of transports browsers can actually dial.
+        *self == Self::native()
+    }
+}
+
+impl Default for TransportCapabilities {
+    fn default() -> Self {
+        if cfg!(target_arch = "wasm32") {
+            Self::browser()
+        } else {
+            Self::native()
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionAttemptKind {
     DirectQuic,
@@ -136,6 +210,21 @@ pub fn build_peer_book_connection_plan(
     peer_book: &PeerBook,
     dcutr_policy: &DcutrPolicy,
 ) -> ConnectionPlan {
+    build_peer_book_connection_plan_with_capabilities(
+        peer_id,
+        peer_book,
+        dcutr_policy,
+        &TransportCapabilities::default(),
+    )
+}
+
+#[must_use]
+pub fn build_peer_book_connection_plan_with_capabilities(
+    peer_id: PeerId,
+    peer_book: &PeerBook,
+    dcutr_policy: &DcutrPolicy,
+    capabilities: &TransportCapabilities,
+) -> ConnectionPlan {
     let relay_preferred = peer_book
         .record(&peer_id)
         .map(|record| record.relay_preferred)
@@ -151,6 +240,7 @@ pub fn build_peer_book_connection_plan(
         }
     }
 
+    candidates.retain(|addr| capabilities.allows(addr));
     let attempts = ordered_attempts(candidates, relay_preferred);
     ConnectionPlan {
         target_peer: Some(peer_id),
@@ -167,6 +257,21 @@ pub fn build_connection_plan(
     requested_addr: Multiaddr,
     peer_book: &PeerBook,
     dcutr_policy: &DcutrPolicy,
+) -> ConnectionPlan {
+    build_connection_plan_with_capabilities(
+        requested_addr,
+        peer_book,
+        dcutr_policy,
+        &TransportCapabilities::default(),
+    )
+}
+
+#[must_use]
+pub fn build_connection_plan_with_capabilities(
+    requested_addr: Multiaddr,
+    peer_book: &PeerBook,
+    dcutr_policy: &DcutrPolicy,
+    capabilities: &TransportCapabilities,
 ) -> ConnectionPlan {
     let target_peer = extract_p2p_peer_id(&requested_addr);
     let relay_preferred = target_peer
@@ -187,6 +292,7 @@ pub fn build_connection_plan(
         }
     }
 
+    candidates.retain(|addr| capabilities.allows(addr));
     let attempts = ordered_attempts(candidates, relay_preferred);
     ConnectionPlan {
         target_peer,
@@ -256,107 +362,4 @@ fn extract_p2p_peer_id(addr: &Multiaddr) -> Option<PeerId> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::api::PeerSource;
-
-    fn addr(peer: PeerId, transport: &str, port: u16) -> Multiaddr {
-        format!("/ip4/127.0.0.1/{transport}/{port}/p2p/{peer}")
-            .parse()
-            .expect("valid addr")
-    }
-
-    #[test]
-    fn planner_prefers_direct_quic_then_direct_then_relay() {
-        let peer = PeerId::random();
-        let tcp = addr(peer, "tcp", 4001);
-        let quic = format!("/ip4/127.0.0.1/udp/4002/quic-v1/p2p/{peer}")
-            .parse::<Multiaddr>()
-            .expect("valid quic addr");
-        let relay = format!("/ip4/127.0.0.1/tcp/4003/p2p/{peer}/p2p-circuit/p2p/{peer}")
-            .parse::<Multiaddr>()
-            .expect("valid relay addr");
-        let mut book = PeerBook::default();
-        book.record_addr(peer, quic.clone(), PeerSource::PeerCache);
-        book.record_addr(peer, relay, PeerSource::RelayDiscovery);
-
-        let plan = build_connection_plan(tcp, &book, &DcutrPolicy::default());
-
-        assert_eq!(plan.attempts[0].addr, quic);
-        assert_eq!(plan.attempts[0].kind, ConnectionAttemptKind::DirectQuic);
-        assert_eq!(plan.attempts[1].kind, ConnectionAttemptKind::Direct);
-        assert_eq!(plan.attempts[2].kind, ConnectionAttemptKind::Relay);
-        assert!(plan.attempt_dcutr_after_relay);
-        assert!(plan.keep_relay_fallback);
-    }
-
-    #[test]
-    fn planner_uses_relay_first_for_relay_preferred_peer() {
-        let peer = PeerId::random();
-        let tcp = addr(peer, "tcp", 4001);
-        let relay = format!("/ip4/127.0.0.1/tcp/4003/p2p/{peer}/p2p-circuit/p2p/{peer}")
-            .parse::<Multiaddr>()
-            .expect("valid relay addr");
-        let mut book = PeerBook::default();
-        book.record_addr(peer, relay.clone(), PeerSource::RelayDiscovery);
-        book.record_relay_preferred(peer, true);
-
-        let plan = build_connection_plan(tcp, &book, &DcutrPolicy::default());
-
-        assert!(plan.relay_preferred);
-        assert_eq!(plan.attempts[0].addr, relay);
-        assert_eq!(plan.attempts[0].kind, ConnectionAttemptKind::Relay);
-    }
-
-    #[test]
-    fn peer_book_planner_uses_known_addresses_without_manual_addr() {
-        let peer = PeerId::random();
-        let quic = format!("/ip4/127.0.0.1/udp/4002/quic-v1/p2p/{peer}")
-            .parse::<Multiaddr>()
-            .expect("valid quic addr");
-        let mut book = PeerBook::default();
-        book.record_addr(peer, quic.clone(), PeerSource::DhtProvider);
-
-        let plan = build_peer_book_connection_plan(peer, &book, &DcutrPolicy::default());
-
-        assert_eq!(plan.target_peer, Some(peer));
-        assert_eq!(plan.attempts.len(), 1);
-        assert_eq!(plan.attempts[0].addr, quic);
-        assert_eq!(plan.attempts[0].kind, ConnectionAttemptKind::DirectQuic);
-    }
-
-    #[test]
-    fn pending_plans_track_inflight_peer_dedupe() {
-        let peer = PeerId::random();
-        let tcp = addr(peer, "tcp", 4001);
-        let plan = build_connection_plan(tcp, &PeerBook::default(), &DcutrPolicy::default());
-        let first = plan.first_attempt().expect("first attempt").clone();
-        let mut pending = PendingConnectionPlans::default();
-
-        pending.track_remaining(&plan, &first);
-
-        assert!(pending.is_pending(&peer));
-        assert_eq!(pending.next_after_failure(&peer), None);
-        assert!(!pending.is_pending(&peer));
-    }
-
-    #[test]
-    fn pending_plans_return_remaining_attempts_after_failure() {
-        let peer = PeerId::random();
-        let tcp = addr(peer, "tcp", 4001);
-        let quic = format!("/ip4/127.0.0.1/udp/4002/quic-v1/p2p/{peer}")
-            .parse::<Multiaddr>()
-            .expect("valid quic addr");
-        let mut book = PeerBook::default();
-        book.record_addr(peer, tcp.clone(), PeerSource::PeerCache);
-        let plan = build_connection_plan(quic.clone(), &book, &DcutrPolicy::default());
-        let first = plan.first_attempt().expect("first attempt").clone();
-        let mut pending = PendingConnectionPlans::default();
-
-        pending.track_remaining(&plan, &first);
-        let fallback = pending.next_after_failure(&peer).expect("fallback attempt");
-
-        assert_eq!(fallback.addr, tcp);
-        assert_eq!(pending.pending_count(), 0);
-    }
-}
+mod tests;

@@ -1,5 +1,5 @@
 use crate::common::error::{config_error, NetError};
-use std::time::{SystemTime, UNIX_EPOCH};
+use web_time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 

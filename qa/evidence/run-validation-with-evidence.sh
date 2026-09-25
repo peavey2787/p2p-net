@@ -10,6 +10,7 @@ TRANSCRIPT="$RUN_DIR/transcript.txt"
 MANIFEST="$RUN_DIR/manifest.txt"
 INPUTS="$RUN_DIR/release-inputs.txt"
 STARTED_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+COMPLETION_SENTINEL="$RUN_DIR/launcher-complete.txt"
 RESUME_FROM="full"
 ARGS=("$@")
 
@@ -26,6 +27,7 @@ P2P_FINGERPRINT_MANIFEST_OUT="$INPUTS" bash "$ROOT/qa/evidence/source-fingerprin
 # shellcheck disable=SC1090
 source "$RUN_DIR/fingerprint-before.txt"
 PRE_WORKSPACE_TREE="$workspace_tree"
+PRE_FINGERPRINT_MODE="${fingerprint_mode:-git-worktree}"
 PRE_RELEASE_INPUT_SHA256="$release_input_sha256"
 PRE_RELEASE_INPUT_FILE_COUNT="$release_input_file_count"
 
@@ -34,10 +36,16 @@ printf 'p2p-net validation evidence transcript\nrun_id=%s\nstarted_utc=%s\nlaunc
 echo "Validation evidence: $RUN_DIR"
 
 export P2P_VALIDATION_EVIDENCE_ACTIVE=1
+export P2P_VALIDATION_COMPLETION_SENTINEL="$COMPLETION_SENTINEL"
+rm -f "$COMPLETION_SENTINEL"
 set +e
 "$LAUNCHER" "${ARGS[@]}" 2>&1 | tee -a "$TRANSCRIPT"
 STATUS=${PIPESTATUS[0]}
 set -e
+if [[ "$STATUS" == "0" && ! -f "$COMPLETION_SENTINEL" ]]; then
+  echo "Validation launcher exited with status 0 before reaching its completion sentinel." | tee -a "$TRANSCRIPT" >&2
+  STATUS=124
+fi
 FINISHED_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 RESULT="fail"
 [[ "$STATUS" == "0" ]] && RESULT="pass"
@@ -50,11 +58,24 @@ POST_RELEASE_INPUT_FILE_COUNT="$release_input_file_count"
 RELEASE_INPUTS_STABLE=false
 [[ "$POST_RELEASE_INPUT_SHA256" == "$PRE_RELEASE_INPUT_SHA256" ]] && RELEASE_INPUTS_STABLE=true
 
-git -C "$ROOT" status --porcelain=v1 --untracked-files=all >"$RUN_DIR/git-status.txt" || true
+GIT_STATUS_STATE="unavailable"
+if git -C "$ROOT" status --porcelain=v1 --untracked-files=all >"$RUN_DIR/git-status.txt" 2>/dev/null; then
+  if [[ -s "$RUN_DIR/git-status.txt" ]]; then
+    GIT_STATUS_STATE="dirty"
+  else
+    GIT_STATUS_STATE="clean"
+  fi
+else
+  : >"$RUN_DIR/git-status.txt"
+fi
 GIT_COMMIT="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
 GIT_TREE="$(git -C "$ROOT" rev-parse 'HEAD^{tree}' 2>/dev/null || echo unknown)"
-LOCK_HASH="$(sha256sum "$ROOT/Cargo.lock" 2>/dev/null | awk '{print $1}')"
-printf '%s  Cargo.lock\n' "${LOCK_HASH:-unknown}" >"$RUN_DIR/Cargo.lock.sha256.txt"
+if [[ -f "$ROOT/Cargo.lock" ]]; then
+  LOCK_HASH="$(sha256sum "$ROOT/Cargo.lock" | awk '{print $1}')"
+else
+  LOCK_HASH="missing"
+fi
+printf '%s  Cargo.lock\n' "$LOCK_HASH" >"$RUN_DIR/Cargo.lock.sha256.txt"
 
 cat >"$MANIFEST" <<EOF_MANIFEST
 schema=1
@@ -67,6 +88,7 @@ exit_code=$STATUS
 started_utc=$STARTED_UTC
 finished_utc=$FINISHED_UTC
 source_workspace_tree=$PRE_WORKSPACE_TREE
+source_fingerprint_mode=$PRE_FINGERPRINT_MODE
 release_input_sha256=$PRE_RELEASE_INPUT_SHA256
 release_input_file_count=$PRE_RELEASE_INPUT_FILE_COUNT
 post_validation_release_input_sha256=$POST_RELEASE_INPUT_SHA256
@@ -74,7 +96,7 @@ post_validation_release_input_file_count=$POST_RELEASE_INPUT_FILE_COUNT
 release_inputs_stable=$RELEASE_INPUTS_STABLE
 git_commit=$GIT_COMMIT
 git_tree=$GIT_TREE
-git_status=$([[ -s "$RUN_DIR/git-status.txt" ]] && echo dirty || echo clean)
+git_status=$GIT_STATUS_STATE
 cargo_lock_sha256=${LOCK_HASH:-unknown}
 rustc=$(rustc --version 2>/dev/null || echo unknown)
 rustc_verbose=$(rustc -vV 2>/dev/null | tr '\n' ';' || echo unknown)

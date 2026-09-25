@@ -10,9 +10,8 @@ use libp2p::gossipsub::{IdentTopic, TopicHash};
 use libp2p::identity::Keypair;
 use libp2p::{Multiaddr, PeerId, Swarm};
 use tokio::sync::{broadcast, mpsc, Mutex};
-use tokio::task::JoinHandle;
 
-use crate::api::{AppMessage, NodeMetrics};
+use crate::api::{AppFragmentReassembler, AppMessage, NodeEvent, NodeMetrics};
 use crate::connectivity::connection_strategy::PendingConnectionPlans;
 use crate::connectivity::dht::DhtProviderState;
 use crate::connectivity::limits::ConnectionCapState;
@@ -25,6 +24,7 @@ use crate::platform::NodeStorage;
 use crate::protocol::app_security::AppMessageReplayCache;
 use crate::protocol::pulse::HeartbeatReplayCache;
 use crate::protocol::reputation::ReputationStore;
+use crate::runtime::{self, TaskHandle};
 use crate::stack::{IdentifyAddressState, MeshBehaviour};
 
 use super::config::NodeConfig;
@@ -61,12 +61,14 @@ pub(crate) struct NodeRuntimeContext {
     pub(crate) shutdown_rx: mpsc::Receiver<()>,
     pub(crate) command_rx: mpsc::Receiver<NodeCommand>,
     pub(crate) messages_tx: broadcast::Sender<AppMessage>,
+    pub(crate) events_tx: broadcast::Sender<NodeEvent>,
 }
 
 pub(super) struct RuntimeState {
     pub(super) rep: ReputationStore,
     pub(super) replay_cache: HeartbeatReplayCache,
     pub(super) app_replay_cache: AppMessageReplayCache,
+    pub(super) app_fragment_reassembler: AppFragmentReassembler,
     pub(super) relay_state: RelayState,
     pub(super) rendezvous_state: RendezvousState,
     pub(super) dht_state: DhtProviderState,
@@ -80,7 +82,7 @@ pub(super) struct RuntimeState {
     pub(super) observability: ObservabilityBatch,
     pub(super) peer_cache_writes: PeerCacheWriteBatch,
     dht_refresh_schedule: dht_schedule::DhtRefreshSchedule,
-    pub(super) last_peer_cache_flush: std::time::Instant,
+    pub(super) last_peer_cache_flush: web_time::Instant,
 }
 
 impl RuntimeState {
@@ -97,6 +99,7 @@ impl RuntimeState {
             rep: ReputationStore::new(cfg.message_security.reputation.clone()),
             replay_cache: HeartbeatReplayCache::new(&cfg.message_security),
             app_replay_cache: AppMessageReplayCache::new(&cfg.message_security),
+            app_fragment_reassembler: AppFragmentReassembler::default(),
             relay_state: runtime_maintenance::initial_relay_state(
                 cfg,
                 resolved_config,
@@ -117,7 +120,7 @@ impl RuntimeState {
             dht_refresh_schedule: dht_schedule::DhtRefreshSchedule::new(
                 cfg.discovery.dht.refresh_interval_secs,
             ),
-            last_peer_cache_flush: std::time::Instant::now(),
+            last_peer_cache_flush: web_time::Instant::now(),
         }
     }
 
@@ -126,10 +129,10 @@ impl RuntimeState {
             return;
         }
         self.peer_cache_writes.flush(&cfg.discovery, storage);
-        self.last_peer_cache_flush = std::time::Instant::now();
+        self.last_peer_cache_flush = web_time::Instant::now();
     }
 }
 
-pub(crate) fn spawn_node_runtime(ctx: NodeRuntimeContext) -> JoinHandle<()> {
-    tokio::spawn(driver::run_node_runtime(ctx))
+pub(crate) fn spawn_node_runtime(ctx: NodeRuntimeContext) -> TaskHandle {
+    runtime::spawn(driver::run_node_runtime(ctx))
 }

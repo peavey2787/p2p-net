@@ -2,7 +2,8 @@ use libp2p::gossipsub::{MessageAcceptance, MessageId, TopicHash};
 use libp2p::{PeerId, Swarm};
 
 use crate::api::{
-    accounted_transport_bytes, decode_app_message, validate_app_message_authentication,
+    accounted_transport_bytes, app_ident_topic, decode_app_message, decode_fragment,
+    validate_app_message_authentication, AppMessage,
 };
 use crate::protocol::app_security::{validate_app_message_security, AppMessageSecurityDecision};
 use crate::stack::MeshBehaviour;
@@ -32,22 +33,116 @@ pub(crate) fn handle_app_message(
         return;
     };
 
+    // Small messages retain the original wire envelope for backwards
+    // compatibility. Large messages use bounded internal fragments and are
+    // reassembled before freshness/replay validation or app delivery.
     let message = match decode_app_message(&data) {
         Ok(message) => message,
         Err(_) => {
-            reject_app_message(
-                swarm,
-                propagation_source,
-                &message_id,
-                Some(author),
-                accounted_bytes,
-                ctx,
-                "invalid application envelope",
-            );
-            return;
+            let fragment = match decode_fragment(&data) {
+                Ok(fragment) => fragment,
+                Err(_) => {
+                    reject_app_message(
+                        swarm,
+                        propagation_source,
+                        &message_id,
+                        Some(author),
+                        accounted_bytes,
+                        ctx,
+                        "invalid application envelope/fragment",
+                    );
+                    return;
+                }
+            };
+            let expected_topic = match app_ident_topic(fragment.network_id, &fragment.topic) {
+                Ok(topic) => topic.hash(),
+                Err(_) => {
+                    reject_app_message(
+                        swarm,
+                        propagation_source,
+                        &message_id,
+                        Some(author),
+                        accounted_bytes,
+                        ctx,
+                        "invalid fragment topic",
+                    );
+                    return;
+                }
+            };
+            if fragment.network_id != ctx.network_id
+                || fragment.source_peer_id != author.to_string()
+                || expected_topic != received_topic
+            {
+                reject_app_message(
+                    swarm,
+                    propagation_source,
+                    &message_id,
+                    Some(author),
+                    accounted_bytes,
+                    ctx,
+                    "fragment authentication/topic mismatch",
+                );
+                return;
+            }
+            let reassembled = match ctx.app_fragment_reassembler.push(author, fragment) {
+                Ok(message) => message,
+                Err(_) => {
+                    reject_app_message(
+                        swarm,
+                        propagation_source,
+                        &message_id,
+                        Some(author),
+                        accounted_bytes,
+                        ctx,
+                        "fragment reassembly rejected",
+                    );
+                    return;
+                }
+            };
+            ctx.metrics
+                .bandwidth
+                .record_received(Some(propagation_source), None, accounted_bytes);
+            let Some(message) = reassembled else {
+                // Every individually valid incomplete fragment must be accepted
+                // so the mesh forwards it. Security/replay validation runs once
+                // on the completed logical message.
+                swarm
+                    .behaviour_mut()
+                    .gossipsub
+                    .report_message_validation_result(
+                        &message_id,
+                        &propagation_source,
+                        MessageAcceptance::Accept,
+                    );
+                return;
+            };
+            message
         }
     };
 
+    process_complete_message(
+        swarm,
+        propagation_source,
+        author,
+        message_id,
+        received_topic,
+        accounted_bytes,
+        message,
+        ctx,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn process_complete_message(
+    swarm: &mut Swarm<MeshBehaviour>,
+    propagation_source: PeerId,
+    author: PeerId,
+    message_id: MessageId,
+    received_topic: TopicHash,
+    accounted_bytes: u64,
+    message: AppMessage,
+    ctx: &mut SwarmEventContext<'_>,
+) {
     if message.network_id != ctx.network_id
         || validate_app_message_authentication(&message, &author, &received_topic).is_err()
     {
@@ -105,9 +200,6 @@ pub(crate) fn handle_app_message(
         }
     }
 
-    // Manual validation is enabled globally for Gossipsub. Every valid application
-    // message must be accepted even when it is addressed to another peer so that
-    // the mesh can continue forwarding it toward its intended recipient.
     swarm
         .behaviour_mut()
         .gossipsub

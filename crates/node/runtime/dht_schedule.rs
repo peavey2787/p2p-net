@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use tokio::time::Instant as TokioInstant;
+use web_time::Instant;
 
 const DHT_STARTUP_BACKOFF_SECS: [u64; 4] = [5, 15, 30, 60];
 const DHT_EVENT_REFRESH_MIN_GAP_SECS: u64 = 5;
@@ -9,14 +9,14 @@ const DHT_EVENT_REFRESH_MIN_GAP_SECS: u64 = 5;
 pub(super) struct DhtRefreshSchedule {
     startup_index: usize,
     steady_interval: Duration,
-    last_refresh: TokioInstant,
-    next_due: TokioInstant,
+    last_refresh: Instant,
+    next_due: Instant,
     event_refresh_pending: bool,
 }
 
 impl DhtRefreshSchedule {
     pub(super) fn new(steady_interval_secs: u64) -> Self {
-        let now = TokioInstant::now();
+        let now = Instant::now();
         let first_delay = Duration::from_secs(DHT_STARTUP_BACKOFF_SECS[0]);
         Self {
             startup_index: 0,
@@ -27,7 +27,7 @@ impl DhtRefreshSchedule {
         }
     }
 
-    pub(super) fn next_due(&self) -> TokioInstant {
+    pub(super) fn next_due(&self) -> Instant {
         self.next_due
     }
 
@@ -43,7 +43,7 @@ impl DhtRefreshSchedule {
     }
 
     pub(super) fn record_refresh(&mut self) {
-        let now = TokioInstant::now();
+        let now = Instant::now();
         self.last_refresh = now;
         self.event_refresh_pending = false;
         if self.startup_index < DHT_STARTUP_BACKOFF_SECS.len() {
@@ -65,7 +65,7 @@ impl DhtRefreshSchedule {
     }
 
     pub(super) fn request_event_refresh(&mut self) -> bool {
-        let now = TokioInstant::now();
+        let now = Instant::now();
         let earliest = self.last_refresh + Duration::from_secs(DHT_EVENT_REFRESH_MIN_GAP_SECS);
         let requested = now.max(earliest);
         if requested < self.next_due {

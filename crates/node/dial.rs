@@ -4,7 +4,8 @@ use libp2p::{PeerId, Swarm};
 
 use crate::common::error::NetError;
 use crate::connectivity::connection_strategy::{
-    build_peer_book_connection_plan, ConnectionAttempt, ConnectionPlan, PendingConnectionPlans,
+    build_peer_book_connection_plan_with_capabilities, ConnectionAttempt, ConnectionPlan,
+    PendingConnectionPlans, TransportCapabilities,
 };
 use crate::connectivity::dcutr::DcutrPolicy;
 use crate::connectivity::peer_book::PeerBook;
@@ -179,7 +180,12 @@ pub(crate) fn auto_dial_peer_from_book(
         return AutoDialOutcome::AlreadyPending;
     }
 
-    let plan = build_peer_book_connection_plan(peer, peer_book, dcutr_policy);
+    let plan = build_peer_book_connection_plan_with_capabilities(
+        peer,
+        peer_book,
+        dcutr_policy,
+        &TransportCapabilities::default(),
+    );
     if plan.attempts.is_empty() {
         return AutoDialOutcome::AwaitingAddress;
     }
@@ -218,6 +224,9 @@ pub(crate) fn auto_dial_dht_provider(
     // Dialing by PeerId lets NetworkBehaviour::handle_pending_outbound_connection
     // contribute those addresses instead of waiting for a later peer-book event
     // that may never arrive.
+    if TransportCapabilities::default() == TransportCapabilities::browser() {
+        return AutoDialOutcome::AwaitingAddress;
+    }
     match swarm.dial(peer) {
         Ok(()) => AutoDialOutcome::AddressResolutionStarted(
             "source=kademlia address_resolution=behaviour".to_string(),

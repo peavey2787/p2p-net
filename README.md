@@ -1,6 +1,6 @@
 # p2p-net
 
-`p2p-net` is a Rust libp2p node core that gives applications a small, stable API for peer connectivity and messaging while the crate handles transport mechanics, discovery, relay fallback, DCUtR hole punching, native WebRTC-direct, telemetry, and platform storage/runtime details.
+`p2p-net` is a Rust libp2p node core that gives applications a small, stable API for peer connectivity and messaging while the crate handles transport mechanics, discovery, relay fallback, native DCUtR where supported, browser/native WebRTC-direct, telemetry, and platform storage/runtime details.
 
 <p align="center">
   <img src="assets/p2p-net-logo.png" alt="p2p-net Logo" width="400">
@@ -10,12 +10,13 @@ On Windows, `build-android.cmd` is the one-click reproducible Android release la
 
 ## Features
 
-- Native transports: TCP, QUIC, WebSocket, browser-compatible `/webrtc-direct`, DNS, Noise, Yamux
+- Native transports: TCP, QUIC, WebSocket, `/webrtc-direct`, DNS, Noise, Yamux
+- Browser/WASM transports: libp2p WebRTC-direct and secure WebSocket dialing plus Circuit Relay fallback; raw TCP/QUIC listeners, LAN UDP discovery, AutoNAT/DCUtR, relay-server, and rendezvous-server roles are disabled by browser capability policy
 - Discovery: network-scoped Kademlia provider/address records, bounded same-LAN UDP discovery, peer cache, bootstrap seeds, rendezvous, and public fallback policy
 - NAT traversal: relay client/reservations, DCUtR direct upgrades, AutoNAT, and optional mediator/relay server profiles
-- App API: six data-plane primitives on `NodeHandle`, plus `get_metrics()` for infrastructure telemetry
+- App API: the same six data-plane primitives on native and WASM, plus `get_metrics()`, `local_binding()`, and coarse node-event subscriptions
 - Safety/ops: connection caps, replay/timestamp checks, peer scoring, snapshots, Prometheus-style export, and dashboard UI
-- Portability: platform runtime/storage abstraction and binding-safe facade for desktop, mobile, and WebView shells
+- Portability: platform runtime/storage abstraction for desktop/mobile plus a first-class `WasmNode` JS facade with IndexedDB persistence and per-profile tab ownership
 
 DNS support is enabled by default through p2p-net's own no-Hickory resolver path. Peer addresses using `/dns`, `/dns4`, `/dns6`, or `/dnsaddr` are resolved before dialing, including manual `connect_peer` calls. WebSocket DNS names are resolved by p2p-net's transport adapter rather than rust-libp2p's Hickory-backed DNS feature, so the published crate has no repository-only Cargo patch requirement. `/dnsaddr` uses bounded DNS-over-HTTPS TXT lookup support with a configurable endpoint; the default is Cloudflare, while production deployments can point it at an internal/self-hosted resolver or disable `/dnsaddr`. Upstream libp2p mDNS is not included. Instead, p2p-net enables its own bounded, compatibility-scoped UDP LAN discovery by default, with multicast/broadcast on normal LANs and an Android Emulator host-assist path using the emulator's `10.0.2.2` host alias.
 
@@ -62,7 +63,9 @@ async fn run_node() -> Result<(), NetError> {
 }
 ```
 
-The hardened WebRTC implementation is published as the internal dependency `p2p-net-webrtc` 0.1.0. Application developers do **not** add that crate themselves; Cargo resolves it automatically from the `p2p-net` dependency graph. The repository keeps a local path to that companion only for development, and Cargo strips that path from the normalized crates.io package. There is no `[patch.crates-io]` requirement in downstream projects. The source workspace uses a checked-in `.cargo/config.toml` only to map rust-libp2p 0.56's resolution-only weak DNS/mDNS lock entries to audited no-Hickory local placeholders; the root publishable manifest remains patch-free, and the packaged downstream smoke test runs outside the repository configuration.
+The hardened WebRTC implementation is published as the internal dependency `p2p-net-webrtc` 0.1.0. Application developers do **not** add that crate themselves; Cargo resolves it automatically from the `p2p-net` dependency graph. The repository keeps a local path to that companion only for development, and Cargo strips that path from the normalized crates.io package. There is no `[patch.crates-io]` requirement in downstream projects. The source workspace uses a checked-in `.cargo/config.toml` only to map rust-libp2p 0.57's resolution-only weak DNS/mDNS lock entries to audited no-Hickory local placeholders; the root publishable manifest remains patch-free, and the packaged downstream smoke test runs outside the repository configuration.
+
+For browser consumers, p2p-net's libp2p 0.57 graph defines one WASM ABI family: `wasm-bindgen =0.2.108`, `js-sys/web-sys =0.3.85`, and `wasm-bindgen-futures =0.4.58`. A workspace that also embeds another WASM crate must align its direct exact pins to that family. In particular, older companion pins such as `wasm-bindgen =0.2.100`, `js-sys =0.3.77`, and `wasm-bindgen-futures =0.4.50` are not compatible with the p2p-net browser graph and must be upgraded in that consumer (for example HYDRA / hydra-msg-wasm) rather than downgrading p2p-net.
 
 Maintainers can qualify the exact crates.io payloads with `package-crates.cmd` on Windows or `./package-crates.sh` on Linux. The Windows launcher pauses before closing on both success and failure so Cargo diagnostics remain visible. The packaging gate first verifies the committed production lockfile, packages `p2p-net-webrtc`, then packages `p2p-net` with a command-line-only crates.io patch that points the unpublished companion name at the local audited source. That local verification override is not serialized into the normalized `.crate`; the runners inspect the normalized manifests, compile a temporary downstream consumer from both packaged payloads, write `.crate` files and SHA-256 sums to `dist/crates/`, and record the required publish order. Publish `p2p-net-webrtc` first, wait until crates.io indexes version 0.1.0, then dry-run and publish `p2p-net`.
 
@@ -74,7 +77,9 @@ Use the single full-validation launcher for your OS from the crate root. On Wind
 run-full-validation.cmd
 ```
 
-It cleans stale build artifacts, verifies the committed dependency lockfile with `--locked`, checks formatting without mutating source, then runs tests, dashboard-feature tests, clippy, `cargo audit`, and `cargo deny`. Three intentionally long hostile/load/soak tests are deferred so they run once at the end, with the one-minute soak test last. The full runner has no skip option for those tests: `run-full-validation` means all registered tests run. It uses isolated validation target directories to avoid stale/incomplete `rlib` artifacts on Windows. Rust is pinned to 1.98.0, audit/deny tool releases are pinned, and missing exact tool versions are installed unless `--no-install-tools` is used.
+It cleans stale build artifacts, verifies the committed dependency lockfile with `--locked`, checks formatting without mutating source, compiles `wasm32-unknown-unknown`, builds the browser package with `wasm-pack --target web`, and runs the browser/WASM gate in Playwright-managed Chromium and Firefox before native tests, dashboard-feature tests, clippy, `cargo audit`, and `cargo deny`. The browser gate does not use an installed Chrome/Firefox, ChromeDriver, GeckoDriver, or the `wasm-bindgen-test` WebDriver harness. Playwright is pinned to 1.63.0 and owns the matching browser binaries in its normal user cache; Node.js/npm are the only additional browser-QA prerequisites. Three intentionally long hostile/load/soak tests are deferred so they run once at the end, with the one-minute soak test last. The full runner has no skip option for those tests: `run-full-validation` means all registered tests run. It uses isolated validation target directories to avoid stale/incomplete `rlib` artifacts on Windows. Rust is pinned to 1.98.0; audit/deny and `wasm-pack` tool releases are pinned, and the WASM target plus missing exact tools/browser binaries are installed unless `--no-install-tools` is used.
+
+After an intentional dependency-manifest change, regenerate `Cargo.lock` with the pinned Rust/Cargo 1.98.0 toolchain, review the resulting dependency diff, and commit that exact resolver output before treating validation as release evidence. The canonical validation launchers are read-only: they verify the committed lockfile with `--locked` and never regenerate or repair dependency state at runtime.
 
 On an MSVC Rust host, the Windows launcher also initializes the installed Visual Studio C++ developer environment before Cargo can link anything. It verifies that the x64 Universal CRT (`ucrt.lib`) is installed and performs a tiny `rustc` link smoke test up front, so an incomplete Build Tools/Windows SDK installation fails immediately with an actionable preflight error instead of surfacing halfway through Clippy.
 
@@ -93,12 +98,22 @@ Linux equivalent:
 ./run-full-validation.sh --from clippy
 ```
 
-Resume mode accepts `lockfile`, `format`, `dependency-graph`, `tests`, `dashboard`, `clippy`, `audit`, or `deny`. For example, after fixing a Clippy-only failure, `--from clippy` skips the already-passed earlier stages, preserves `target/full-validation` automatically (equivalent to `--no-clean`), and continues from Clippy through audit, dependency policy, and all three deferred hostile/soak tests. Resume mode assumes the earlier stages already passed for the source tree you are continuing; CI never uses resume mode, and release builds only accept full-mode evidence (running the complete gate automatically when matching full evidence is absent).
+Resume mode accepts `lockfile`, `format`, `dependency-graph`, `wasm`, `tests`, `dashboard`, `clippy`, `audit`, or `deny`. For example, after fixing a Clippy-only failure, `--from clippy` skips the already-passed earlier stages, preserves `target/full-validation` automatically (equivalent to `--no-clean`), and continues from Clippy through audit, dependency policy, and all three deferred hostile/soak tests. Resume mode assumes the earlier stages already passed for the source tree you are continuing; CI never uses resume mode, and release builds only accept full-mode evidence (running the complete gate automatically when matching full evidence is absent).
 
-Every validation invocation now persists its own evidence beneath `qa/evidence/runs/`: a complete transcript, PASS/FAIL manifest, Git status, exact Cargo.lock hash, toolchain versions, and a release-input fingerprint. The generated run directories are Git-ignored, so closing the terminal no longer loses the proof and collecting evidence does not dirty the repository.
+Every validation invocation now persists its own evidence beneath `qa/evidence/runs/`: a complete transcript, PASS/FAIL manifest, Git status when available, exact Cargo.lock hash, toolchain versions, and a release-input fingerprint. Validation can run directly from a source ZIP with no `.git` directory; in that case the evidence layer builds a temporary external Git object database and records `source_fingerprint_mode=synthetic-worktree`. The generated run directories are Git-ignored. On Windows, the outer CMD launcher keeps a double-clicked console open even if evidence setup fails before the validator starts; use `--no-pause` for automation.
 
 Fuzz targets are included under `qa/fuzz/`. They are not part of the cross-platform stable launcher, but the scheduled security workflow builds/runs every fuzz target and also repeats the complete validation suite including deferred hostile/load/soak tests. Additional validation and hostile-network notes are in `docs/validation/VALIDATION.md`.
 
+
+### Browser/WASM consumer
+
+Browser consumers use the same `NodeHandle` core through the thin `WasmNode` facade. `profile = "auto"` resolves internally to `wasm_lite`: Kademlia client, relay client, rendezvous client, Identify, Ping, and Gossipsub remain available, while native-only listener/server and hole-punch assumptions are disabled. Browser dial planning rejects raw TCP/QUIC candidates before dialing and keeps browser-compatible WebRTC-direct, WSS, and `/p2p-circuit` candidates. WebTransport is intentionally not advertised yet; its dependency remains available for a later interoperability-qualified transport addition.
+
+`BrowserNodeStorage` asynchronously hydrates a synchronous in-memory journal from IndexedDB before startup. The identity is flushed durably before the swarm starts, later peer-cache/public-state changes are periodically flushed, and page-hide/visibility/shutdown trigger best-effort immediate flushes. A Web Locks profile lock (with an IndexedDB lease fallback) prevents two tabs from silently running the same stored PeerId. The storage namespace is caller-defined, so applications can maintain one persistent identity per profile.
+
+Build the reference browser package with `wasm-pack build --target web --dev --out-dir apps/browser/pkg`. `apps/browser/` intentionally contains no SDP, ICE, STUN, `RTCPeerConnection`, WebSocket, relay, or libp2p logic; it only invokes `WasmNode`.
+
+Large application payloads retain the documented 1 MiB API ceiling. Internally, p2p-net fragments payloads above 16 KiB into bounded authenticated-topic fragments, applies per-peer/global reassembly ceilings and expiry, rejects malformed/mismatched fragments, verifies a full-payload BLAKE3 hash, and delivers exactly one reconstructed `AppMessage` to subscribers.
 
 ## The General-Purpose Application API
 

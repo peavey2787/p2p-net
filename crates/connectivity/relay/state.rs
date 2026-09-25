@@ -1,5 +1,5 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::time::Instant;
+use web_time::Instant;
 
 use libp2p::{autonat, Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};

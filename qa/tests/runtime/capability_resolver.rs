@@ -127,3 +127,41 @@ fn explicit_relay_profile_overrides_private_reachability_when_listening_is_suppo
     assert_eq!(resolved.role, NodeRole::Relay);
     assert!(resolved.enabled_behaviours.relay_server);
 }
+
+#[test]
+fn wasm_auto_resolves_browser_lite_without_native_listener_services() {
+    let cfg = NodeConfig {
+        profile: NodeProfile::Auto,
+        environment: EnvironmentConfig {
+            platform_hint: Some(PlatformKind::Wasm),
+            can_listen_tcp: Some(false),
+            can_listen_quic: Some(false),
+            can_accept_inbound: Some(false),
+            background_restricted: Some(true),
+            ..EnvironmentConfig::default()
+        },
+        ..NodeConfig::default()
+    };
+
+    let environment = cfg.environment_report();
+    let resolved = cfg
+        .try_resolved_for_environment(&environment)
+        .expect("wasm capabilities resolve");
+    let runtime_cfg = cfg.with_resolved_capabilities_applied(&resolved);
+
+    assert_eq!(resolved.role, NodeRole::WasmLite);
+    assert!(resolved.enabled_behaviours.gossipsub);
+    assert!(resolved.enabled_behaviours.kademlia_client);
+    assert!(resolved.enabled_behaviours.relay_client);
+    assert!(resolved.enabled_behaviours.rendezvous_client);
+    assert!(resolved.enabled_behaviours.identify);
+    assert!(resolved.enabled_behaviours.ping);
+    assert!(!resolved.enabled_behaviours.kademlia_server);
+    assert!(!resolved.enabled_behaviours.relay_server);
+    assert!(!resolved.enabled_behaviours.rendezvous_server);
+    assert!(!resolved.enabled_behaviours.dcutr);
+    assert!(!resolved.should_listen);
+    assert!(!runtime_cfg.discovery.lan.enabled);
+    assert!(!runtime_cfg.public_ip_probe.enabled);
+    assert!(runtime_cfg.listen_addresses.is_empty());
+}

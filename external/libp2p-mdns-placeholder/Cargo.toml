@@ -1,6 +1,6 @@
 [package]
 name = "libp2p-mdns"
-version = "0.48.0"
+version = "0.49.0"
 edition = "2021"
 license = "MIT"
 description = "p2p-net policy placeholder: upstream libp2p mDNS intentionally disabled."

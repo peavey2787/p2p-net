@@ -143,6 +143,12 @@ fn validation_evidence_wrapper_handles_empty_and_singleton_argument_sets() {
         "Windows evidence must bind to the pre-validation source and record post-validation input drift"
     );
     assert!(
+        wrapper.contains("WRAPPER-FAIL.txt")
+            && wrapper.contains("exit 125")
+            && wrapper.contains("Validation evidence wrapper failed:"),
+        "Windows evidence bootstrap failures must remain diagnosable even before the inner validator starts"
+    );
+    assert!(
         linux_wrapper.contains("PRE_RELEASE_INPUT_SHA256")
             && linux_wrapper.contains("post_validation_release_input_sha256=")
             && linux_wrapper.contains("release_inputs_stable="),
@@ -241,6 +247,15 @@ fn crates_io_release_has_no_root_patch_dependency() {
         fingerprint_windows.contains("\".cargo/config.toml\"")
             && fingerprint_linux.contains(".cargo/config.toml"),
         "release-input fingerprint must include build-affecting .cargo/config.toml"
+    );
+    assert!(
+        fingerprint_windows.contains("synthetic-worktree")
+            && fingerprint_windows.contains("git init --bare")
+            && fingerprint_windows.contains("--work-tree=")
+            && fingerprint_linux.contains("synthetic-worktree")
+            && fingerprint_linux.contains("git init --bare")
+            && fingerprint_linux.contains("--work-tree="),
+        "release-input fingerprinting must work from source archives without .git and must not initialize the extracted source tree"
     );
 
     assert!(manifest.contains("publish = true"));

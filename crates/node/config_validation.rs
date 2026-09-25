@@ -23,6 +23,9 @@ pub(crate) fn validate_node_config(cfg: &NodeConfig) -> Result<(), NetError> {
     if cfg.identity_key_path.trim().is_empty() {
         return Err(config_error("identity_key_path must not be empty"));
     }
+    if cfg.webrtc_certificate_path.trim().is_empty() {
+        return Err(config_error("webrtc_certificate_path must not be empty"));
+    }
 
     cfg.dnsaddr.validate()?;
     cfg.public_ip_probe.validate()?;

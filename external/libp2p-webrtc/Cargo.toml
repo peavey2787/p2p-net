@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.98"
 authors = ["Parity Technologies <admin@parity.io>"]
-description = "Hardened WebRTC-direct transport used by p2p-net, based on rust-libp2p WebRTC 0.9.0-alpha.1."
+description = "Hardened WebRTC-direct transport used by p2p-net, rebased to the rust-libp2p 0.57 WebRTC 0.10.0-alpha generation."
 readme = "README.md"
 keywords = ["peer-to-peer", "libp2p", "networking"]
 categories = ["network-programming", "asynchronous"]
@@ -42,19 +42,19 @@ futures = "0.3.30"
 futures-timer = "3"
 hex = "0.4"
 if-watch = "3.2.1"
-libp2p-core = "0.43.1"
-libp2p-identity = "0.2.12"
-libp2p-noise = "0.46.1"
-libp2p-webrtc-utils = "0.4.0"
+libp2p-core = "0.44.0"
+libp2p-identity = "0.3.0"
+libp2p-noise = "0.47.0"
+libp2p-webrtc-utils = "0.5.0"
 multihash = "0.19.1"
-rand = "0.8"
+rand = "0.10"
 rcgen = "0.13"
-stun = "0.7"
+stun = "0.17"
 thiserror = "2"
 tracing = "0.1.41"
 
 [dependencies.tokio]
-version = "1.38"
+version = "1.53"
 features = ["net", "rt", "time"]
 optional = true
 default-features = false
@@ -65,15 +65,15 @@ features = ["compat"]
 optional = true
 
 [dependencies.webrtc]
-version = "0.12.0"
+version = "0.17.0"
 optional = true
 
 [dev-dependencies.libp2p-identity]
-version = "0.2.12"
+version = "0.3.0"
 features = ["rand"]
 
 [dev-dependencies.tokio]
-version = "1.38"
+version = "1.53"
 features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"]
 default-features = false
 

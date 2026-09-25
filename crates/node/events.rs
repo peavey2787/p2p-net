@@ -7,7 +7,9 @@ use libp2p::swarm::SwarmEvent;
 use libp2p::{Multiaddr, PeerId, Swarm};
 use tokio::sync::{broadcast, Mutex};
 
-use crate::api::{AppMessage, NodeMetrics, PeerSource};
+use crate::api::{
+    AppFragmentReassembler, AppMessage, LocalNodeBinding, NodeEvent, NodeMetrics, PeerSource,
+};
 use crate::connectivity::connection_strategy::PendingConnectionPlans;
 use crate::connectivity::dcutr::DcutrPolicy;
 use crate::connectivity::dht::{
@@ -177,9 +179,11 @@ pub(crate) struct SwarmEventContext<'a> {
     pub(crate) message_security: &'a MessageSecurityConfig,
     pub(crate) replay_cache: &'a mut HeartbeatReplayCache,
     pub(crate) app_replay_cache: &'a mut AppMessageReplayCache,
+    pub(crate) app_fragment_reassembler: &'a mut AppFragmentReassembler,
     pub(crate) heartbeat_topic_hash: &'a TopicHash,
     pub(crate) app_topic_hashes: &'a [TopicHash],
     pub(crate) app_messages: &'a broadcast::Sender<AppMessage>,
+    pub(crate) node_events: &'a broadcast::Sender<NodeEvent>,
     pub(crate) metrics: &'a mut NodeMetrics,
     pub(crate) identify_addresses: &'a mut IdentifyAddressState,
     pub(crate) observability: &'a mut ObservabilityBatch,
@@ -270,6 +274,20 @@ fn is_relay_infrastructure_peer(peer: PeerId, ctx: &SwarmEventContext<'_>) -> bo
     })
 }
 
+async fn emit_local_binding(ctx: &SwarmEventContext<'_>) {
+    let snapshot = ctx.snapshot.lock().await;
+    let mut dial_addresses = snapshot.public_direct_listen_addresses.clone();
+    dial_addresses.extend(snapshot.relayed_listen_addresses.iter().cloned());
+    dial_addresses.sort();
+    dial_addresses.dedup();
+    let _ = ctx
+        .node_events
+        .send(NodeEvent::LocalBindingChanged(LocalNodeBinding {
+            peer_id: ctx.local_peer.to_string(),
+            dial_addresses,
+        }));
+}
+
 /// Top-level swarm dispatch only. Responsibility-specific event handling lives in
 /// the child modules under `node/events/` so relay, DCUtR, rendezvous, gossip,
 /// and connection policy can evolve without turning this dispatcher into a god file.
@@ -310,6 +328,12 @@ pub(crate) async fn handle_swarm_event(
                 ctx,
             )
             .await;
+            let _ = ctx.node_events.send(NodeEvent::PeerConnected {
+                peer_id: peer_id.to_string(),
+            });
+            if swarm.connected_peers().take(2).count() == 1 {
+                let _ = ctx.node_events.send(NodeEvent::Online);
+            }
         }
         SwarmEvent::ConnectionClosed {
             peer_id,
@@ -317,6 +341,12 @@ pub(crate) async fn handle_swarm_event(
             ..
         } => {
             connection::handle_connection_closed(peer_id, connection_id, swarm, ctx).await;
+            let _ = ctx.node_events.send(NodeEvent::PeerDisconnected {
+                peer_id: peer_id.to_string(),
+            });
+            if swarm.connected_peers().next().is_none() {
+                let _ = ctx.node_events.send(NodeEvent::Offline);
+            }
         }
         SwarmEvent::IncomingConnectionError { error, peer_id, .. } => {
             connection::handle_incoming_connection_error(
@@ -358,9 +388,11 @@ pub(crate) async fn handle_swarm_event(
         }
         SwarmEvent::NewListenAddr { address, .. } => {
             connection::handle_new_listen_addr(address, swarm, ctx).await;
+            emit_local_binding(ctx).await;
         }
         SwarmEvent::ExpiredListenAddr { address, .. } => {
             connection::handle_expired_listen_addr(address, swarm, ctx).await;
+            emit_local_binding(ctx).await;
         }
         SwarmEvent::ListenerError { error, .. } => {
             connection::handle_listener_error(format!("{error:?}"), ctx).await;

@@ -1,7 +1,8 @@
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::ConnectionId;
 use libp2p::{autonat, Multiaddr, PeerId, Swarm};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 use crate::api::PeerSource;
 use crate::connectivity::addr::{has_reachable_transport, is_local_direct_addr};

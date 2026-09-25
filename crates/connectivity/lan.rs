@@ -6,13 +6,19 @@
 //! connection still has to authenticate through Noise + Identify before it is
 //! promoted to an application peer.
 
+#[cfg(not(target_arch = "wasm32"))]
 use std::io;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+#[cfg(not(target_arch = "wasm32"))]
+use std::net::IpAddr;
+use std::net::{Ipv4Addr, SocketAddr};
 
+#[cfg(not(target_arch = "wasm32"))]
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
+#[cfg(not(target_arch = "wasm32"))]
 use socket2::{Domain, Protocol as SocketProtocol, Socket, Type};
+#[cfg(not(target_arch = "wasm32"))]
 use tokio::net::UdpSocket;
 
 use crate::common::error::config_error;
@@ -20,8 +26,9 @@ use crate::common::error::config_error;
 pub const LAN_DISCOVERY_MULTICAST_V4: Ipv4Addr = Ipv4Addr::new(239, 255, 42, 99);
 pub const MAX_LAN_BEACON_BYTES: usize = 8192;
 pub const MAX_LAN_ADVERTISED_ADDRS: usize = 16;
+#[cfg(not(target_arch = "wasm32"))]
 const LAN_BEACON_VERSION: u8 = 1;
-#[cfg(any(target_os = "android", test))]
+#[cfg(all(not(target_arch = "wasm32"), any(target_os = "android", test)))]
 const ANDROID_EMULATOR_HOST_V4: Ipv4Addr = Ipv4Addr::new(10, 0, 2, 2);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -60,6 +67,7 @@ impl LanDiscoveryConfig {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct LanBeacon {
     version: u8,
@@ -86,6 +94,7 @@ pub struct LanDiscoveryReceive {
     pub reply_to: Option<SocketAddr>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub struct LanDiscoverySocket {
     socket: UdpSocket,
     multicast_target: SocketAddr,
@@ -93,6 +102,7 @@ pub struct LanDiscoverySocket {
     emulator_host_target: Option<SocketAddr>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl LanDiscoverySocket {
     pub fn bind(cfg: &LanDiscoveryConfig) -> io::Result<Self> {
         let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(SocketProtocol::UDP))?;
@@ -192,6 +202,7 @@ impl LanDiscoverySocket {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn decode_beacon(
     payload: &[u8],
     source: SocketAddr,
@@ -243,6 +254,7 @@ fn decode_beacon(
     })
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn collect_advertised_addresses(addresses: impl IntoIterator<Item = Multiaddr>) -> Vec<String> {
     addresses
         .into_iter()
@@ -252,6 +264,7 @@ fn collect_advertised_addresses(addresses: impl IntoIterator<Item = Multiaddr>) 
         .collect()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn encode_beacon(
     network_id: u32,
     application_protocol: &str,
@@ -277,6 +290,7 @@ fn encode_beacon(
     Ok(payload)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn is_lan_advertisable_addr(addr: &Multiaddr) -> bool {
     !addr.iter().any(|p| matches!(p, Protocol::P2pCircuit))
         && addr.iter().any(|p| {
@@ -287,6 +301,7 @@ fn is_lan_advertisable_addr(addr: &Multiaddr) -> bool {
         })
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn normalize_received_addr(addr: Multiaddr, source_ip: IpAddr, peer: PeerId) -> Option<Multiaddr> {
     if addr.iter().any(|p| matches!(p, Protocol::P2pCircuit)) {
         return None;
@@ -325,6 +340,7 @@ fn normalize_received_addr(addr: Multiaddr, source_ip: IpAddr, peer: PeerId) -> 
     Some(out)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn is_local_source(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(ip) => ip.is_loopback() || ip.is_private() || ip.is_link_local(),
@@ -332,7 +348,7 @@ fn is_local_source(ip: IpAddr) -> bool {
     }
 }
 
-#[cfg(target_os = "android")]
+#[cfg(all(not(target_arch = "wasm32"), target_os = "android"))]
 fn android_emulator_host_target(port: u16) -> Option<SocketAddr> {
     let probe = std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).ok()?;
     probe.connect((ANDROID_EMULATOR_HOST_V4, port)).ok()?;
@@ -343,18 +359,18 @@ fn android_emulator_host_target(port: u16) -> Option<SocketAddr> {
         .then_some(SocketAddr::new(IpAddr::V4(ANDROID_EMULATOR_HOST_V4), port))
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 fn android_emulator_host_target(_port: u16) -> Option<SocketAddr> {
     None
 }
 
-#[cfg(any(target_os = "android", test))]
+#[cfg(all(not(target_arch = "wasm32"), any(target_os = "android", test)))]
 fn is_official_android_emulator_guest(ip: Ipv4Addr) -> bool {
     let octets = ip.octets();
     octets[0] == 10 && octets[1] == 0 && octets[2] == 2 && ip != ANDROID_EMULATOR_HOST_V4
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
 

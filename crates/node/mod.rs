@@ -29,10 +29,13 @@ use crate::common::error::NetError;
 use crate::connectivity::dht::{start_dht_namespace_discovery, DhtProviderState};
 use crate::connectivity::identity;
 use crate::connectivity::rendezvous::RendezvousState;
-use crate::platform::{DesktopPlatformRuntime, NodeStorage, PlatformRuntime};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::platform::DesktopPlatformRuntime;
+use crate::platform::{NodeStorage, PlatformRuntime};
 use crate::protocol::pulse::heartbeat_topic;
 use crate::stack::{
-    allow_dcutr_peer, build_swarm, refresh_rendezvous, reserve_selected_relays, seed_bootstrap,
+    allow_dcutr_for_known_peers, build_swarm, refresh_rendezvous, reserve_selected_relays,
+    seed_bootstrap,
 };
 
 pub use capabilities::{apply_resolved_capabilities, resolve_node_config};
@@ -48,6 +51,7 @@ pub use snapshot::{snapshot_to_json, NodeSnapshot};
 
 use snapshot::network_label;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub async fn start_node(cfg: NodeConfig) -> Result<NodeHandle, NetError> {
     let desktop = Arc::new(DesktopPlatformRuntime::default());
     let runtime: Arc<dyn PlatformRuntime> = desktop.clone();
@@ -73,7 +77,8 @@ pub async fn start_node_with_platform(
     )?;
     let local_peer = PeerId::from(local_key.public());
     let discovery_signing_key = local_key.clone();
-    let (mut swarm, transport_plan) = build_swarm(local_key, &cfg, &resolved_config).await?;
+    let (mut swarm, transport_plan) =
+        build_swarm(local_key, &cfg, &resolved_config, storage.as_ref()).await?;
 
     let heartbeat_topic = IdentTopic::new(heartbeat_topic(cfg.network_id));
     let _ = swarm.behaviour_mut().gossipsub.subscribe(&heartbeat_topic);
@@ -91,23 +96,7 @@ pub async fn start_node_with_platform(
         public_relay_candidate_count,
     } = startup::prepare_startup_discovery(&cfg, &resolved_config, storage.as_ref()).await?;
 
-    for record in peer_book.records() {
-        if !record.namespaces.is_empty()
-            || record.sources.iter().any(|source| {
-                matches!(
-                    source,
-                    crate::api::PeerSource::Manual
-                        | crate::api::PeerSource::PeerCache
-                        | crate::api::PeerSource::DhtProvider
-                        | crate::api::PeerSource::LanDiscovery
-                        | crate::api::PeerSource::Rendezvous
-                        | crate::api::PeerSource::PublicRendezvous
-                )
-            })
-        {
-            allow_dcutr_peer(&mut swarm, record.peer_id);
-        }
-    }
+    allow_dcutr_for_known_peers(&mut swarm, &peer_book);
 
     seed_bootstrap(&mut swarm, &startup_plan.dial_addrs);
     let selected_relay_peers = relay_selection_plan.selected_addrs.clone();
@@ -408,6 +397,7 @@ pub async fn start_node_with_platform(
     let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
     let (command_tx, command_rx) = mpsc::channel(128);
     let (messages_tx, _) = broadcast::channel(256);
+    let (events_tx, _) = broadcast::channel(256);
     let task = runtime::spawn_node_runtime(runtime::NodeRuntimeContext {
         cfg: cfg.clone(),
         resolved_config,
@@ -427,6 +417,7 @@ pub async fn start_node_with_platform(
         shutdown_rx,
         command_rx,
         messages_tx: messages_tx.clone(),
+        events_tx: events_tx.clone(),
     });
 
     Ok(NodeHandle {
@@ -435,6 +426,7 @@ pub async fn start_node_with_platform(
         snapshot_revision,
         command_tx,
         messages_tx,
+        events_tx,
         shutdown_tx,
         task: Arc::new(Mutex::new(Some(task))),
         dnsaddr: cfg.dnsaddr,

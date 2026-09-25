@@ -1,5 +1,7 @@
+#[cfg(not(target_arch = "wasm32"))]
 const MAX_SNAPSHOT_ADDRS: usize = 16;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub(super) fn push_unique_recent(values: &mut Vec<String>, value: String) {
     values.retain(|existing| existing != &value);
     values.insert(0, value);

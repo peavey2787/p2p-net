@@ -3,6 +3,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ "${P2P_VALIDATION_EVIDENCE_ACTIVE:-0}" != "1" ]]; then
+  if [[ ! -f "$SCRIPT_DIR/Cargo.lock" ]]; then
+    bash "$SCRIPT_DIR/qa/tools/bootstrap-cargo-lock.sh"
+  fi
   exec bash "$SCRIPT_DIR/qa/evidence/run-validation-with-evidence.sh" "$SCRIPT_DIR/run-full-validation.sh" "$@"
 fi
 
@@ -46,18 +49,19 @@ stage_rank() {
     lockfile) echo 1 ;;
     format) echo 2 ;;
     dependency-graph) echo 3 ;;
-    tests) echo 4 ;;
-    dashboard) echo 5 ;;
-    clippy) echo 6 ;;
-    audit) echo 7 ;;
-    deny) echo 8 ;;
+    wasm) echo 4 ;;
+    tests) echo 5 ;;
+    dashboard) echo 6 ;;
+    clippy) echo 7 ;;
+    audit) echo 8 ;;
+    deny) echo 9 ;;
     *) return 1 ;;
   esac
 }
 
 if ! FROM_RANK="$(stage_rank "$FROM_STAGE")"; then
   echo "Unknown --from stage: $FROM_STAGE" >&2
-  echo "Valid stages: lockfile, format, dependency-graph, tests, dashboard, clippy, audit, deny" >&2
+  echo "Valid stages: lockfile, format, dependency-graph, wasm, tests, dashboard, clippy, audit, deny" >&2
   exit 2
 fi
 if (( FROM_RANK > 0 )) && [[ "$NO_CLEAN" == "0" ]]; then
@@ -115,6 +119,19 @@ assert_pinned_rust() {
 
 cargo_tool_version() {
   cargo install --list | sed -n "s/^$1 v\([^:]*\):$/\1/p" | head -n 1
+}
+
+ensure_rust_target() {
+  local target="$1"
+  if rustup target list --installed | grep -Fxq "$target"; then
+    echo "Rust target $target already installed."
+    return
+  fi
+  if [[ "$NO_INSTALL_TOOLS" == "1" ]]; then
+    echo "Rust target $target is required. Re-run without --no-install-tools or install it manually." >&2
+    exit 2
+  fi
+  run_step "Install Rust target ${target}" rustup target add "$target"
 }
 
 ensure_cargo_tool() {
@@ -289,12 +306,63 @@ fi
 
 ensure_cargo_tool cargo-audit 0.22.2
 ensure_cargo_tool cargo-deny 0.20.2
+ensure_cargo_tool wasm-pack 0.14.0
 
 if should_run format; then
   run_step "Format check" run_format_check_readonly
 fi
 if should_run dependency-graph; then
   run_step "Dependency graph guard" assert_no_rejected_dns_resolver
+fi
+
+if should_run wasm; then
+  ensure_rust_target wasm32-unknown-unknown
+  set_validation_target wasm-check
+  run_step "WASM compile gate" cargo check --target wasm32-unknown-unknown --test browser_wasm --locked --no-default-features --features dns,browser-tests
+  clear_validation_target
+
+  command -v node >/dev/null 2>&1 || { echo "Node.js is required for the Playwright WASM browser gate." >&2; exit 1; }
+  command -v npm >/dev/null 2>&1 || { echo "npm is required for the Playwright WASM browser gate." >&2; exit 1; }
+  PLAYWRIGHT_VERSION="1.63.0"
+  if [[ -n "${P2P_PLAYWRIGHT_TOOL_DIR:-}" ]]; then
+    PLAYWRIGHT_TOOL_DIR="$P2P_PLAYWRIGHT_TOOL_DIR"
+  else
+    PLAYWRIGHT_TOOL_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/p2p-net/validation/playwright-${PLAYWRIGHT_VERSION}"
+  fi
+
+  installed_playwright=""
+  if [[ -f "$PLAYWRIGHT_TOOL_DIR/node_modules/playwright/package.json" ]]; then
+    installed_playwright="$(node -p 'require(process.argv[1]).version' "$PLAYWRIGHT_TOOL_DIR/node_modules/playwright/package.json" 2>/dev/null || true)"
+  fi
+  if [[ "$installed_playwright" != "$PLAYWRIGHT_VERSION" ]]; then
+    if [[ "$NO_INSTALL_TOOLS" == "1" ]]; then
+      echo "Playwright $PLAYWRIGHT_VERSION is required in $PLAYWRIGHT_TOOL_DIR. Re-run without --no-install-tools to install it." >&2
+      exit 2
+    fi
+    rm -rf "$PLAYWRIGHT_TOOL_DIR"
+    run_step "Install Playwright ${PLAYWRIGHT_VERSION} validation tool" \
+      npm install --prefix "$PLAYWRIGHT_TOOL_DIR" --no-save --no-package-lock --ignore-scripts --no-audit --no-fund "playwright@${PLAYWRIGHT_VERSION}"
+  else
+    echo "Playwright $PLAYWRIGHT_VERSION validation tool already installed."
+  fi
+
+  if [[ "$NO_INSTALL_TOOLS" == "0" ]]; then
+    run_step "Install/check Playwright-managed Chromium + Firefox" \
+      node "$PLAYWRIGHT_TOOL_DIR/node_modules/playwright/cli.js" install chromium firefox
+  else
+    echo "--no-install-tools: using already-cached Playwright browser binaries."
+  fi
+
+  set_validation_target wasm-playwright-build
+  P2P_WASM_PKG_DIR="$ROOT/target/full-validation/wasm-playwright-pkg"
+  rm -rf "$P2P_WASM_PKG_DIR"
+  run_step "Build browser WASM package for Playwright" \
+    wasm-pack build . --dev --target web --out-dir "target/full-validation/wasm-playwright-pkg" -- --locked --no-default-features --features dns,browser-tests
+  clear_validation_target
+
+  run_step "WASM browser tests (Playwright Chromium + Firefox)" \
+    env NODE_PATH="$PLAYWRIGHT_TOOL_DIR/node_modules" P2P_WASM_PKG_DIR="$P2P_WASM_PKG_DIR" \
+    node "$ROOT/qa/browser/run-playwright.cjs"
 fi
 
 if should_run tests; then
@@ -342,4 +410,7 @@ if (( FROM_RANK > 0 )); then
   echo "Earlier validation stages were intentionally skipped in resume mode."
 else
   echo "All stable p2p-net validation checks passed."
+fi
+if [[ -n "${P2P_VALIDATION_COMPLETION_SENTINEL:-}" ]]; then
+  printf 'complete\n' >"$P2P_VALIDATION_COMPLETION_SENTINEL"
 fi

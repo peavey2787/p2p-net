@@ -5,13 +5,18 @@
 //! and direct external-address advertisement. This module keeps that optional
 //! HTTP probe separate from node orchestration.
 
+#[cfg(not(target_arch = "wasm32"))]
 use std::net::IpAddr;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 
 use crate::common::error::{config_error, NetError};
+#[cfg(not(target_arch = "wasm32"))]
 use crate::connectivity::addr::is_public_direct_addr;
 
+#[cfg(not(target_arch = "wasm32"))]
 use libp2p::multiaddr::Protocol;
+#[cfg(not(target_arch = "wasm32"))]
 use libp2p::Multiaddr;
 use serde::{Deserialize, Serialize};
 
@@ -76,6 +81,7 @@ impl PublicIpProbeConfig {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Clone, Default)]
 pub(crate) struct PublicIpProbeResult {
     pub(crate) status: String,
@@ -84,6 +90,7 @@ pub(crate) struct PublicIpProbeResult {
     pub(crate) errors: Vec<String>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl PublicIpProbeResult {
     pub(crate) fn pulse_line(&self) -> Option<String> {
         if self.status == "disabled" {
@@ -105,6 +112,7 @@ impl PublicIpProbeResult {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) async fn probe_public_addresses(
     cfg: PublicIpProbeConfig,
     listen_addresses: Vec<String>,
@@ -158,6 +166,7 @@ pub(crate) async fn probe_public_addresses(
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 async fn fetch_public_ip(client: &reqwest::Client, endpoint: &str) -> Result<IpAddr, String> {
     let text = client
         .get(endpoint)
@@ -174,6 +183,7 @@ async fn fetch_public_ip(client: &reqwest::Client, endpoint: &str) -> Result<IpA
         .map_err(|err| format!("invalid public IP response `{}`: {err}", text.trim()))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn synthesize_external_addresses(ip: IpAddr, listen_addresses: &[String]) -> Vec<Multiaddr> {
     let mut addresses = Vec::new();
     for raw in listen_addresses {
@@ -190,6 +200,7 @@ fn synthesize_external_addresses(ip: IpAddr, listen_addresses: &[String]) -> Vec
     addresses
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn rewrite_listen_ip(addr: &Multiaddr, public_ip: IpAddr) -> Option<Multiaddr> {
     let mut rewritten = Multiaddr::empty();
     let mut replaced_ip = false;
@@ -219,7 +230,7 @@ fn rewrite_listen_ip(addr: &Multiaddr, public_ip: IpAddr) -> Option<Multiaddr> {
     replaced_ip.then_some(rewritten)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use std::net::{Ipv4Addr, Ipv6Addr};

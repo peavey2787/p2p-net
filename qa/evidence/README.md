@@ -17,11 +17,15 @@ Each machine-captured run contains:
 
 The canonical release-input fingerprint is SHA-256 over the normalized `git ls-tree` listing for
 `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `.cargo/config.toml`, `crates/`, `apps/`,
-`external/`, `examples/`, and `assets/`. The checked-in Cargo config is included because its
-workspace patch paths affect dependency resolution and therefore the build graph. Documentation,
-QA implementation, generated validation evidence, and release-runner implementation remain
-excluded so tooling-only evidence/release fixes do not force revalidation of unchanged production
-build inputs.
+`external/`, `examples/`, and `assets/`. In a normal checkout, an alternate index captures the
+current Git working tree. In a source archive without `.git`, the fingerprint helper creates a
+temporary external Git object database, stages only those same release-input paths, and records
+`source_fingerprint_mode=synthetic-worktree`; the extracted source directory is not initialized as
+a repository or otherwise modified for fingerprinting. The checked-in Cargo config is included
+because its workspace patch paths affect dependency resolution and therefore the build graph.
+Documentation, QA implementation, generated validation evidence, and release-runner
+implementation remain excluded so tooling-only evidence/release fixes do not force revalidation
+of unchanged production build inputs.
 
 `qa/evidence/recovered/` contains preserved machine transcripts whose automatic evidence wrapper
 metadata could not be completed at run time. Recovered records must retain the original transcript

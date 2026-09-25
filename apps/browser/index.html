@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>p2p-net browser smoke</title>
+<style>
+body{font:15px system-ui,sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem}input,button,textarea{font:inherit;margin:.25rem;padding:.45rem}textarea{width:100%;min-height:8rem}#log{white-space:pre-wrap;background:#111;color:#eee;padding:1rem;border-radius:.4rem}
+</style>
+<h1>p2p-net browser smoke</h1>
+<p>This page contains no transport/WebRTC logic. It only exercises the generated p2p-net WASM facade.</p>
+<label>Storage profile <input id="profile" value="browser-smoke"></label><br>
+<label>Network ID <input id="network" type="number" value="10"></label><br>
+<button id="start">Start</button>
+<button id="stop" disabled>Shutdown</button><br>
+<label>Dial multiaddr <input id="addr" size="80" placeholder="/dns4/.../udp/.../webrtc-direct/certhash/.../p2p/..."></label>
+<button id="connect" disabled>Connect</button><br>
+<label>Topic <input id="topic" value="smoke"></label>
+<label>Payload <input id="payload" value="hello from browser"></label>
+<button id="broadcast" disabled>Broadcast</button>
+<pre id="log"></pre>
+<script type="module" src="./main.js"></script>

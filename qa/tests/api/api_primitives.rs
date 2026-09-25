@@ -178,3 +178,9 @@ fn node_metrics_can_be_scoped_to_one_peer() {
     assert!(!scoped.bandwidth.peer_stats.contains_key(&peer_b));
     assert!(scoped.bandwidth.topic_stats.is_empty());
 }
+
+#[test]
+fn node_metrics_are_serde_serializable() {
+    fn assert_serialize<T: serde::Serialize>() {}
+    assert_serialize::<NodeMetrics>();
+}

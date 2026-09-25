@@ -60,9 +60,11 @@ Bash options:
 ./run-full-validation.sh --from clippy
 ```
 
-`--from <stage>` is an explicit local resume mode. Valid stages are `lockfile`, `format`, `dependency-graph`, `tests`, `dashboard`, `clippy`, `audit`, and `deny`. A resumed run still performs the pinned Rust/toolchain preflight, automatically preserves `target/full-validation` instead of cleaning it, starts at the requested validation stage, and then runs every later stage including all three deferred hostile/load/soak tests. It is intended for continuing a validation run after fixing a failure; it assumes all skipped stages already passed for the source tree being continued. CI and reproducible release gates do not use resume mode.
+`--from <stage>` is an explicit local resume mode. Valid stages are `lockfile`, `format`, `dependency-graph`, `wasm`, `tests`, `dashboard`, `clippy`, `audit`, and `deny`. A resumed run still performs the pinned Rust/toolchain preflight, automatically preserves `target/full-validation` instead of cleaning it, starts at the requested validation stage, and then runs every later stage including all three deferred hostile/load/soak tests. It is intended for continuing a validation run after fixing a failure; it assumes all skipped stages already passed for the source tree being continued. CI and reproducible release gates do not use resume mode.
 
-The root validation launchers automatically wrap themselves with the evidence recorder under `qa/evidence/`. Every invocation writes a complete transcript and manifest under `qa/evidence/runs/` before returning its exit code. Evidence generation is not an optional operator step and does not depend on preserving the console window.
+The root validation launchers automatically wrap themselves with the evidence recorder under `qa/evidence/`. Every invocation writes a complete transcript and manifest under `qa/evidence/runs/` before returning its exit code. A normal Git checkout fingerprints the exact working tree with an alternate index. A source archive/ZIP without `.git` is also supported: the evidence layer creates a temporary Git object database outside the source tree and fingerprints the same release-input paths without initializing or modifying the extracted directory. The evidence manifest records `source_fingerprint_mode=synthetic-worktree` for that archive case. Reproducible release creation still requires a Git worktree because the release runner freezes source into detached Git worktrees.
+
+On Windows, the outer CMD launcher owns the final interactive pause. This means a double-clicked validation window remains open even when the evidence wrapper itself fails before the inner validator starts. `--no-pause` and CI remain non-interactive. Evidence generation is not an optional operator step.
 
 
 Linux packet-loss/latency simulation:
@@ -114,7 +116,7 @@ Every validation run now writes durable evidence beneath `qa/evidence/runs/` aut
 
 `package-crates.cmd` and `package-crates.sh` qualify the publishable package boundary without making the companion part of the production workspace lock graph. They first require `cargo metadata --locked` to accept the committed production workspace, package `p2p-net-webrtc`, and then package the root `p2p-net` crate with a command-line-only `[patch.crates-io]` override that maps the unpublished registry name `p2p-net-webrtc` to the local audited companion source. Cargo configuration patches are local build overrides and are not serialized into the normalized crate manifest. The runners therefore inspect both normalized manifests to reject repository-relative dependency `path` entries, `[patch.crates-io]`, a retained workspace table, or embedded companion source, then unpack both `.crate` payloads into a temporary downstream consumer. That consumer independently patches the normalized registry dependency to the packaged companion and compiles the public API. The resulting `.crate` payloads and SHA-256 checksums are written to `dist/crates/`. Publication is deliberately sequential: dry-run and publish `p2p-net-webrtc` first, wait for crates.io to index version 0.1.0, then dry-run and publish `p2p-net`. Downstream applications depend only on `p2p-net = "0.1.0"`; they do not add a patch or companion dependency themselves.
 
-The repository-level `.cargo/config.toml` contains only lock-resolution patches for libp2p 0.56 weak optional DNS/mDNS entries. Those entries point to the audited no-Hickory local placeholders so `cargo metadata --locked` remains deterministic; they are not present in the normalized crates.io manifest and are not required by downstream applications.
+The repository-level `.cargo/config.toml` contains only lock-resolution patches for libp2p 0.57 weak optional DNS/mDNS entries. Those entries point to the audited no-Hickory local placeholders so `cargo metadata --locked` remains deterministic; they are not present in the normalized crates.io manifest and are not required by downstream applications.
 
 ### Android reproducible release
 
@@ -183,21 +185,14 @@ The launcher probes the check-level form with `--help` and falls back to the glo
 
 ## Intentional dependency refresh
 
-Normal validation never edits `Cargo.lock`. Dependency upgrades are a deliberate maintenance operation:
+Normal validation never edits `Cargo.lock`. When a dependency manifest is intentionally changed, regenerate the lockfile with the repository-pinned Rust/Cargo 1.98.0 toolchain:
 
-Windows:
-
-```cmd
-qa\tools\refresh-dependencies.cmd
+```text
+cargo generate-lockfile
+cargo metadata --locked --format-version 1
 ```
 
-Linux/macOS:
-
-```bash
-./qa/tools/refresh-dependencies.sh
-```
-
-Review the resulting `Cargo.lock` diff and RustSec/license/source changes, then run the full validation launcher before committing the refresh.
+Review the resulting `Cargo.lock` diff, including RustSec, license, source, and version changes, before committing that exact resolver output. The canonical `run-full-validation` launchers remain read-only and never regenerate or repair dependency state at runtime.
 
 ## Scheduled security validation
 
@@ -217,3 +212,13 @@ Review the resulting `Cargo.lock` diff and RustSec/license/source changes, then 
 ## Dashboard runtime/exit checks
 
 `qa/tests/observability/dashboard_runtime.rs` guards the standalone `p2p_node` example's full-node and clean-exit invariants: asynchronous terminal events instead of polling, revision-driven redraws without full-snapshot hashing, explicit Full-profile defaults, normal Gossipsub/Ping/DHT cadences, no example-specific 12-connection throttle, five-second deduplicated peer-cache persistence, inbound Kademlia request fast-pathing, DHT/provider observability batching, no connection-triggered DHT refresh feedback loop, no proactive eight-slot DHT disconnect headroom, duplicate Identify observed-address suppression, Windows console-close/logoff/shutdown handling, Unix termination/hangup handling, and the one-second node-task shutdown fail-safe.
+
+## Browser/WASM release gate
+
+The canonical Windows and Linux launchers include a mandatory `wasm` stage before native tests. It installs/checks the pinned `wasm32-unknown-unknown` target, runs `cargo check --target wasm32-unknown-unknown --locked`, then builds the browser package with pinned `wasm-pack` using `--target web --no-default-features --features dns,browser-tests`. Runtime execution is owned by Playwright 1.63.0, which installs and launches its own version-matched Chromium and Firefox builds. The gate therefore has no dependency on a machine-installed Chrome/Firefox, ChromeDriver/GeckoDriver, or the `wasm-bindgen-test` WebDriver runner. Playwright's npm tool installation is cached outside the repository (`P2P_PLAYWRIGHT_TOOL_DIR` can override the location), while browser binaries use Playwright's normal per-user cache. `--no-install-tools` requires both the exact Playwright tool and its browser binaries to already be cached. This stage is part of full release evidence and can be resumed explicitly with `--from wasm`.
+
+The Playwright suite verifies the first-class WASM facade is present, writes the IndexedDB journal, performs a real document reload, proves the persisted values survive that reload, rejects a duplicate live profile owner, shuts down/reopens the profile, and proves the PeerId remains stable. The source-level capability tests additionally prove `PlatformKind::Wasm + profile=auto` resolves to `WasmLite` with no public listeners/native server capabilities, while connection-strategy tests prove unsupported raw TCP/QUIC candidates are removed before dial ordering. Native transport tests include persisted WebRTC certificate fingerprint stability.
+
+The browser dependency contract is also strict across consumer workspaces. p2p-net/libp2p 0.57 uses `wasm-bindgen =0.2.108`, `js-sys/web-sys =0.3.85`, and `wasm-bindgen-futures =0.4.58`; any companion WASM crate in the same Cargo graph must align its direct exact pins to those versions. An older HYDRA-style family (`=0.2.100`, `=0.3.77`, `=0.4.50`) is intentionally treated as incompatible rather than forcing p2p-net to downgrade its browser ABI generation.
+
+Live relay/WebRTC interoperability still requires real browser and native endpoints. A release claiming browser-production parity must record browser→native WebRTC-direct, native→browser relay reservation, browser↔browser Circuit Relay, addressed/broadcast delivery, offline/online and relay-loss recovery, reload identity persistence, duplicate/malformed-envelope handling, shutdown/restart, and browser soak evidence; a compile-only WASM pass is not a substitute for those live gates.

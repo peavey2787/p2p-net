@@ -5,7 +5,8 @@ fn crates_io_manifest_is_publishable_without_manifest_patches() {
     let lockfile = include_str!("../../../Cargo.lock");
     let dns_patch = include_str!("../../../external/libp2p-dns/Cargo.toml");
     let mdns_patch = include_str!("../../../external/libp2p-mdns-placeholder/Cargo.toml");
-    let transport_source = include_str!("../../../crates/stack/transport.rs");
+    // The native transport (the only one with a WebSocket listener) is split out per target.
+    let transport_source = include_str!("../../../crates/stack/transport/native.rs");
 
     assert!(manifest.contains("publish = true"));
     assert!(manifest.contains("rust-version = \"1.98\""));
@@ -13,7 +14,7 @@ fn crates_io_manifest_is_publishable_without_manifest_patches() {
     assert!(manifest.contains("exclude = [\"qa/fuzz\", \"external/libp2p-webrtc\"]"));
     assert!(manifest.contains("\"external/libp2p-webrtc/**\""));
     assert!(manifest.contains("dns = []"));
-    assert!(manifest.contains("libp2p-websocket = \"0.45.1\""));
+    assert!(manifest.contains("libp2p-websocket = \"0.46.0\""));
     assert!(
         !manifest.lines().any(|line| line.trim() == "\"websocket\","),
         "top-level libp2p websocket feature must stay disabled; p2p-net uses libp2p-websocket directly so libp2p does not compile its DNS-coupled websocket builder"
@@ -52,13 +53,32 @@ fn crates_io_manifest_is_publishable_without_manifest_patches() {
     assert!(lockfile.contains("name = \"libp2p-dns\""));
     assert!(lockfile.contains("name = \"libp2p-mdns\""));
 
-    // The root now owns WebSocket transport directly. A stale lockfile that
-    // still lists libp2p-websocket under the libp2p package makes Cargo 1.98
+    // libp2p-swarm 0.48.0 requires wasm-bindgen-futures =0.4.58. Keep the
+    // complete direct browser ABI family pinned to the matching wasm-bindgen
+    // generation. futures-timer 3.0.3 is intentional: 3.0.4 pulls gloo-timers
+    // 0.4.0, which requires js-sys >=0.3.91 and conflicts with this ABI family.
+    for browser_pin in [
+        "wasm-bindgen = \"=0.2.108\"",
+        "wasm-bindgen-futures = \"=0.4.58\"",
+        "serde-wasm-bindgen = \"=0.6.5\"",
+        "js-sys = \"=0.3.85\"",
+        "futures-timer = { version = \"=3.0.3\", features = [\"wasm-bindgen\"] }",
+        "getrandom = { version = \"=0.2.17\", features = [\"js\"] }",
+        "web-sys = { version = \"=0.3.85\", features = [",
+    ] {
+        assert!(
+            manifest.contains(browser_pin),
+            "browser/WASM dependency family must stay aligned with libp2p-swarm 0.48.0: {browser_pin}"
+        );
+    }
+
+    // The root now owns native WebSocket transport directly. A stale lockfile
+    // that still lists libp2p-websocket under the libp2p package makes Cargo 1.98
     // require a lockfile rewrite and breaks every strict --locked path.
     let libp2p_block = lockfile
         .split("[[package]]")
-        .find(|block| block.contains("name = \"libp2p\"") && block.contains("version = \"0.56.0\""))
-        .expect("Cargo.lock missing libp2p 0.56.0");
+        .find(|block| block.contains("name = \"libp2p\"") && block.contains("version = \"0.57.0\""))
+        .expect("Cargo.lock missing libp2p 0.57.0");
     assert!(
         !libp2p_block.contains("\"libp2p-websocket\""),
         "libp2p-websocket must not remain feature-resolved under libp2p after disabling libp2p's websocket feature"
@@ -70,6 +90,60 @@ fn crates_io_manifest_is_publishable_without_manifest_patches() {
     assert!(
         root_block.contains("\"libp2p-websocket\""),
         "p2p-net must retain its direct libp2p-websocket lock dependency"
+    );
+    for browser_dependency in [
+        "\"futures-timer\"",
+        "\"getrandom 0.2.17\"",
+        "\"js-sys\"",
+        "\"serde-wasm-bindgen\"",
+        "\"wasm-bindgen\"",
+        "\"wasm-bindgen-futures\"",
+        "\"web-sys\"",
+    ] {
+        assert!(
+            root_block.contains(browser_dependency),
+            "p2p-net browser dependency missing from Cargo.lock root package: {browser_dependency}"
+        );
+    }
+    for browser_package in [
+        "name = \"serde-wasm-bindgen\"\nversion = \"0.6.5\"",
+        "name = \"wasm-bindgen-futures\"\nversion = \"0.4.58\"",
+        "name = \"wasm-bindgen\"\nversion = \"0.2.108\"",
+    ] {
+        assert!(
+            lockfile.contains(browser_package),
+            "required pinned browser package missing from Cargo.lock: {browser_package}"
+        );
+    }
+    let futures_timer_block = lockfile
+        .split("[[package]]")
+        .find(|block| {
+            block.contains("name = \"futures-timer\"") && block.contains("version = \"3.0.3\"")
+        })
+        .expect("futures-timer 3.0.3 package missing from Cargo.lock");
+    assert!(
+        futures_timer_block.contains("\"gloo-timers\"")
+            || futures_timer_block.contains("\"gloo-timers 0.2.6\""),
+        "futures-timer 3.0.3 WASM lock edge to gloo-timers is missing"
+    );
+    assert!(
+        futures_timer_block.contains("\"send_wrapper 0.4.0\"")
+            || (futures_timer_block.contains("\"send_wrapper\"")
+                && !lockfile.contains("name = \"send_wrapper\"\nversion = \"0.6.0\"")),
+        "futures-timer 3.0.3 WASM lock edge to send_wrapper 0.4.0 is missing"
+    );
+    for wasm_timer_package in [
+        "name = \"gloo-timers\"\nversion = \"0.2.6\"",
+        "name = \"send_wrapper\"\nversion = \"0.4.0\"",
+    ] {
+        assert!(
+            lockfile.contains(wasm_timer_package),
+            "required futures-timer WASM package missing from Cargo.lock: {wasm_timer_package}"
+        );
+    }
+    assert!(
+        !lockfile.contains("name = \"futures-timer\"\nversion = \"3.0.4\""),
+        "futures-timer 3.0.4 is incompatible with libp2p 0.57's pinned wasm-bindgen ABI generation"
     );
     assert!(
         !lockfile.contains("name = \"hickory-"),
@@ -87,7 +161,7 @@ fn hardened_webrtc_transport_is_a_publishable_companion_crate() {
     let smoke_source = include_str!("../../../external/libp2p-webrtc/tests/smoke.rs");
 
     assert!(manifest.contains(
-        "libp2p-webrtc = { package = \"p2p-net-webrtc\", version = \"0.1.0\", path = \"external/libp2p-webrtc\", features = [\"tokio\"] }"
+        "libp2p-webrtc = { package = \"p2p-net-webrtc\", version = \"0.1.0\", path = \"external/libp2p-webrtc\", features = [\"tokio\", \"pem\"] }"
     ));
     for required in [
         "name = \"p2p-net-webrtc\"",
@@ -145,10 +219,16 @@ fn hardened_webrtc_transport_is_a_publishable_companion_crate() {
 #[test]
 fn dns_resolution_is_owned_by_p2p_net_including_manual_dials() {
     let dns = include_str!("../../../crates/connectivity/dns.rs");
-    let transport = include_str!("../../../crates/stack/transport.rs");
+    let transports = [
+        include_str!("../../../crates/stack/transport.rs"),
+        include_str!("../../../crates/stack/transport/native.rs"),
+        include_str!("../../../crates/stack/transport/wasm.rs"),
+    ];
     let handle = include_str!("../../../crates/node/handle.rs");
 
-    assert!(!transport.contains(".with_dns()"));
+    for transport in transports {
+        assert!(!transport.contains(".with_dns()"));
+    }
     assert!(dns.contains("pub(crate) async fn resolve_dial_multiaddrs"));
     assert!(dns.contains("tokio::net::lookup_host"));
     assert!(dns.contains("DEFAULT_DNSADDR_DOH_ENDPOINT"));
@@ -162,7 +242,7 @@ fn direct_webrtc_probe_stays_on_the_audited_dependency_generation() {
     let probe = include_str!("../../../examples/live_webrtc_oob_probe.rs");
 
     assert!(
-        manifest.contains("webrtc = { version = \"0.12.0\", optional = true }"),
+        manifest.contains("webrtc = { version = \"0.17.0\", optional = true }"),
         "the direct WebRTC probe must share the audited webrtc-rs generation used by p2p-net-webrtc"
     );
     for vulnerable_package in [
@@ -187,5 +267,128 @@ fn local_webrtc_transport_declares_runtime_cleanup_support() {
     assert!(
         webrtc_manifest.contains("features = [\"net\", \"rt\", \"time\"]"),
         "the hardened WebRTC transport uses Tokio runtime cleanup and must declare the rt feature"
+    );
+}
+
+#[test]
+fn playwright_browser_target_isolation_is_explicit() {
+    let manifest = include_str!("../../../Cargo.toml");
+    let windows_runner = include_str!("../../../run-full-validation.cmd");
+    let linux_runner = include_str!("../../../run-full-validation.sh");
+    let playwright_runner = include_str!("../../browser/run-playwright.cjs");
+    let browser_storage = include_str!("../../../crates/platform/wasm.rs");
+    let windows_evidence = include_str!("../../evidence/run-validation-with-evidence.ps1");
+    let linux_evidence = include_str!("../../evidence/run-validation-with-evidence.sh");
+    let browser_compile_gate = include_str!("../wasm/browser_wasm.rs");
+    let browser_qa_exports = include_str!("../../../crates/wasm/qa.rs");
+    let browser_node = include_str!("../../../crates/wasm.rs");
+
+    assert!(manifest.contains("default = [\"dns\", \"native-tests\"]"));
+    assert!(manifest.contains("native-tests = []"));
+    assert!(manifest.contains("browser-tests = []"));
+
+    let test_blocks: Vec<_> = manifest.split("[[test]]").skip(1).collect();
+    assert!(
+        !test_blocks.is_empty(),
+        "integration tests must remain registered"
+    );
+    for block in test_blocks {
+        let is_browser = block.contains("name = \"browser_wasm\"");
+        if is_browser {
+            assert!(
+                block.contains("required-features = [\"browser-tests\"]"),
+                "browser_wasm must require only the browser test selector"
+            );
+        } else {
+            assert!(
+                block.contains("required-features = [\"native-tests\"]"),
+                "every non-browser integration test must require the native test selector: {block}"
+            );
+        }
+    }
+
+    assert!(
+        windows_runner.contains("call npm install --prefix"),
+        "Windows batch validation must CALL npm.cmd so control returns after Playwright installation"
+    );
+
+    for runner in [windows_runner, linux_runner] {
+        assert!(
+            runner.contains("PLAYWRIGHT_VERSION=1.63.0")
+                || runner.contains("PLAYWRIGHT_VERSION=\"1.63.0\""),
+            "browser QA must pin the Playwright tool version"
+        );
+        assert!(
+            runner.contains("playwright@") && runner.contains("install chromium firefox"),
+            "browser QA must use Playwright-managed Chromium and Firefox"
+        );
+        assert!(
+            runner.contains("--test browser_wasm --locked")
+                && runner.contains("wasm-pack build . --dev --target web")
+                && runner.contains("--no-default-features --features dns,browser-tests"),
+            "Playwright browser QA must type-check the browser tests and build only the browser-selected WASM facade"
+        );
+        assert!(
+            !runner.contains("chromedriver")
+                && !runner.contains("--chrome")
+                && !runner.contains("wasm-pack test"),
+            "browser QA must not depend on ChromeDriver or wasm-bindgen-test WebDriver execution"
+        );
+    }
+
+    for evidence_wrapper in [windows_evidence, linux_evidence] {
+        assert!(
+            evidence_wrapper.contains("P2P_VALIDATION_COMPLETION_SENTINEL")
+                && evidence_wrapper.contains("launcher-complete.txt"),
+            "evidence wrappers must reject premature zero-exit runs that never reach launcher completion"
+        );
+    }
+    for runner in [windows_runner, linux_runner] {
+        assert!(
+            runner.contains("P2P_VALIDATION_COMPLETION_SENTINEL"),
+            "validation launchers must emit the evidence completion sentinel only on their final success path"
+        );
+    }
+
+    for required in [
+        "const { chromium, firefox } = require('playwright');",
+        "STEP_TIMEOUT_MS",
+        "withTimeout",
+        "RUN: Playwright",
+        "qaStorageWrite",
+        "page.reload",
+        "qaStorageRead",
+        "qaProfileLifecycle",
+    ] {
+        assert!(
+            playwright_runner.contains(required),
+            "Playwright browser runner missing `{required}`"
+        );
+    }
+    assert!(
+        browser_storage.matches("futures::try_join!").count() >= 2
+            && browser_storage.contains("INDEXED_DB_OPERATION_TIMEOUT")
+            && browser_storage.contains("crate::runtime::timeout"),
+        "IndexedDB request and transaction completion handlers must be armed together and time-bounded"
+    );
+    assert!(
+        browser_compile_gate.contains("qa_storage_write")
+            && browser_compile_gate.contains("qa_storage_read")
+            && browser_compile_gate.contains("qa_profile_lifecycle"),
+        "wasm32 compile gate must keep the Playwright-only QA exports type-checked"
+    );
+    assert!(
+        browser_qa_exports.contains("QA_PROFILE_STAGE_TIMEOUT")
+            && browser_qa_exports.contains("private_infrastructure_only")
+            && browser_qa_exports.contains("config.discovery.dht.enabled = false")
+            && browser_qa_exports.contains("config.dnsaddr.enabled = false"),
+        "browser profile lifecycle QA must be offline-deterministic and stage-time-bounded"
+    );
+    assert!(
+        browser_node.contains("profile_lock_release")
+            && browser_node.contains(".release()")
+            && browser_node.contains("release(); return request;")
+            && playwright_runner.contains("error && error.kind"),
+        "browser profile shutdown must await lock release and Playwright must preserve structured QA failures"
     );
 }

@@ -212,7 +212,15 @@ pub fn build_behaviour(ctx: BehaviourBuildContext<'_>) -> MeshBehaviour {
 
     let relay_server_active = behaviour_policy.relay_server && relay_cfg.enabled;
     let relay_server = relay_server_active
-        .then(|| relay::Behaviour::new(local_peer, relay_cfg.to_libp2p_config()))
+        .then(|| {
+            let mut relay = relay::Behaviour::new(local_peer, relay_cfg.to_libp2p_config());
+            // libp2p-relay 0.22 hides the HOP protocol until the node has a
+            // confirmed external address. Relay service here is an explicit
+            // operator decision (including LAN/private relays that never get a
+            // public address), so advertise HOP whenever the relay is enabled.
+            relay.set_status(Some(relay::Status::Enable));
+            relay
+        })
         .into();
 
     let relay_acl_blocked = relay_server_active

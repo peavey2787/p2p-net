@@ -74,8 +74,10 @@ fn full_node_protocol_cadences_and_dht_controls_remain_wired_to_libp2p() {
 #[test]
 fn full_node_hot_paths_are_optimized_without_reducing_capability() {
     let runtime = fs::read_to_string("crates/node/runtime.rs").expect("read runtime");
-    let runtime_driver =
-        fs::read_to_string("crates/node/runtime/driver.rs").expect("read runtime driver");
+    // The driver is split per target; the hot-path optimization must hold in both.
+    let runtime_drivers = ["driver_native.rs", "driver_wasm.rs"].map(|file| {
+        fs::read_to_string(format!("crates/node/runtime/{file}")).expect("read runtime driver")
+    });
     let dht_schedule = fs::read_to_string("crates/node/runtime/dht_schedule.rs")
         .expect("read DHT refresh schedule");
     let cache = fs::read_to_string("crates/connectivity/peer_cache/store.rs").expect("read cache");
@@ -86,7 +88,9 @@ fn full_node_hot_paths_are_optimized_without_reducing_capability() {
         .expect("read identify event handling");
 
     assert!(dht_schedule.contains("request_connectivity_recovery_refresh"));
-    assert!(runtime_driver.contains("swarm.connected_peers().take(2).count() == 1"));
+    for runtime_driver in &runtime_drivers {
+        assert!(runtime_driver.contains("swarm.connected_peers().take(2).count() == 1"));
+    }
     assert!(runtime.contains("PEER_CACHE_FLUSH_INTERVAL"));
     assert!(runtime.contains("from_secs(5)"));
     assert!(runtime.contains("peer_cache_writes"));

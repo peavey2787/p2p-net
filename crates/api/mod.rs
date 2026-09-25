@@ -16,14 +16,22 @@ use libp2p::{
 use rand::rngs::OsRng;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
-use tokio::sync::broadcast;
 
 use crate::common::error::NetError;
 use crate::common::utils::unix_timestamp_ns;
 
+mod fragmentation;
 mod metrics;
+mod subscriptions;
 
+pub(crate) use fragmentation::{decode_fragment, fragment_message, AppFragmentReassembler};
 pub(crate) use metrics::accounted_transport_bytes;
+pub use subscriptions::{AppSubscription, NodeEventSubscription};
+#[cfg(feature = "fuzzing")]
+#[doc(hidden)]
+pub fn fuzz_decode_internal_fragment(raw: &[u8]) -> bool {
+    fragmentation::decode_fragment(raw).is_ok()
+}
 pub use metrics::{
     BandwidthMetrics, ComputeMetrics, NodeMetrics, PeerBandwidth, StorageMetrics, TopicBandwidth,
 };
@@ -144,10 +152,22 @@ impl PeerInfo {
     }
 }
 
-/// Topic-filtered local subscription returned by `NodeHandle::subscribe`.
-pub struct AppSubscription {
-    topic: String,
-    receiver: broadcast::Receiver<AppMessage>,
+/// Stable, transport-neutral local identity/address binding for application announcements.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalNodeBinding {
+    pub peer_id: String,
+    pub dial_addresses: Vec<String>,
+}
+
+/// Coarse node lifecycle/connectivity events. Transport internals are intentionally hidden.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "event", rename_all = "snake_case")]
+pub enum NodeEvent {
+    LocalBindingChanged(LocalNodeBinding),
+    PeerConnected { peer_id: String },
+    PeerDisconnected { peer_id: String },
+    Online,
+    Offline,
 }
 
 /// Stable application-facing node operations.
@@ -156,62 +176,62 @@ pub struct AppSubscription {
 /// exchanging application messages. `get_metrics` is the seventh query/
 /// management primitive for infrastructure telemetry that applications cannot
 /// measure accurately above the transport layer.
+#[cfg(not(target_arch = "wasm32"))]
 pub trait P2PNode {
     fn connect_peer(
         &self,
         addr: Multiaddr,
     ) -> impl Future<Output = Result<(), NetError>> + Send + '_;
-
     fn disconnect_peer(
         &self,
         peer_id: PeerId,
     ) -> impl Future<Output = Result<(), NetError>> + Send + '_;
-
     fn send_message<'a>(
         &'a self,
         peer_id: PeerId,
         topic: &'a str,
         payload: Vec<u8>,
     ) -> impl Future<Output = Result<(), NetError>> + Send + 'a;
-
     fn broadcast<'a>(
         &'a self,
         topic: &'a str,
         payload: Vec<u8>,
     ) -> impl Future<Output = Result<(), NetError>> + Send + 'a;
-
     fn subscribe<'a>(
         &'a self,
         topic: &'a str,
     ) -> impl Future<Output = Result<AppSubscription, NetError>> + Send + 'a;
-
     fn get_peers(&self) -> impl Future<Output = Result<Vec<PeerInfo>, NetError>> + Send + '_;
-
     fn get_metrics(
         &self,
         peer_id: Option<PeerId>,
     ) -> impl Future<Output = Result<NodeMetrics, NetError>> + Send + '_;
 }
 
-impl AppSubscription {
-    #[must_use]
-    pub fn new(topic: String, receiver: broadcast::Receiver<AppMessage>) -> Self {
-        Self { topic, receiver }
-    }
-
-    #[must_use]
-    pub fn topic(&self) -> &str {
-        &self.topic
-    }
-
-    pub async fn recv(&mut self) -> Result<AppMessage, broadcast::error::RecvError> {
-        loop {
-            let message = self.receiver.recv().await?;
-            if message.topic == self.topic {
-                return Ok(message);
-            }
-        }
-    }
+#[cfg(target_arch = "wasm32")]
+pub trait P2PNode {
+    fn connect_peer(&self, addr: Multiaddr) -> impl Future<Output = Result<(), NetError>> + '_;
+    fn disconnect_peer(&self, peer_id: PeerId) -> impl Future<Output = Result<(), NetError>> + '_;
+    fn send_message<'a>(
+        &'a self,
+        peer_id: PeerId,
+        topic: &'a str,
+        payload: Vec<u8>,
+    ) -> impl Future<Output = Result<(), NetError>> + 'a;
+    fn broadcast<'a>(
+        &'a self,
+        topic: &'a str,
+        payload: Vec<u8>,
+    ) -> impl Future<Output = Result<(), NetError>> + 'a;
+    fn subscribe<'a>(
+        &'a self,
+        topic: &'a str,
+    ) -> impl Future<Output = Result<AppSubscription, NetError>> + 'a;
+    fn get_peers(&self) -> impl Future<Output = Result<Vec<PeerInfo>, NetError>> + '_;
+    fn get_metrics(
+        &self,
+        peer_id: Option<PeerId>,
+    ) -> impl Future<Output = Result<NodeMetrics, NetError>> + '_;
 }
 
 /// Application payload envelope carried by the shared P2P core.
@@ -300,16 +320,27 @@ pub fn app_ident_topic(network_id: u32, topic: impl AsRef<str>) -> Result<IdentT
 }
 
 pub fn encode_app_message(message: &AppMessage) -> Result<Vec<u8>, NetError> {
+    validate_app_message(message)?;
     let encoded = serde_json::to_vec(message).map_err(|err| NetError::AppMessage {
         topic: message.topic.clone(),
         reason: err.to_string(),
     })?;
-    validate_app_payload_len(encoded.len())?;
+    if encoded.len() > 6 * MAX_APP_MESSAGE_BYTES {
+        return Err(NetError::AppMessage {
+            topic: message.topic.clone(),
+            reason: "encoded application envelope exceeds wire safety bound".to_string(),
+        });
+    }
     Ok(encoded)
 }
 
 pub fn decode_app_message(raw: &[u8]) -> Result<AppMessage, NetError> {
-    validate_app_payload_len(raw.len())?;
+    if raw.len() > 6 * MAX_APP_MESSAGE_BYTES {
+        return Err(NetError::AppMessage {
+            topic: "<unknown>".to_string(),
+            reason: "encoded application envelope exceeds wire safety bound".to_string(),
+        });
+    }
     let message: AppMessage = serde_json::from_slice(raw).map_err(|err| NetError::AppMessage {
         topic: "<unknown>".to_string(),
         reason: err.to_string(),

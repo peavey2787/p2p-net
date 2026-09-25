@@ -5,10 +5,29 @@ set "ROOT=%~dp0"
 cd /d "%ROOT%"
 
 if not defined P2P_VALIDATION_EVIDENCE_ACTIVE (
+  set "BOOTSTRAP_NO_PAUSE=0"
+  for %%A in (%*) do if /I "%%~A"=="--no-pause" set "BOOTSTRAP_NO_PAUSE=1"
+  if not exist "%ROOT%Cargo.lock" (
+    call "%ROOT%qa\tools\bootstrap-cargo-lock.cmd"
+    set "BOOTSTRAP_STATUS=!ERRORLEVEL!"
+    if not "!BOOTSTRAP_STATUS!"=="0" (
+      echo.
+      echo Cargo.lock bootstrap failed with status !BOOTSTRAP_STATUS!.
+      if "!BOOTSTRAP_NO_PAUSE!"=="0" if not defined CI pause
+      exit /B !BOOTSTRAP_STATUS!
+    )
+  )
   set "P2P_VALIDATION_ORIGINAL_ARGS=%*"
+  set "P2P_VALIDATION_OUTER_PAUSE=1"
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%qa\evidence\run-validation-with-evidence.ps1" -Launcher "%~f0"
   set "STATUS=!ERRORLEVEL!"
   set "P2P_VALIDATION_ORIGINAL_ARGS="
+  set "P2P_VALIDATION_OUTER_PAUSE="
+  if not "!STATUS!"=="0" (
+    echo.
+    echo Validation exited with status !STATUS!. The error above is also retained under qa\evidence\runs when evidence setup reached that point.
+  )
+  if "!BOOTSTRAP_NO_PAUSE!"=="0" if not defined CI pause
   exit /B !STATUS!
 )
 
@@ -58,14 +77,15 @@ if /I "!FROM_STAGE!"=="full" set "FROM_RANK=0"
 if /I "!FROM_STAGE!"=="lockfile" set "FROM_RANK=1"
 if /I "!FROM_STAGE!"=="format" set "FROM_RANK=2"
 if /I "!FROM_STAGE!"=="dependency-graph" set "FROM_RANK=3"
-if /I "!FROM_STAGE!"=="tests" set "FROM_RANK=4"
-if /I "!FROM_STAGE!"=="dashboard" set "FROM_RANK=5"
-if /I "!FROM_STAGE!"=="clippy" set "FROM_RANK=6"
-if /I "!FROM_STAGE!"=="audit" set "FROM_RANK=7"
-if /I "!FROM_STAGE!"=="deny" set "FROM_RANK=8"
+if /I "!FROM_STAGE!"=="wasm" set "FROM_RANK=4"
+if /I "!FROM_STAGE!"=="tests" set "FROM_RANK=5"
+if /I "!FROM_STAGE!"=="dashboard" set "FROM_RANK=6"
+if /I "!FROM_STAGE!"=="clippy" set "FROM_RANK=7"
+if /I "!FROM_STAGE!"=="audit" set "FROM_RANK=8"
+if /I "!FROM_STAGE!"=="deny" set "FROM_RANK=9"
 if not defined FROM_RANK (
   echo Unknown --from stage: !FROM_STAGE!
-  echo Valid stages: lockfile, format, dependency-graph, tests, dashboard, clippy, audit, deny
+  echo Valid stages: lockfile, format, dependency-graph, wasm, tests, dashboard, clippy, audit, deny
   set "FAILED_STEP=Argument parsing"
   goto failed
 )
@@ -206,7 +226,8 @@ if "%NO_CLEAN%"=="0" (
 )
 
 if not exist Cargo.lock (
-  echo Cargo.lock is missing; production validation requires the committed lockfile.
+  echo Cargo.lock is missing after the launcher bootstrap.
+  echo The canonical validation path requires a verified lockfile before validation begins.
   set "FAILED_STEP=Lockfile immutability guard"
   goto failed
 )
@@ -227,12 +248,16 @@ echo.
 echo ==^> Verify committed dependency lockfile
 cargo metadata --locked --format-version 1 >nul
 if errorlevel 1 (
+  echo.
+  echo Cargo.lock does not resolve the current manifests under the pinned toolchain.
+  echo Regenerate and review Cargo.lock with the pinned Cargo 1.98.0 toolchain before validation.
+  echo The canonical validator will not rewrite Cargo.lock automatically.
   set "FAILED_STEP=Verify committed dependency lockfile"
   goto failed
 )
 
 :ensure_tools
-for %%T in (cargo-audit:0.22.2 cargo-deny:0.20.2) do (
+for %%T in (cargo-audit:0.22.2 cargo-deny:0.20.2 wasm-pack:0.14.0) do (
   for /f "tokens=1,2 delims=:" %%A in ("%%T") do (
     set "TOOL_NAME=%%A"
     set "TOOL_VERSION=%%B"
@@ -258,11 +283,12 @@ for %%T in (cargo-audit:0.22.2 cargo-deny:0.20.2) do (
 
 if !FROM_RANK! EQU 2 goto stage_format
 if !FROM_RANK! EQU 3 goto stage_dependency_graph
-if !FROM_RANK! EQU 4 goto stage_tests
-if !FROM_RANK! EQU 5 goto stage_dashboard
-if !FROM_RANK! EQU 6 goto stage_clippy
-if !FROM_RANK! EQU 7 goto stage_audit
-if !FROM_RANK! EQU 8 goto stage_deny
+if !FROM_RANK! EQU 4 goto stage_wasm
+if !FROM_RANK! EQU 5 goto stage_tests
+if !FROM_RANK! EQU 6 goto stage_dashboard
+if !FROM_RANK! EQU 7 goto stage_clippy
+if !FROM_RANK! EQU 8 goto stage_audit
+if !FROM_RANK! EQU 9 goto stage_deny
 
 :stage_format
 echo.
@@ -324,6 +350,108 @@ for %%P in (hickory-proto hickory-resolver) do (
   )
   echo %%P is not present in Cargo.lock.
 )
+
+:stage_wasm
+echo.
+echo ==^> WASM compile gate
+rustup target list --installed | findstr /X /C:"wasm32-unknown-unknown" >nul
+if errorlevel 1 (
+  if "!NO_INSTALL_TOOLS!"=="1" (
+    echo Rust target wasm32-unknown-unknown is required. Re-run without --no-install-tools or install it manually.
+    set "FAILED_STEP=WASM target"
+    goto failed
+  )
+  rustup target add wasm32-unknown-unknown
+  if errorlevel 1 (
+    set "FAILED_STEP=WASM target"
+    goto failed
+  )
+)
+set "CARGO_TARGET_DIR=%ROOT%target\full-validation\wasm-check"
+echo CARGO_TARGET_DIR=!CARGO_TARGET_DIR!
+cargo check --target wasm32-unknown-unknown --test browser_wasm --locked --no-default-features --features dns,browser-tests
+if errorlevel 1 (
+  set "FAILED_STEP=WASM compile gate"
+  goto failed
+)
+set "CARGO_TARGET_DIR="
+echo.
+echo ==^> Playwright browser harness preflight
+where node >nul 2>&1
+if errorlevel 1 (
+  echo Node.js is required for the Playwright WASM browser gate.
+  set "FAILED_STEP=Playwright Node.js preflight"
+  goto failed
+)
+where npm >nul 2>&1
+if errorlevel 1 (
+  echo npm is required for the Playwright WASM browser gate.
+  set "FAILED_STEP=Playwright npm preflight"
+  goto failed
+)
+set "PLAYWRIGHT_VERSION=1.63.0"
+if defined P2P_PLAYWRIGHT_TOOL_DIR (
+  set "PLAYWRIGHT_TOOL_DIR=!P2P_PLAYWRIGHT_TOOL_DIR!"
+) else if defined LOCALAPPDATA (
+  set "PLAYWRIGHT_TOOL_DIR=!LOCALAPPDATA!\p2p-net\validation\playwright-!PLAYWRIGHT_VERSION!"
+) else (
+  set "PLAYWRIGHT_TOOL_DIR=!USERPROFILE!\.cache\p2p-net\validation\playwright-!PLAYWRIGHT_VERSION!"
+)
+set "PLAYWRIGHT_INSTALLED_VERSION="
+if exist "!PLAYWRIGHT_TOOL_DIR!\node_modules\playwright\package.json" (
+  for /f "delims=" %%V in ('node -p "require(process.argv[1]).version" "!PLAYWRIGHT_TOOL_DIR!\node_modules\playwright\package.json"') do set "PLAYWRIGHT_INSTALLED_VERSION=%%V"
+)
+if not "!PLAYWRIGHT_INSTALLED_VERSION!"=="!PLAYWRIGHT_VERSION!" (
+  if "!NO_INSTALL_TOOLS!"=="1" (
+    echo Playwright !PLAYWRIGHT_VERSION! is required in !PLAYWRIGHT_TOOL_DIR!. Re-run without --no-install-tools to install it.
+    set "FAILED_STEP=Install Playwright"
+    goto failed
+  )
+  echo.
+  echo ==^> Install Playwright !PLAYWRIGHT_VERSION! validation tool
+  if exist "!PLAYWRIGHT_TOOL_DIR!" rmdir /S /Q "!PLAYWRIGHT_TOOL_DIR!"
+  call npm install --prefix "!PLAYWRIGHT_TOOL_DIR!" --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@!PLAYWRIGHT_VERSION!
+  if errorlevel 1 (
+    set "FAILED_STEP=Install Playwright"
+    goto failed
+  )
+) else (
+  echo Playwright !PLAYWRIGHT_VERSION! validation tool already installed.
+)
+if "!NO_INSTALL_TOOLS!"=="0" (
+  echo.
+  echo ==^> Install/check Playwright-managed Chromium + Firefox
+  node "!PLAYWRIGHT_TOOL_DIR!\node_modules\playwright\cli.js" install chromium firefox
+  if errorlevel 1 (
+    set "FAILED_STEP=Install Playwright browsers"
+    goto failed
+  )
+) else (
+  echo --no-install-tools: using already-cached Playwright browser binaries.
+)
+
+echo.
+echo ==^> Build browser WASM package for Playwright
+set "CARGO_TARGET_DIR=%ROOT%target\full-validation\wasm-playwright-build"
+set "P2P_WASM_PKG_DIR=%ROOT%target\full-validation\wasm-playwright-pkg"
+if exist "!P2P_WASM_PKG_DIR!" rmdir /S /Q "!P2P_WASM_PKG_DIR!"
+wasm-pack build . --dev --target web --out-dir "target/full-validation/wasm-playwright-pkg" -- --locked --no-default-features --features dns,browser-tests
+if errorlevel 1 (
+  set "FAILED_STEP=Build Playwright WASM package"
+  goto failed
+)
+set "CARGO_TARGET_DIR="
+
+echo.
+echo ==^> WASM browser tests ^(Playwright Chromium + Firefox^)
+set "NODE_PATH=!PLAYWRIGHT_TOOL_DIR!\node_modules"
+node "%ROOT%qa\browser\run-playwright.cjs"
+if errorlevel 1 (
+  set "FAILED_STEP=WASM Playwright browser tests"
+  goto failed
+)
+set "NODE_PATH="
+set "P2P_WASM_PKG_DIR="
 
 :stage_tests
 echo.
@@ -499,9 +627,16 @@ echo.
 echo ============================================================
 echo FULL VALIDATION FAILED: %FAILED_STEP%
 echo ============================================================
-if "%NO_PAUSE%"=="0" if not defined CI pause
+if "%NO_PAUSE%"=="0" if not defined CI if not defined P2P_VALIDATION_OUTER_PAUSE pause
 exit /B 1
 
 :success
-if "%NO_PAUSE%"=="0" if not defined CI pause
+if defined P2P_VALIDATION_COMPLETION_SENTINEL (
+  >"!P2P_VALIDATION_COMPLETION_SENTINEL!" echo complete
+  if not exist "!P2P_VALIDATION_COMPLETION_SENTINEL!" (
+    set "FAILED_STEP=Validation completion sentinel"
+    goto failed
+  )
+)
+if "%NO_PAUSE%"=="0" if not defined CI if not defined P2P_VALIDATION_OUTER_PAUSE pause
 exit /B 0

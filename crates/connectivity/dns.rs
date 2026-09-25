@@ -6,7 +6,9 @@
 //! timeout limits. LAN discovery is owned separately by connectivity::lan and does not use Hickory/mDNS.
 
 use crate::common::error::config_error;
-use std::{net::IpAddr, time::Duration};
+#[cfg(not(target_arch = "wasm32"))]
+use std::net::IpAddr;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +16,10 @@ use libp2p::multiaddr::Protocol;
 use libp2p::Multiaddr;
 
 use crate::common::error::NetError;
+use crate::connectivity::connection_strategy::TransportCapabilities;
+
+mod doh;
+use doh::lookup_dnsaddr_txt;
 
 const DNSADDR_PREFIX: &str = "dnsaddr=";
 const DNSADDR_QUERY_PREFIX: &str = "_dnsaddr.";
@@ -74,7 +80,7 @@ impl DnsaddrConfig {
                 "dnsaddr.doh_endpoint must not be empty when dnsaddr is enabled",
             ));
         }
-        let url = reqwest::Url::parse(endpoint).map_err(|err| {
+        let url = url::Url::parse(endpoint).map_err(|err| {
             config_error(format!(
                 "dnsaddr.doh_endpoint must be a valid HTTPS URL: {err}"
             ))
@@ -113,7 +119,7 @@ pub async fn resolve_configured_multiaddrs(
             }
         }
     }
-    Ok(dedup_multiaddrs(out))
+    Ok(filter_dialable(dedup_multiaddrs(out)))
 }
 
 /// Resolve cached/discovered DNS multiaddrs best-effort. Unresolvable DNS entries are ignored.
@@ -127,7 +133,7 @@ pub async fn resolve_cached_multiaddrs(
             out.append(&mut resolved);
         }
     }
-    dedup_multiaddrs(out)
+    filter_dialable(dedup_multiaddrs(out))
 }
 
 /// True when the multiaddr contains ordinary DNS name components supported by this resolver.
@@ -157,6 +163,7 @@ pub(crate) async fn resolve_dial_multiaddrs(
 ) -> Result<Vec<Multiaddr>, NetError> {
     resolve_multiaddr(addr, dnsaddr)
         .await
+        .map(filter_dialable)
         .map_err(|reason| NetError::Dial {
             target: addr.to_string(),
             reason: format!("DNS resolution failed: {reason}"),
@@ -176,6 +183,15 @@ async fn resolve_multiaddr(
     resolve_ordinary_dns_multiaddr(addr).await
 }
 
+#[cfg(target_arch = "wasm32")]
+async fn resolve_ordinary_dns_multiaddr(addr: &Multiaddr) -> Result<Vec<Multiaddr>, String> {
+    // Browser WebSocket/WebTransport/WebRTC transports must retain hostnames so
+    // the browser owns DNS, TLS validation and SNI. Rewriting `/dns*` to an IP
+    // here would break certificate validation for WSS and WebTransport.
+    Ok(vec![addr.clone()])
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 async fn resolve_ordinary_dns_multiaddr(addr: &Multiaddr) -> Result<Vec<Multiaddr>, String> {
     if !has_resolvable_dns(addr) {
         return Ok(vec![addr.clone()]);
@@ -294,68 +310,6 @@ async fn resolve_dnsaddr(
     Ok(dedup_multiaddrs(out))
 }
 
-async fn lookup_dnsaddr_txt(
-    query_name: &str,
-    dnsaddr: &DnsaddrConfig,
-) -> Result<Vec<String>, String> {
-    let timeout = dnsaddr.timeout();
-    let endpoint = dnsaddr.doh_endpoint.trim();
-    let client = reqwest::Client::builder()
-        .timeout(timeout)
-        .build()
-        .map_err(|err| err.to_string())?;
-
-    let response = tokio::time::timeout(
-        timeout,
-        client
-            .get(endpoint)
-            .header("accept", "application/dns-json")
-            .query(&[("name", query_name.trim_end_matches('.')), ("type", "TXT")])
-            .send(),
-    )
-    .await
-    .map_err(|_| format!("TXT lookup timed out for {query_name}"))?
-    .map_err(|err| err.to_string())?;
-
-    let status = response.status();
-    if !status.is_success() {
-        return Err(format!(
-            "TXT lookup for {query_name} failed with HTTP {status}"
-        ));
-    }
-
-    let body: DnsJsonResponse = response.json().await.map_err(|err| err.to_string())?;
-    let mut out = Vec::new();
-    for answer in body.answer.unwrap_or_default() {
-        if answer.record_type != DNS_TXT_RECORD_TYPE {
-            continue;
-        }
-        if answer.data.len() > MAX_DNSADDR_TXT_BYTES {
-            return Err(format!(
-                "TXT record exceeded {MAX_DNSADDR_TXT_BYTES} bytes for {query_name}"
-            ));
-        }
-        let text = decode_dnsaddr_txt_value(&answer.data)?;
-        if text.starts_with(DNSADDR_PREFIX) {
-            out.push(text);
-        }
-    }
-    Ok(out)
-}
-
-#[derive(Debug, Deserialize)]
-struct DnsJsonResponse {
-    #[serde(rename = "Answer")]
-    answer: Option<Vec<DnsJsonAnswer>>,
-}
-
-#[derive(Debug, Deserialize)]
-struct DnsJsonAnswer {
-    #[serde(rename = "type")]
-    record_type: u32,
-    data: String,
-}
-
 /// Decode the textual representation returned by DNS-over-HTTPS JSON APIs for
 /// one TXT record. This parser is intentionally pure so untrusted TXT syntax can
 /// be fuzzed independently from network I/O.
@@ -395,6 +349,7 @@ pub fn decode_dnsaddr_txt_value(data: &str) -> Result<String, String> {
     Ok(out)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Clone, Copy)]
 enum DnsFamily {
     Any,
@@ -402,6 +357,7 @@ enum DnsFamily {
     V6,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl DnsFamily {
     fn allows(self, ip: IpAddr) -> bool {
         matches!(
@@ -411,6 +367,7 @@ impl DnsFamily {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn first_dns_component(protocols: &[Protocol<'_>]) -> Option<(usize, String, DnsFamily)> {
     for (idx, protocol) in protocols.iter().enumerate() {
         match protocol {
@@ -451,6 +408,14 @@ fn multiaddr_ends_with(addr: &Multiaddr, suffix: &[Protocol<'static>]) -> bool {
         .map(Protocol::acquire)
         .collect::<Vec<Protocol<'static>>>();
     protocols.ends_with(suffix)
+}
+
+fn filter_dialable(addrs: Vec<Multiaddr>) -> Vec<Multiaddr> {
+    let capabilities = TransportCapabilities::default();
+    addrs
+        .into_iter()
+        .filter(|addr| capabilities.allows(addr))
+        .collect()
 }
 
 fn dedup_multiaddrs(addrs: Vec<Multiaddr>) -> Vec<Multiaddr> {

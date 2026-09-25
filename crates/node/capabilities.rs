@@ -44,6 +44,18 @@ pub fn apply_resolved_capabilities(raw: &NodeConfig, resolved: &ResolvedNodeConf
     if !resolved.should_listen {
         cfg.listen_addresses.clear();
     }
+    if matches!(resolved.role, NodeRole::WasmLite) {
+        cfg.listeners.tcp = false;
+        cfg.listeners.quic = false;
+        cfg.listeners.websocket = false;
+        cfg.listeners.webrtc_direct = false;
+        cfg.discovery.lan.enabled = false;
+        cfg.public_ip_probe.enabled = false;
+        cfg.relay.enabled = false;
+        cfg.mediator.enabled = false;
+        cfg.dcutr.enabled = false;
+        cfg.discovery.rendezvous.server_enabled = false;
+    }
 
     cfg
 }
@@ -57,6 +69,11 @@ fn effective_config_for_resolution(raw: &NodeConfig) -> NodeConfig {
 }
 
 fn resolve_role_for_environment(cfg: &NodeConfig, environment: &EnvironmentReport) -> NodeRole {
+    if matches!(cfg.profile, NodeProfile::Auto)
+        && matches!(environment.platform, super::environment::PlatformKind::Wasm)
+    {
+        return NodeRole::WasmLite;
+    }
     match cfg.profile {
         NodeProfile::Auto => explicit_config_role(cfg).unwrap_or(auto_role(environment)),
         NodeProfile::Full => NodeRole::Full,
@@ -82,6 +99,9 @@ fn explicit_config_role(cfg: &NodeConfig) -> Option<NodeRole> {
 }
 
 fn auto_role(environment: &EnvironmentReport) -> NodeRole {
+    if matches!(environment.platform, super::environment::PlatformKind::Wasm) {
+        return NodeRole::WasmLite;
+    }
     if environment.platform.is_mobile() || environment.background_restricted {
         return NodeRole::MobileLite;
     }
@@ -109,14 +129,22 @@ fn validate_resolved_config(
     let role = resolved.role;
     let behaviours = &resolved.enabled_behaviours;
 
-    if matches!(role, NodeRole::Lite | NodeRole::MobileLite) && behaviours.relay_server {
+    if matches!(
+        role,
+        NodeRole::Lite | NodeRole::MobileLite | NodeRole::WasmLite
+    ) && behaviours.relay_server
+    {
         return Err(config_error_at(
             "<capability-resolver>",
             "lite and mobile_lite profiles cannot enable relay server capability",
         ));
     }
 
-    if matches!(role, NodeRole::Lite | NodeRole::MobileLite) && behaviours.rendezvous_server {
+    if matches!(
+        role,
+        NodeRole::Lite | NodeRole::MobileLite | NodeRole::WasmLite
+    ) && behaviours.rendezvous_server
+    {
         return Err(config_error_at(
             "<capability-resolver>",
             "lite and mobile_lite profiles cannot enable rendezvous server capability",
@@ -186,10 +214,10 @@ fn validate_resolved_config(
         ));
     }
 
-    if matches!(role, NodeRole::MobileLite) && resolved.should_listen {
+    if matches!(role, NodeRole::MobileLite | NodeRole::WasmLite) && resolved.should_listen {
         return Err(config_error_at(
             "<capability-resolver>",
-            "mobile_lite resolved policy must not require public listen sockets",
+            "mobile_lite/wasm_lite resolved policy must not require public listen sockets",
         ));
     }
 

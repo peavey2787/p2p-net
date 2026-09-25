@@ -4,11 +4,14 @@ use std::time::Duration;
 
 use libp2p::{Multiaddr, PeerId};
 use tokio::sync::{broadcast, mpsc, oneshot, Mutex};
-use tokio::task::JoinHandle;
 
-use crate::api::{AppMessage, AppSubscription, NodeMetrics, P2PNode, PeerInfo};
+use crate::api::{
+    AppMessage, AppSubscription, LocalNodeBinding, NodeEvent, NodeEventSubscription, NodeMetrics,
+    P2PNode, PeerInfo,
+};
 use crate::common::error::NetError;
 use crate::connectivity::dns::{resolve_dial_multiaddrs, DnsaddrConfig};
+use crate::runtime::{self, TaskHandle};
 
 use super::snapshot::NodeSnapshot;
 
@@ -22,8 +25,9 @@ pub struct NodeHandle {
     pub(crate) snapshot_revision: Arc<AtomicU64>,
     pub(crate) command_tx: mpsc::Sender<NodeCommand>,
     pub(crate) messages_tx: broadcast::Sender<AppMessage>,
+    pub(crate) events_tx: broadcast::Sender<NodeEvent>,
     pub(crate) shutdown_tx: mpsc::Sender<()>,
-    pub(crate) task: Arc<Mutex<Option<JoinHandle<()>>>>,
+    pub(crate) task: Arc<Mutex<Option<TaskHandle>>>,
     pub(crate) dnsaddr: DnsaddrConfig,
 }
 
@@ -118,6 +122,31 @@ impl NodeHandle {
             .await
     }
 
+    /// Return the stable peer id plus currently advertised direct/relay dial addresses.
+    /// ICE, candidate pairs, and swarm internals never cross this boundary.
+    pub async fn local_binding(&self) -> LocalNodeBinding {
+        let snapshot = self.snapshot.lock().await;
+        let mut dial_addresses = snapshot.public_direct_listen_addresses.clone();
+        dial_addresses.extend(snapshot.relayed_listen_addresses.iter().cloned());
+        dial_addresses.sort();
+        dial_addresses.dedup();
+        LocalNodeBinding {
+            peer_id: self.peer_id.to_string(),
+            dial_addresses,
+        }
+    }
+
+    /// Subscribe to coarse transport-neutral node events.
+    #[must_use]
+    pub fn subscribe_events(&self) -> NodeEventSubscription {
+        NodeEventSubscription::new(self.events_tx.subscribe())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) async fn browser_wake(&self) -> Result<(), NetError> {
+        self.request(NodeCommand::Wake).await
+    }
+
     /// Request shutdown and wait for the swarm task to exit.
     pub async fn shutdown(&self) {
         // Shutdown must never wait for room in the signal channel. This is
@@ -125,16 +154,7 @@ impl NodeHandle {
         // gives the process a short cleanup window before terminating it.
         let _ = self.shutdown_tx.try_send(());
         if let Some(task) = self.task.lock().await.take() {
-            let mut task = task;
-            tokio::select! {
-                result = &mut task => {
-                    let _ = result;
-                }
-                _ = tokio::time::sleep(NODE_SHUTDOWN_GRACE) => {
-                    task.abort();
-                    let _ = task.await;
-                }
-            }
+            task.shutdown(NODE_SHUTDOWN_GRACE).await;
         }
     }
 
@@ -147,7 +167,7 @@ impl NodeHandle {
             .send(build(reply))
             .await
             .map_err(|_| NetError::ApiCommand("node command channel is closed".to_string()))?;
-        tokio::time::timeout(NODE_COMMAND_TIMEOUT, response)
+        runtime::timeout(NODE_COMMAND_TIMEOUT, response)
             .await
             .map_err(|_| {
                 NetError::ApiCommand(format!(
@@ -163,42 +183,26 @@ impl P2PNode for NodeHandle {
     async fn connect_peer(&self, addr: Multiaddr) -> Result<(), NetError> {
         NodeHandle::connect_peer(self, addr).await
     }
-
     async fn disconnect_peer(&self, peer_id: PeerId) -> Result<(), NetError> {
         NodeHandle::disconnect_peer(self, peer_id).await
     }
-
-    fn send_message<'a>(
+    async fn send_message<'a>(
         &'a self,
         peer_id: PeerId,
         topic: &'a str,
         payload: Vec<u8>,
-    ) -> impl std::future::Future<Output = Result<(), NetError>> + Send + 'a {
-        let topic = topic.to_string();
-        async move { NodeHandle::send_message(self, peer_id, topic, payload).await }
+    ) -> Result<(), NetError> {
+        NodeHandle::send_message(self, peer_id, topic.to_string(), payload).await
     }
-
-    fn broadcast<'a>(
-        &'a self,
-        topic: &'a str,
-        payload: Vec<u8>,
-    ) -> impl std::future::Future<Output = Result<(), NetError>> + Send + 'a {
-        let topic = topic.to_string();
-        async move { NodeHandle::broadcast(self, topic, payload).await }
+    async fn broadcast<'a>(&'a self, topic: &'a str, payload: Vec<u8>) -> Result<(), NetError> {
+        NodeHandle::broadcast(self, topic.to_string(), payload).await
     }
-
-    fn subscribe<'a>(
-        &'a self,
-        topic: &'a str,
-    ) -> impl std::future::Future<Output = Result<AppSubscription, NetError>> + Send + 'a {
-        let topic = topic.to_string();
-        async move { NodeHandle::subscribe(self, topic).await }
+    async fn subscribe<'a>(&'a self, topic: &'a str) -> Result<AppSubscription, NetError> {
+        NodeHandle::subscribe(self, topic.to_string()).await
     }
-
     async fn get_peers(&self) -> Result<Vec<PeerInfo>, NetError> {
         NodeHandle::get_peers(self).await
     }
-
     async fn get_metrics(&self, peer_id: Option<PeerId>) -> Result<NodeMetrics, NetError> {
         NodeHandle::get_metrics(self, peer_id).await
     }
@@ -233,4 +237,7 @@ pub(crate) enum NodeCommand {
         peer_id: Option<PeerId>,
         reply: oneshot::Sender<Result<NodeMetrics, NetError>>,
     },
+    /// Browser page-lifecycle wake (visibility/online events).
+    #[cfg(target_arch = "wasm32")]
+    Wake(oneshot::Sender<Result<(), NetError>>),
 }

@@ -43,6 +43,8 @@ pub struct NodeConfig {
     pub startup_peer_cache_probe: usize,
     /// Stable libp2p node identity key file. Created on first run and reused after that.
     pub identity_key_path: String,
+    /// Persistent native WebRTC certificate PEM. Keeping this stable preserves `/webrtc-direct/certhash` bootstrap addresses across restarts.
+    pub webrtc_certificate_path: String,
     /// Multiaddrs this node should listen on. Missing config uses safe shared-node defaults.
     pub listen_addresses: Vec<String>,
     /// Per-transport inbound listener switches. Disable WebSocket/WebRTC-direct when unused.
@@ -94,6 +96,7 @@ impl Default for NodeConfig {
             ping_interval_secs: 15,
             startup_peer_cache_probe: 5,
             identity_key_path: ".p2p-net-identity-key".to_string(),
+            webrtc_certificate_path: ".p2p-net-webrtc-cert.pem".to_string(),
             listen_addresses: default_listen_addresses(),
             listeners: ListenerConfig::default(),
             bootstrap_peers: Vec::new(),

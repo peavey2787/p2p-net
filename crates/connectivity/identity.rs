@@ -1,12 +1,16 @@
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
 
 use libp2p::identity::Keypair;
 
 use crate::common::error::NetError;
-use crate::platform::{DesktopPlatformRuntime, NodeStorage};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::platform::DesktopPlatformRuntime;
+use crate::platform::NodeStorage;
 
 /// Load a stable libp2p node identity key from the default desktop storage, or
 /// create and persist one on first run.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn load_or_create_identity_key(path: impl AsRef<Path>) -> Result<Keypair, NetError> {
     let path_s = path.as_ref().to_string_lossy().to_string();
     load_or_create_identity_key_with_storage(&path_s, &DesktopPlatformRuntime::default())

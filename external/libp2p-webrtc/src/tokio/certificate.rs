@@ -18,7 +18,6 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-use rand::{CryptoRng, Rng};
 use webrtc::peer_connection::certificate::RTCCertificate;
 
 use crate::tokio::fingerprint::Fingerprint;
@@ -33,10 +32,7 @@ impl Certificate {
     ///
     /// `_rng` argument is ignored for now. See <https://github.com/melekes/rust-libp2p/pull/12>.
     #[allow(clippy::unnecessary_wraps)]
-    pub fn generate<R>(_rng: &mut R) -> Result<Self, Error>
-    where
-        R: CryptoRng + Rng,
-    {
+    pub fn generate<R>(_rng: &mut R) -> Result<Self, Error> {
         let keypair = rcgen::KeyPair::generate().expect("keypair to be able to be generated");
         Ok(Self {
             inner: RTCCertificate::from_key_pair(keypair).expect("default params to work"),
@@ -97,13 +93,12 @@ enum Kind {
 
 #[cfg(all(test, feature = "pem"))]
 mod test {
-    use rand::thread_rng;
 
     use super::*;
 
     #[test]
     fn test_certificate_serialize_pem_and_from_pem() {
-        let cert = Certificate::generate(&mut thread_rng()).unwrap();
+        let cert = Certificate::generate(&mut rand::rng()).unwrap();
 
         let pem = cert.serialize_pem();
         let loaded_cert = Certificate::from_pem(&pem).unwrap();

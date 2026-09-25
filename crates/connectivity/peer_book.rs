@@ -5,7 +5,7 @@
 //! source instead of peeking only at the live swarm connection set.
 
 use std::collections::{BTreeSet, HashMap};
-use std::time::{SystemTime, UNIX_EPOCH};
+use web_time::{SystemTime, UNIX_EPOCH};
 
 use libp2p::{Multiaddr, PeerId};
 

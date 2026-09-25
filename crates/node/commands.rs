@@ -5,11 +5,13 @@ use libp2p::{PeerId, Swarm};
 use tokio::sync::Mutex;
 
 use crate::api::{
-    accounted_transport_bytes, app_ident_topic, encode_app_message, AppMessage, NodeMetrics,
+    accounted_transport_bytes, app_ident_topic, fragment_message, AppMessage, NodeMetrics,
     PeerSource,
 };
 use crate::common::error::NetError;
-use crate::connectivity::connection_strategy::{build_connection_plan, PendingConnectionPlans};
+use crate::connectivity::connection_strategy::{
+    build_connection_plan_with_capabilities, PendingConnectionPlans, TransportCapabilities,
+};
 use crate::connectivity::dcutr::DcutrPolicy;
 use crate::connectivity::peer_book::PeerBook;
 use crate::stack::{allow_dcutr_peer, extract_p2p_peer_id, MeshBehaviour};
@@ -62,11 +64,21 @@ pub(crate) async fn handle_node_command(command: NodeCommand, ctx: NodeCommandCo
                     auto_dial_stats.allow_peer(&peer);
                     allow_dcutr_peer(swarm, peer);
                     peer_book.record_addr(peer, addr.clone(), PeerSource::Manual);
-                    let plan = build_connection_plan(addr, peer_book, dcutr_policy);
+                    let plan = build_connection_plan_with_capabilities(
+                        addr,
+                        peer_book,
+                        dcutr_policy,
+                        &TransportCapabilities::default(),
+                    );
                     dial_connection_plan(swarm, pending_connections, &plan)
                 }
             } else {
-                let plan = build_connection_plan(addr, peer_book, dcutr_policy);
+                let plan = build_connection_plan_with_capabilities(
+                    addr,
+                    peer_book,
+                    dcutr_policy,
+                    &TransportCapabilities::default(),
+                );
                 dial_connection_plan(swarm, pending_connections, &plan)
             };
             let success = result.is_ok();
@@ -141,6 +153,37 @@ pub(crate) async fn handle_node_command(command: NodeCommand, ctx: NodeCommandCo
             let _ = reply.send(Ok(metrics.for_peer(peer_id)));
             (true, false)
         }
+        #[cfg(target_arch = "wasm32")]
+        NodeCommand::Wake(reply) => {
+            // Browser lifecycle wake: re-attempt a bounded set of known peer addresses.
+            // Capability filtering happens inside the normal connection planner.
+            let mut attempts = 0usize;
+            for peer in peer_book.peers().into_iter().filter(|peer| !peer.connected) {
+                if attempts >= 8 {
+                    break;
+                }
+                for raw in peer.addresses.iter().take(2) {
+                    let Ok(addr) = raw.parse() else {
+                        continue;
+                    };
+                    let plan = build_connection_plan_with_capabilities(
+                        addr,
+                        peer_book,
+                        dcutr_policy,
+                        &TransportCapabilities::default(),
+                    );
+                    if !plan.attempts.is_empty() {
+                        let _ = dial_connection_plan(swarm, pending_connections, &plan);
+                        attempts = attempts.saturating_add(1);
+                    }
+                    if attempts >= 8 {
+                        break;
+                    }
+                }
+            }
+            let _ = reply.send(Ok(()));
+            (true, false)
+        }
     };
 
     let mut guard = snapshot.lock().await;
@@ -162,17 +205,20 @@ fn publish_app_message(
     message: AppMessage,
 ) -> Result<u64, NetError> {
     let topic_handle = app_ident_topic(message.network_id, &message.topic)?;
-    let wire = encode_app_message(&message)?;
-    let accounted_bytes = accounted_transport_bytes(wire.len());
-    swarm
-        .behaviour_mut()
-        .gossipsub
-        .publish(topic_handle, wire)
-        .map(|_| accounted_bytes)
-        .map_err(|err| NetError::AppMessage {
-            topic: message.topic,
-            reason: err.to_string(),
-        })
+    let wires = fragment_message(&message)?;
+    let mut accounted_bytes = 0u64;
+    for wire in wires {
+        accounted_bytes = accounted_bytes.saturating_add(accounted_transport_bytes(wire.len()));
+        swarm
+            .behaviour_mut()
+            .gossipsub
+            .publish(topic_handle.clone(), wire)
+            .map_err(|err| NetError::AppMessage {
+                topic: message.topic.clone(),
+                reason: err.to_string(),
+            })?;
+    }
+    Ok(accounted_bytes)
 }
 
 async fn subscribe_app_topic(
