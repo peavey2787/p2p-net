@@ -24,6 +24,7 @@ The production validation path **does not modify dependency or source inputs**. 
 cargo metadata --locked --format-version 1
 cargo fmt --all -- --check
 cargo test --workspace --locked -j 1
+cargo test --manifest-path external/libp2p-webrtc/Cargo.toml --locked --all-features -j 1  # via qa/tools/run-webrtc-companion-tests.*
 cargo test --features dashboard --locked -j 1
 cargo clippy --workspace --all-targets --all-features --locked -j 1 -- -D warnings
 cargo audit --file Cargo.lock  # root launcher stages qa/ci/audit.toml to .cargo/audit.toml
@@ -41,6 +42,8 @@ Defaults:
 - On `x86_64-pc-windows-msvc`, `run-full-validation.cmd` locates Visual Studio Build Tools with the installed `vswhere.exe`, initializes `VsDevCmd.bat`, verifies an x64 `ucrt.lib`, and compiles a temporary Rust link smoke test before cleaning or running Cargo validation. If that preflight reports a missing Universal CRT, repair/modify Visual Studio Build Tools and install the **Windows Universal CRT SDK** plus a **Windows 11 SDK** before rerunning.
 - Fuzz targets are included under `qa/fuzz/`. The scheduled security workflow uses pinned `nightly-2026-08-20` and `cargo-fuzz 0.13.2`, invoking every fuzz command from the repository root with `--fuzz-dir qa/fuzz` so the nested harness is resolved explicitly.
 - GitHub Actions checkout is pinned to an immutable commit SHA and uses read-only repository permissions with credential persistence disabled.
+
+The `p2p-net-webrtc` companion stays outside the production workspace, so `cargo test --workspace` does not run its unit, smoke, and doc tests. The `tests` stage runs them next through `qa/tools/run-webrtc-companion-tests.sh` (Linux/macOS) or `qa/tools/run-webrtc-companion-tests.ps1` (Windows). The helper seeds the companion's Git-ignored `external/libp2p-webrtc/Cargo.lock` from the audited root `Cargo.lock`, lets Cargo prune it to the companion graph, fails if any remaining package version is not pinned by the root lockfile, and then runs the tests with `--locked`. The companion smoke test exercises WebRTC-direct dialing at the transport level, independent of p2p-net discovery, so a dial that never opens its Noise data channel fails there directly.
 
 The three `#[ignore]` markers on `multi_node_hostile` are scheduling markers, not omissions. They keep the normal `cargo test --workspace` phase from running the expensive tests twice. The canonical launchers always execute each deferred test explicitly after Clippy/audit/deny, with the one-minute soak test last. The hostile relay and connection-churn tests create their own loopback peers, so they no longer silently return when external environment variables are missing.
 
