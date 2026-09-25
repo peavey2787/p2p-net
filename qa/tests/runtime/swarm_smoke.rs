@@ -80,7 +80,9 @@ async fn same_lan_nodes_auto_connect_without_manual_dial_within_60s() {
 
     wait_for_both_connected(&alice, bob.peer_id, &bob, alice.peer_id)
         .await
-        .expect("same-LAN nodes should auto-connect without connect_peer within 60s");
+        .unwrap_or_else(|err| {
+            panic!("same-LAN nodes should auto-connect without connect_peer within 60s: {err}")
+        });
 
     alice.shutdown().await;
     bob.shutdown().await;
@@ -94,8 +96,14 @@ async fn same_lan_nodes_auto_connect_without_manual_dial_within_60s() {
 
 #[tokio::test]
 async fn native_webrtc_direct_transport_connects_two_start_node_instances_within_60s() {
-    let alice_cfg = test_node_config("webrtc-direct-alice");
-    let bob_cfg = test_node_config("webrtc-direct-bob");
+    let mut alice_cfg = test_node_config("webrtc-direct-alice");
+    let mut bob_cfg = test_node_config("webrtc-direct-bob");
+    // LAN discovery would auto-connect these same-host nodes over another
+    // transport and pass this test even when the webrtc-direct dial fails
+    // (only GitHub-hosted macOS, which blocks multicast, used to catch that).
+    for cfg in [&mut alice_cfg, &mut bob_cfg] {
+        cfg.discovery.lan.enabled = false;
+    }
     let alice_key = alice_cfg.identity_key_path.clone();
     let alice_cache = alice_cfg.discovery.peer_cache_path.clone();
     let bob_key = bob_cfg.identity_key_path.clone();
@@ -118,7 +126,9 @@ async fn native_webrtc_direct_transport_connects_two_start_node_instances_within
 
     wait_for_both_connected(&alice, bob.peer_id, &bob, alice.peer_id)
         .await
-        .expect("both nodes should report native webrtc-direct connection within 60s");
+        .unwrap_or_else(|err| {
+            panic!("both nodes should report native webrtc-direct connection within 60s: {err}")
+        });
     let alice_metrics = alice
         .get_metrics(Some(bob.peer_id))
         .await
@@ -221,7 +231,7 @@ async fn wait_for_both_connected(
     second: &NodeHandle,
     second_peer: PeerId,
 ) -> Result<(), String> {
-    tokio::time::timeout(Duration::from_secs(60), async {
+    let connected = tokio::time::timeout(Duration::from_secs(60), async {
         loop {
             let first_connected = peer_connected(first, first_peer).await?;
             let second_connected = peer_connected(second, second_peer).await?;
@@ -231,12 +241,36 @@ async fn wait_for_both_connected(
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
     })
-    .await
-    .map_err(|_| {
-        format!(
-            "timed out waiting for {first_peer} and {second_peer} to connect over native webrtc-direct"
-        )
-    })?
+    .await;
+    match connected {
+        Ok(result) => result,
+        // Include each node's own view so a failure seen on only one CI runner
+        // reports its dial/listener errors rather than just the timeout.
+        Err(_) => Err(format!(
+            "timed out waiting for {first_peer} and {second_peer} to connect\n{}\n{}",
+            node_diagnostics(first).await,
+            node_diagnostics(second).await
+        )),
+    }
+}
+
+async fn node_diagnostics(handle: &NodeHandle) -> String {
+    const RECENT_PULSES: usize = 40;
+    let snapshot = handle.snapshot.lock().await;
+    let skip = snapshot.pulses.len().saturating_sub(RECENT_PULSES);
+    let pulses: Vec<&str> = snapshot
+        .pulses
+        .iter()
+        .skip(skip)
+        .map(String::as_str)
+        .collect();
+    format!(
+        "--- node {} ---\nlisten addresses: {:?}\nlast dial error: {:?}\nrecent pulses:\n  {}",
+        handle.peer_id,
+        snapshot.local_listen_addresses,
+        snapshot.last_application_dial_error,
+        pulses.join("\n  ")
+    )
 }
 
 async fn peer_connected(handle: &NodeHandle, peer: PeerId) -> Result<bool, String> {

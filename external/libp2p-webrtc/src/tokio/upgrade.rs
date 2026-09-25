@@ -176,6 +176,14 @@ async fn outbound_inner(
         new_outbound_connection(addr, config, udp_mux.clone(), ufrag).await?,
     );
 
+    // Create the Noise data channel before the offer. webrtc-rs only puts an
+    // `m=application` section (with `a=sctp-port`) into an offer once a data
+    // channel exists, and webrtc 0.17 (unlike 0.12) starts SCTP only when both
+    // the local and remote descriptions carry an SCTP port. Creating the channel
+    // after the offer left the dialer's SCTP transport unstarted, so the Noise
+    // channel never opened and every outbound dial hit the setup timeout.
+    let noise_channel = create_noise_data_channel(peer_connection.get()).await?;
+
     let offer = peer_connection.get().create_offer(None).await?;
     tracing::debug!(offer=%offer.sdp, "created SDP offer for outbound connection");
     peer_connection.get().set_local_description(offer).await?;
@@ -184,7 +192,7 @@ async fn outbound_inner(
     tracing::debug!(?answer, "calculated SDP answer for outbound connection");
     peer_connection.get().set_remote_description(answer).await?; // This will start the gathering of ICE candidates.
 
-    let data_channel = create_substream_for_noise_handshake(peer_connection.get()).await?;
+    let data_channel = wait_for_noise_substream(noise_channel).await?;
     let peer_id = noise::outbound(
         id_keys,
         data_channel,
@@ -368,6 +376,14 @@ async fn get_remote_fingerprint(conn: &RTCPeerConnection) -> Fingerprint {
 }
 
 async fn create_substream_for_noise_handshake(conn: &RTCPeerConnection) -> Result<Stream, Error> {
+    let noise_channel = create_noise_data_channel(conn).await?;
+    wait_for_noise_substream(noise_channel).await
+}
+
+/// Creates the negotiated Noise data channel; the receiver yields it once it is open.
+async fn create_noise_data_channel(
+    conn: &RTCPeerConnection,
+) -> Result<oneshot::Receiver<Arc<DataChannel>>, Error> {
     // NOTE: the data channel w/ `negotiated` flag set to `true` MUST be created on both ends.
     let data_channel = conn
         .create_data_channel(
@@ -381,20 +397,27 @@ async fn create_substream_for_noise_handshake(conn: &RTCPeerConnection) -> Resul
 
     let (tx, rx) = oneshot::channel::<Arc<DataChannel>>();
 
-    // Wait until the data channel is opened and detach it.
+    // Detach the data channel once it is opened.
     crate::tokio::connection::register_data_channel_open_handler(data_channel, tx).await;
 
-    let channel = match futures::future::select(rx, Delay::new(Duration::from_secs(10))).await {
-        Either::Left((Ok(channel), _)) => channel,
-        Either::Left((Err(_), _)) => {
-            return Err(Error::Internal("failed to open data channel".to_owned()))
-        }
-        Either::Right(((), _)) => {
-            return Err(Error::Internal(
-                "data channel opening took longer than 10 seconds (see logs)".into(),
-            ))
-        }
-    };
+    Ok(rx)
+}
+
+async fn wait_for_noise_substream(
+    noise_channel: oneshot::Receiver<Arc<DataChannel>>,
+) -> Result<Stream, Error> {
+    let channel =
+        match futures::future::select(noise_channel, Delay::new(Duration::from_secs(10))).await {
+            Either::Left((Ok(channel), _)) => channel,
+            Either::Left((Err(_), _)) => {
+                return Err(Error::Internal("failed to open data channel".to_owned()))
+            }
+            Either::Right(((), _)) => {
+                return Err(Error::Internal(
+                    "data channel opening took longer than 10 seconds (see logs)".into(),
+                ))
+            }
+        };
 
     let (substream, drop_listener) = Stream::new(channel);
     drop(drop_listener); // Don't care about cancelled substreams during initial handshake.

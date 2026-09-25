@@ -3,6 +3,7 @@
 - Rebase the hardened transport onto the rust-libp2p 0.57 generation: `libp2p-core` 0.44, `libp2p-identity` 0.3, `libp2p-noise` 0.47, `libp2p-webrtc-utils` 0.5, `webrtc` 0.17, `stun` 0.17, and `rand` 0.10.
 - Preserve p2p-net hardening for bounded/expiring half-open UDP state, failed/cancelled connection cleanup, setup timeout, close-on-drop, constrained SRTP profiles, fuzzing support, and smoke tests.
 - Retain PEM certificate serialization support for stable WebRTC-direct certificate persistence.
+- Create the dialer's negotiated Noise data channel before its SDP offer. `webrtc` 0.17 starts SCTP only when both local and remote descriptions carry an SCTP port, and an offer created before any data channel has no `m=application` section, so outbound dials never opened the Noise channel and timed out.
 
 ## 0.9.0-alpha.1
 
