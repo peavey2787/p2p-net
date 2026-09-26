@@ -184,7 +184,10 @@ async fn fetch_public_ip(client: &reqwest::Client, endpoint: &str) -> Result<IpA
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn synthesize_external_addresses(ip: IpAddr, listen_addresses: &[String]) -> Vec<Multiaddr> {
+pub(crate) fn synthesize_external_addresses(
+    ip: IpAddr,
+    listen_addresses: &[String],
+) -> Vec<Multiaddr> {
     let mut addresses = Vec::new();
     for raw in listen_addresses {
         let Ok(addr) = raw.parse::<Multiaddr>() else {
@@ -294,6 +297,20 @@ mod tests {
         assert_eq!(
             addrs.iter().map(ToString::to_string).collect::<Vec<_>>(),
             vec!["/ip4/8.8.8.8/udp/4001/quic-v1".to_string()]
+        );
+    }
+
+    #[test]
+    fn bound_webrtc_direct_listeners_keep_port_and_certhash() {
+        let bound = "/ip4/0.0.0.0/udp/55185/webrtc-direct/certhash/uEiCgWErqC4hDA7fiZBX-YNM5s3csqr1yRznwNSf0zqCA5g";
+        let addrs = synthesize_external_addresses(
+            IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)),
+            &[bound.to_string()],
+        );
+
+        assert_eq!(
+            addrs.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            vec![bound.replace("0.0.0.0", "8.8.8.8")]
         );
     }
 

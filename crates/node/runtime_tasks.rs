@@ -21,7 +21,7 @@ use crate::stack::MeshBehaviour;
 #[cfg(not(target_arch = "wasm32"))]
 use super::config::NodeConfig;
 #[cfg(not(target_arch = "wasm32"))]
-use super::public_ip::PublicIpProbeResult;
+use super::public_ip::{synthesize_external_addresses, PublicIpProbeResult};
 use super::push_pulse;
 use super::snapshot::NodeSnapshot;
 
@@ -57,6 +57,20 @@ pub(crate) async fn apply_public_ip_probe_result(
     dht_state: &mut DhtProviderState,
     rendezvous_peer_count: usize,
 ) {
+    let mut result = result;
+    // Configured listen addresses may use an ephemeral port (and webrtc-direct
+    // needs the listener's certhash), so also synthesize from what is bound.
+    if let (true, Some(ip)) = (
+        cfg.public_ip_probe.advertise_listen_addresses,
+        result.public_ip.as_deref().and_then(|ip| ip.parse().ok()),
+    ) {
+        let bound: Vec<String> = swarm.listeners().map(ToString::to_string).collect();
+        for addr in synthesize_external_addresses(ip, &bound) {
+            if !result.external_addresses.contains(&addr) {
+                result.external_addresses.push(addr);
+            }
+        }
+    }
     for addr in &result.external_addresses {
         add_external_address_candidate(swarm, addr.clone());
     }
