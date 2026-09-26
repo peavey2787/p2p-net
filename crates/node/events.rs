@@ -34,6 +34,7 @@ mod connection;
 mod dcutr;
 mod gossip;
 mod kademlia;
+mod presence;
 mod relay_client;
 mod relay_server;
 mod rendezvous;
@@ -309,6 +310,7 @@ pub(crate) async fn handle_swarm_event(
             peer_id,
             connection_id,
             endpoint,
+            num_established,
             ..
         } => {
             let remote_addr = endpoint.get_remote_address().clone();
@@ -328,9 +330,11 @@ pub(crate) async fn handle_swarm_event(
                 ctx,
             )
             .await;
-            let _ = ctx.node_events.send(NodeEvent::PeerConnected {
-                peer_id: peer_id.to_string(),
-            });
+            if presence::is_first_connection(num_established.get()) {
+                let _ = ctx.node_events.send(NodeEvent::PeerConnected {
+                    peer_id: peer_id.to_string(),
+                });
+            }
             if swarm.connected_peers().take(2).count() == 1 {
                 let _ = ctx.node_events.send(NodeEvent::Online);
             }
@@ -338,12 +342,15 @@ pub(crate) async fn handle_swarm_event(
         SwarmEvent::ConnectionClosed {
             peer_id,
             connection_id,
+            num_established,
             ..
         } => {
             connection::handle_connection_closed(peer_id, connection_id, swarm, ctx).await;
-            let _ = ctx.node_events.send(NodeEvent::PeerDisconnected {
-                peer_id: peer_id.to_string(),
-            });
+            if presence::is_last_connection(num_established) {
+                let _ = ctx.node_events.send(NodeEvent::PeerDisconnected {
+                    peer_id: peer_id.to_string(),
+                });
+            }
             if swarm.connected_peers().next().is_none() {
                 let _ = ctx.node_events.send(NodeEvent::Offline);
             }

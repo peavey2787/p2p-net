@@ -205,8 +205,21 @@ fn rewrite_listen_ip(addr: &Multiaddr, public_ip: IpAddr) -> Option<Multiaddr> {
     let mut rewritten = Multiaddr::empty();
     let mut replaced_ip = false;
 
+    let mut webrtc_direct = false;
+    let mut certhash = false;
     for protocol in addr.iter() {
         match (protocol, public_ip) {
+            // An ephemeral port is only known after binding; advertising
+            // `/tcp/0` or `/udp/0` hands peers an undialable address.
+            (Protocol::Tcp(0), _) | (Protocol::Udp(0), _) => return None,
+            (Protocol::WebRTCDirect, _) => {
+                webrtc_direct = true;
+                rewritten.push(Protocol::WebRTCDirect);
+            }
+            (Protocol::Certhash(hash), _) => {
+                certhash = true;
+                rewritten.push(Protocol::Certhash(hash));
+            }
             (Protocol::Ip4(listen_ip), IpAddr::V4(public_ip)) => {
                 if listen_ip.is_loopback() {
                     return None;
@@ -227,7 +240,8 @@ fn rewrite_listen_ip(addr: &Multiaddr, public_ip: IpAddr) -> Option<Multiaddr> {
         }
     }
 
-    replaced_ip.then_some(rewritten)
+    // WebRTC-direct is only dialable with the listener's certificate hash.
+    (replaced_ip && (certhash || !webrtc_direct)).then_some(rewritten)
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -263,6 +277,24 @@ mod tests {
         assert!(addrs
             .iter()
             .any(|addr| addr.to_string() == "/ip4/8.8.8.8/tcp/4001"));
+    }
+
+    #[test]
+    fn ephemeral_ports_and_certhashless_webrtc_are_never_advertised() {
+        let addrs = synthesize_external_addresses(
+            IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)),
+            &[
+                "/ip4/0.0.0.0/tcp/0".to_string(),
+                "/ip4/0.0.0.0/udp/0/webrtc-direct".to_string(),
+                "/ip4/0.0.0.0/udp/4001/webrtc-direct".to_string(),
+                "/ip4/0.0.0.0/udp/4001/quic-v1".to_string(),
+            ],
+        );
+
+        assert_eq!(
+            addrs.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            vec!["/ip4/8.8.8.8/udp/4001/quic-v1".to_string()]
+        );
     }
 
     #[test]
