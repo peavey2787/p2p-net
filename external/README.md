@@ -1,9 +1,10 @@
 # External / companion source
 
 Audited third-party-derived source and publishable companion crates live here.
-The hardened `p2p-net-webrtc` companion is published independently because its
-source is derived from the MIT-licensed rust-libp2p WebRTC transport, while the
-root `p2p-net` crate keeps its own package/license boundary. The
+The hardened `p2p-net-webrtc` and metered `p2p-net-relay` companions are
+published independently because their source is derived from the MIT-licensed
+rust-libp2p WebRTC transport and Circuit Relay v2 implementation, while the root
+`p2p-net` crate keeps its own package/license boundary. The
 `libp2p-dns` and `libp2p-mdns-placeholder` directories are non-publishable,
 lock-resolution-only patches used by the checked-in `.cargo/config.toml` so
 rust-libp2p 0.57 weak optional feature references cannot reintroduce Hickory

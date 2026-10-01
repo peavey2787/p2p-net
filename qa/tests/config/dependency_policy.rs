@@ -19,8 +19,20 @@ fn crates_io_manifest_is_publishable_without_manifest_patches() {
     assert!(manifest.contains("publish = true"));
     assert!(manifest.contains("rust-version = \"1.98\""));
     assert!(manifest.contains("members = [\"apps/android/native\"]"));
-    assert!(manifest.contains("exclude = [\"qa/fuzz\", \"external/libp2p-webrtc\"]"));
+    assert!(manifest.contains(
+        "exclude = [\"qa/fuzz\", \"external/libp2p-webrtc\", \"external/libp2p-relay\"]"
+    ));
     assert!(manifest.contains("\"external/libp2p-webrtc/**\""));
+    assert!(manifest.contains("\"external/libp2p-relay/**\""));
+    // Circuit Relay comes from the metered p2p-net-relay companion, never from
+    // libp2p's own `relay` feature (which would bypass relay metering).
+    assert!(manifest.contains(
+        "libp2p-relay = { package = \"p2p-net-relay\", version = \"0.1.0\", path = \"external/libp2p-relay\" }"
+    ));
+    assert!(
+        !manifest.lines().any(|line| line.trim() == "\"relay\","),
+        "the libp2p `relay` feature must stay disabled; relay must be the metered companion"
+    );
     assert!(manifest.contains("dns = []"));
     assert!(manifest.contains("libp2p-websocket = \"0.46.0\""));
     assert!(

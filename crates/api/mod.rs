@@ -164,10 +164,36 @@ pub struct LocalNodeBinding {
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum NodeEvent {
     LocalBindingChanged(LocalNodeBinding),
-    PeerConnected { peer_id: String },
-    PeerDisconnected { peer_id: String },
+    PeerConnected {
+        peer_id: String,
+    },
+    PeerDisconnected {
+        peer_id: String,
+    },
     Online,
     Offline,
+    /// This node, acting as a Circuit Relay, accepted a circuit.
+    RelayCircuitOpened {
+        circuit_id: u64,
+        src_peer_id: String,
+        dst_peer_id: String,
+    },
+    /// Coalesced progress of an open relay circuit (never per packet).
+    RelayCircuitUsage {
+        circuit_id: u64,
+        bytes_src_to_dst: u64,
+        bytes_dst_to_src: u64,
+    },
+    /// A relay circuit ended; byte totals are exact and final.
+    RelayCircuitClosed {
+        circuit_id: u64,
+        src_peer_id: String,
+        dst_peer_id: String,
+        bytes_src_to_dst: u64,
+        bytes_dst_to_src: u64,
+        duration_ms: u64,
+        close_reason: crate::connectivity::relay::RelayCircuitCloseReason,
+    },
 }
 
 /// Stable application-facing node operations.

@@ -289,8 +289,11 @@ fn profile_decisions_are_not_duplicated_in_startup_or_stack_layers() {
 #[test]
 fn snapshot_json_uses_derived_serialization_instead_of_duplicate_field_mapping() {
     let root = manifest_dir();
-    let node_snapshot =
-        fs::read_to_string(root.join("crates/node/snapshot.rs")).expect("node snapshot");
+    // The snapshot core and its helper module (which holds snapshot_to_json).
+    let node_snapshot = fs::read_to_string(root.join("crates/node/snapshot.rs"))
+        .expect("node snapshot")
+        + &fs::read_to_string(root.join("crates/node/snapshot/helpers.rs"))
+            .expect("node snapshot helpers");
 
     assert!(
         node_snapshot.contains("serde::Serialize"),

@@ -17,3 +17,7 @@ pub(crate) fn network_label(network_id: u32) -> String {
         format!("TESTNET-{network_id}")
     }
 }
+
+pub fn snapshot_to_json(snapshot: &super::NodeSnapshot) -> serde_json::Value {
+    serde_json::to_value(snapshot).unwrap_or(serde_json::Value::Null)
+}

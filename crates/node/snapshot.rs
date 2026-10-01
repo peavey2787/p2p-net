@@ -2,16 +2,16 @@
 
 use std::collections::VecDeque;
 
-use serde_json::Value;
-
-use crate::connectivity::relay::{RelayServiceHealth, RelayState};
+use crate::connectivity::relay::{RelayServiceHealth, RelayState, RelayUsageSnapshot};
 
 mod dial_addresses;
 mod helpers;
+mod relay_usage;
 
 pub(crate) use helpers::network_label;
 #[cfg(not(target_arch = "wasm32"))]
 use helpers::push_unique_recent;
+pub use helpers::snapshot_to_json;
 
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct NodeSnapshot {
@@ -103,8 +103,9 @@ pub struct NodeSnapshot {
     /// Active circuits currently served by this node as a relay server.
     pub relay_active_circuits: usize,
     pub relay_denied_requests: usize,
-    /// Bytes forwarded by this relay server when byte accounting is available.
+    /// Relay transit bytes (each forwarded byte once) from per-circuit metering.
     pub relay_bytes_forwarded: u64,
+    pub relay_usage: RelayUsageSnapshot,
     pub relay_denied_reservations: usize,
     pub relay_denied_circuits: usize,
     pub relay_rate_limited_events: usize,
@@ -219,9 +220,8 @@ impl NodeSnapshot {
         self.relay_rate_limited_events = relay_state.rate_limited_events;
         self.relay_at_capacity_events = relay_state.at_capacity_events;
         self.relay_server_errors = relay_state.server_errors;
-        self.relay_bytes_forwarded = relay_state.relay_bytes_forwarded;
         self.relayed_listen_addresses = relay_state.relayed_listen_addrs.iter().cloned().collect();
-        self.apply_private_relayed(relay_state);
+        self.apply_relay_extensions(relay_state);
         if self.public_addr.is_none() {
             self.public_addr = self.relayed_listen_addresses.first().cloned();
         }
@@ -233,8 +233,4 @@ impl NodeSnapshot {
         self.dcutr_upgrade_eligible_connections = relay_state.dcutr_upgrade_eligible_connections;
         self.dcutr_retry_suppressed = relay_state.dcutr_retry_suppressed;
     }
-}
-
-pub fn snapshot_to_json(snapshot: &NodeSnapshot) -> Value {
-    serde_json::to_value(snapshot).unwrap_or(Value::Null)
 }

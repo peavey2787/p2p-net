@@ -121,6 +121,15 @@ pub(in crate::node::runtime) async fn run_node_runtime(ctx: NodeRuntimeContext) 
                 snapshot_revision.fetch_add(1, Ordering::Relaxed);
             }
             _ = observability_ticker.tick() => {
+                if events::report_relay_usage(
+                    &snapshot,
+                    &mut runtime_state.relay_state,
+                    &events_tx,
+                )
+                .await
+                {
+                    snapshot_revision.fetch_add(1, Ordering::Relaxed);
+                }
                 if observability::flush_observability(
                     &cfg,
                     &snapshot,

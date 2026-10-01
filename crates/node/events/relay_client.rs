@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use libp2p::relay;
 use libp2p::{Multiaddr, Swarm};
+use libp2p_relay as relay;
 use tokio::sync::Mutex;
 
 use super::super::snapshot::NodeSnapshot;

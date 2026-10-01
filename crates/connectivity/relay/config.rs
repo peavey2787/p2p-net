@@ -155,8 +155,8 @@ impl RelayServiceConfig {
         }
     }
 
-    pub fn to_libp2p_config(&self) -> libp2p::relay::Config {
-        let mut cfg = libp2p::relay::Config {
+    pub fn to_libp2p_config(&self) -> libp2p_relay::Config {
+        let mut cfg = libp2p_relay::Config {
             max_reservations: self.max_reservations,
             max_reservations_per_peer: self.max_reservations_per_peer,
             reservation_duration: Duration::from_secs(self.reservation_duration_secs),

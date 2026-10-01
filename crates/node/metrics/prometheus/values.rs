@@ -133,6 +133,12 @@ pub(super) fn snapshot_metric_values(s: &NodeSnapshot) -> Vec<(&'static str, Str
         metric("p2p_relay_active_circuits", s.relay_active_circuits),
         metric("p2p_relay_denied_requests", s.relay_denied_requests),
         metric("p2p_relay_bytes_forwarded", s.relay_bytes_forwarded),
+        metric("p2p_relay_bytes_src_to_dst", s.relay_usage.bytes_src_to_dst),
+        metric("p2p_relay_bytes_dst_to_src", s.relay_usage.bytes_dst_to_src),
+        metric(
+            "p2p_relay_circuits_completed",
+            s.relay_usage.completed_circuits,
+        ),
         metric(
             "p2p_relay_discovery_enabled",
             flag(s.relay_discovery_enabled),

@@ -40,6 +40,8 @@ mod relay_server;
 mod rendezvous;
 
 pub(crate) use relay_server::enforce_relay_schedule;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) use relay_server::report_relay_usage;
 
 #[derive(Debug, Default)]
 pub(crate) struct ObservabilityBatch {
@@ -408,7 +410,7 @@ pub(crate) async fn handle_swarm_event(
             relay_client::handle_event(ev, swarm, ctx.snapshot, ctx.relay_state).await;
         }
         SwarmEvent::Behaviour(MeshEvent::RelayServer(ev)) => {
-            relay_server::handle_event(ev, ctx.snapshot, ctx.relay_state).await;
+            relay_server::handle_event(ev, ctx.snapshot, ctx.relay_state, ctx.node_events).await;
         }
         SwarmEvent::Behaviour(MeshEvent::Dcutr(ev)) => {
             dcutr::handle_event(ev, ctx.snapshot, ctx.relay_state, ctx.dcutr_policy).await;

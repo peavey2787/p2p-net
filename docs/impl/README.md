@@ -16,4 +16,5 @@ transports, runtime policies, bindings, discovery, and observability.
 - `MEDIATOR.md` — first-class mediator role mapped to relay-server capability.
 - `PLATFORM_RUNTIME.md` — platform runtime and storage adapter boundaries.
 - `RELAY_DISCOVERY.md` — relay candidate selection and reservation policy.
+- `RELAY_METERING.md` — billing-grade per-circuit Circuit Relay metering and its accounting boundary.
 - `PUBLIC_FALLBACK_IMPLEMENTATION.md` documents how the startup policy is wired.

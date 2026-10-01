@@ -370,6 +370,7 @@ if should_run tests; then
   echo "NOTE: The Rust harness will report three long hostile/load tests as ignored in this normal phase. They are deferred, not omitted: this runner executes each one once at the end, with the soak test last."
   run_step "Tests" cargo test --workspace --locked -j 1
   run_step "WebRTC companion tests" bash "$ROOT/qa/tools/run-webrtc-companion-tests.sh"
+  run_step "Relay companion tests" bash "$ROOT/qa/tools/run-relay-companion-tests.sh"
 fi
 
 if should_run dashboard; then

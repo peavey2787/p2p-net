@@ -10,10 +10,10 @@ use libp2p::gossipsub;
 use libp2p::identify;
 use libp2p::kad;
 use libp2p::ping;
-use libp2p::relay;
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::PeerId;
+use libp2p_relay as relay;
 use libp2p_rendezvous as rendezvous;
 
 use crate::connectivity::discovery::DiscoveryConfig;

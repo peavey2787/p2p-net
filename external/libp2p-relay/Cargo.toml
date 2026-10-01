@@ -1,0 +1,70 @@
+[package]
+name = "p2p-net-relay"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98"
+authors = ["Parity Technologies <admin@parity.io>", "Max Inden <mail@max-inden.de>"]
+description = "Circuit Relay v2 for p2p-net: rust-libp2p libp2p-relay 0.22.0 with exact per-circuit, per-direction byte metering."
+readme = "README.md"
+keywords = ["peer-to-peer", "libp2p", "networking"]
+categories = ["network-programming", "asynchronous"]
+license = "MIT"
+repository = "https://github.com/peavey2787/p2p-net"
+homepage = "https://github.com/peavey2787/p2p-net"
+documentation = "https://docs.rs/p2p-net-relay"
+publish = true
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lib]
+name = "libp2p_relay"
+path = "src/lib.rs"
+
+[[test]]
+name = "lib"
+path = "tests/lib.rs"
+
+[dependencies]
+asynchronous-codec = "0.7"
+bytes = "1.12"
+either = "1.16"
+futures = "0.3"
+futures-bounded = { version = "0.3", features = ["futures-timer"] }
+futures-timer = "3.0"
+libp2p-core = "0.44.0"
+libp2p-identity = "0.3.0"
+libp2p-swarm = "0.48.0"
+prost = "0.14"
+prost-codec = "0.4.0"
+rand = "0.10"
+static_assertions = "1"
+thiserror = "2"
+tracing = "0.1"
+web-time = "1.1"
+
+[dev-dependencies]
+libp2p-identity = { version = "0.3.0", features = ["rand"] }
+libp2p-ping = "0.48.0"
+libp2p-plaintext = "0.44.0"
+libp2p-swarm = { version = "0.48.0", features = ["macros", "tokio"] }
+libp2p-stream = "0.5.0-alpha"
+libp2p-swarm-test = "0.7.0"
+libp2p-yamux = "0.48.0"
+quickcheck = "1"
+tokio = { version = "1.53", default-features = false, features = ["macros", "rt-multi-thread", "time"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[lints.clippy]
+dbg_macro = "warn"
+manual_let_else = "warn"
+type_complexity = "allow"
+unnecessary_wraps = "warn"
+used_underscore_binding = "warn"
+
+[lints.clippy.pedantic]
+level = "allow"
+priority = -1
+
+[lints.rust]
+unreachable_pub = "warn"

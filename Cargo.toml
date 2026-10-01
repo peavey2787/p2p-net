@@ -1,6 +1,6 @@
 [workspace]
 members = ["apps/android/native"]
-exclude = ["qa/fuzz", "external/libp2p-webrtc"]
+exclude = ["qa/fuzz", "external/libp2p-webrtc", "external/libp2p-relay"]
 resolver = "2"
 
 [package]
@@ -21,6 +21,7 @@ exclude = [
     ".cargo/**",
     "external/libp2p-dns/**",
     "external/libp2p-mdns-placeholder/**",
+    "external/libp2p-relay/**",
     "external/libp2p-webrtc/**",
 ]
 
@@ -232,6 +233,11 @@ name = "relay_server_limits"
 path = "qa/tests/relay/relay_server_limits.rs"
 required-features = ["native-tests"]
 
+[[test]]
+name = "relay_metering"
+path = "qa/tests/relay/relay_metering.rs"
+required-features = ["native-tests"]
+
 # runtime integration tests
 [[test]]
 name = "behaviour_policy"
@@ -306,7 +312,6 @@ libp2p = { version = "0.57", default-features = false, features = [
     "kad",
     "identify",
     "ping",
-    "relay",
     "autonat",
     "dcutr",
     "rsa",
@@ -314,6 +319,9 @@ libp2p = { version = "0.57", default-features = false, features = [
     "serde",
 ] }
 libp2p-rendezvous = "0.18.0"
+# Circuit Relay v2 with exact per-circuit, per-direction metering (companion
+# crate: upstream libp2p-relay 0.22.0 plus the metering patch).
+libp2p-relay = { package = "p2p-net-relay", version = "0.1.0", path = "external/libp2p-relay" }
 crossterm = { version = "0.28", optional = true, features = ["event-stream"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -387,3 +395,10 @@ web-sys = { version = "=0.3.85", features = [
 
 [dev-dependencies]
 base64 = "0.22"
+# Pinned here so the audited root Cargo.lock covers the p2p-net-relay
+# companion's test graph (qa/tools/run-relay-companion-tests.*).
+libp2p-plaintext = "0.44.0"
+libp2p-stream = "0.5.0-alpha"
+libp2p-swarm-test = "0.7.0"
+quickcheck = "1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -67,7 +67,8 @@ pub use connectivity::public_fallback::{
 };
 pub use connectivity::relay::{
     is_p2p_circuit_addr, relay_dial_addr_for_peer, relay_peer_id, relay_reservation_addr,
-    RelayAccess, RelaySchedule, RelayServiceConfig, RelayServiceHealth, RelayWindow,
+    RelayAccess, RelayCircuitCloseReason, RelayCircuitUsage, RelayMeter, RelaySchedule,
+    RelayServiceConfig, RelayServiceHealth, RelayUsageSnapshot, RelayWindow,
 };
 pub use connectivity::relay_discovery::{
     select_startup_relays, RelayCandidate, RelayCandidateSource, RelayDiscoveryPolicy,

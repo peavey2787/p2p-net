@@ -270,13 +270,17 @@ fn crates_io_release_has_no_root_patch_dependency() {
         "release-critical .cargo/config.toml must not be hidden by the generic dot-directory ignore rule"
     );
     assert!(manifest.contains("package = \"p2p-net-webrtc\""));
+    assert!(manifest.contains("package = \"p2p-net-relay\""));
     assert!(manifest.contains("version = \"0.1.0\""));
     assert!(manifest.contains("members = [\"apps/android/native\"]"));
-    assert!(manifest.contains("exclude = [\"qa/fuzz\", \"external/libp2p-webrtc\"]"));
+    assert!(manifest.contains(
+        "exclude = [\"qa/fuzz\", \"external/libp2p-webrtc\", \"external/libp2p-relay\"]"
+    ));
     for excluded in [
         "\".cargo/**\"",
         "\"external/libp2p-dns/**\"",
         "\"external/libp2p-mdns-placeholder/**\"",
+        "\"external/libp2p-relay/**\"",
         "\"external/libp2p-webrtc/**\"",
     ] {
         assert!(
@@ -287,6 +291,10 @@ fn crates_io_release_has_no_root_patch_dependency() {
     assert!(support.contains("name = \"p2p-net-webrtc\""));
     assert!(support.contains("publish = true"));
     assert!(support.contains("documentation = \"https://docs.rs/p2p-net-webrtc\""));
+    let relay_support = include_str!("../../../external/libp2p-relay/Cargo.toml");
+    assert!(relay_support.contains("name = \"p2p-net-relay\""));
+    assert!(relay_support.contains("publish = true"));
+    assert!(relay_support.contains("documentation = \"https://docs.rs/p2p-net-relay\""));
     assert!(
         gitignore.lines().any(|line| line == "/external/**/target/")
             && gitignore
@@ -300,7 +308,8 @@ fn crates_io_release_has_no_root_patch_dependency() {
             "cargo",
             "metadata --locked",
             "package",
-            "p2p-net-webrtc-0.1.0.crate",
+            // Companions are packaged in a loop as `<name>-0.1.0.crate`.
+            "-0.1.0.crate",
             "p2p-net-0.1.0.crate",
             "[patch.crates-io]",
             "path",
@@ -312,6 +321,8 @@ fn crates_io_release_has_no_root_patch_dependency() {
             "--registry",
             "crates-io",
             "p2p-net-webrtc",
+            "p2p-net-relay",
+            "libp2p-relay",
             "p2p-net",
             "external/libp2p-dns",
             "external/libp2p-mdns-placeholder",
@@ -336,13 +347,17 @@ fn crates_io_release_has_no_root_patch_dependency() {
             !source.contains("--no-verify"),
             "{name} package validation must fully verify the normalized crates"
         );
+        // Companions are patched per name in a loop:
+        // `patch.crates-io.<name>.path='external/<dir>'` on the command line only.
         assert!(
-            source.contains("patch.crates-io.p2p-net-webrtc.path"),
-            "{name} package validation must resolve the unpublished companion only through a command-line Cargo patch"
+            source.contains("patch.crates-io.") && source.contains(".path='external/"),
+            "{name} package validation must resolve the unpublished companions only through command-line Cargo patches"
         );
         assert!(
-            source.matches("p2p-net-webrtc").count() >= 2 && source.matches("p2p-net").count() >= 2,
-            "{name} package validation must qualify both interdependent crates"
+            source.contains("p2p-net-webrtc")
+                && source.contains("p2p-net-relay")
+                && source.matches("p2p-net").count() >= 3,
+            "{name} package validation must qualify every interdependent crate"
         );
     }
     assert!(windows.contains("Invoke-NativeCapture"));

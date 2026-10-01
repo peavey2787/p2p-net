@@ -21,33 +21,48 @@ normalized_manifest_has_path_dependency() {
   '
 }
 
+# Publishable companions, as "<crates.io package name>:<directory under external/>".
+# Each is published before p2p-net, which depends on them by registry name.
+COMPANIONS=("p2p-net-webrtc:libp2p-webrtc" "p2p-net-relay:libp2p-relay")
+
 printf '==> Package publishable crates\n'
 PACKAGE_TARGET_DIR="$ROOT_DIR/target/package-crates"
 rm -rf "$PACKAGE_TARGET_DIR"
 mkdir -p "$PACKAGE_TARGET_DIR"
-CARGO_TARGET_DIR="$PACKAGE_TARGET_DIR" cargo +1.98.0 package \
-  --manifest-path "$ROOT_DIR/external/libp2p-webrtc/Cargo.toml" \
-  --allow-dirty
+PATCH_ARGS=()
+for companion in "${COMPANIONS[@]}"; do
+  name="${companion%%:*}"
+  dir="${companion#*:}"
+  CARGO_TARGET_DIR="$PACKAGE_TARGET_DIR" cargo +1.98.0 package \
+    --manifest-path "$ROOT_DIR/external/$dir/Cargo.toml" \
+    --allow-dirty
+  PATCH_ARGS+=(--config "patch.crates-io.$name.path='external/$dir'")
+done
 
-# The root package normalizes its local path+version dependency to the crates.io
-# package name. Until the companion is published, use a command-line-only patch
-# for package verification; it is not serialized into the resulting .crate.
+# The root package normalizes its local path+version dependencies to the
+# crates.io package names. Until the companions are published, use
+# command-line-only patches for package verification; they are not serialized
+# into the resulting .crate.
 CARGO_TARGET_DIR="$PACKAGE_TARGET_DIR" cargo +1.98.0 package \
   --package p2p-net \
   --locked --allow-dirty \
-  --config "patch.crates-io.p2p-net-webrtc.path='external/libp2p-webrtc'"
+  "${PATCH_ARGS[@]}"
 
 printf '\n==> Locate normalized crates.io payloads\n'
-SUPPORT_CRATE="$PACKAGE_TARGET_DIR/package/p2p-net-webrtc-0.1.0.crate"
 ROOT_CRATE="$PACKAGE_TARGET_DIR/package/p2p-net-0.1.0.crate"
-[[ -f "$SUPPORT_CRATE" ]] || { echo "ERROR: missing packaged companion crate: $SUPPORT_CRATE" >&2; exit 1; }
 [[ -f "$ROOT_CRATE" ]] || { echo "ERROR: missing packaged root crate: $ROOT_CRATE" >&2; exit 1; }
+for companion in "${COMPANIONS[@]}"; do
+  name="${companion%%:*}"
+  crate="$PACKAGE_TARGET_DIR/package/$name-0.1.0.crate"
+  [[ -f "$crate" ]] || { echo "ERROR: missing packaged companion crate: $crate" >&2; exit 1; }
+done
 
 ROOT_ARCHIVE_ENTRIES="$(tar -tf "$ROOT_CRATE")"
 for forbidden_entry in \
   'p2p-net-0.1.0/.cargo/' \
   'p2p-net-0.1.0/external/libp2p-dns/' \
   'p2p-net-0.1.0/external/libp2p-mdns-placeholder/' \
+  'p2p-net-0.1.0/external/libp2p-relay/' \
   'p2p-net-0.1.0/external/libp2p-webrtc/'
 do
   if grep -Fq "$forbidden_entry" <<<"$ROOT_ARCHIVE_ENTRIES"; then
@@ -69,30 +84,36 @@ if grep -Fq '[workspace]' <<<"$NORMALIZED_ROOT"; then
   echo "ERROR: packaged p2p-net unexpectedly retains the repository workspace table" >&2
   exit 1
 fi
-grep -Fq 'package = "p2p-net-webrtc"' <<<"$NORMALIZED_ROOT" || {
-  echo "ERROR: packaged p2p-net does not depend on registry package p2p-net-webrtc" >&2
-  exit 1
-}
 grep -Fq 'version = "0.1.0"' <<<"$NORMALIZED_ROOT" || {
-  echo "ERROR: packaged p2p-net does not retain the p2p-net-webrtc 0.1.0 registry constraint" >&2
+  echo "ERROR: packaged p2p-net does not retain the companion 0.1.0 registry constraints" >&2
   exit 1
 }
-
-NORMALIZED_SUPPORT="$(tar -xOf "$SUPPORT_CRATE" p2p-net-webrtc-0.1.0/Cargo.toml)"
-if normalized_manifest_has_path_dependency <<<"$NORMALIZED_SUPPORT" || grep -Fq '[patch.crates-io]' <<<"$NORMALIZED_SUPPORT"; then
-  echo "ERROR: packaged p2p-net-webrtc is not registry-self-contained" >&2
-  exit 1
-fi
+for companion in "${COMPANIONS[@]}"; do
+  name="${companion%%:*}"
+  grep -Fq "package = \"$name\"" <<<"$NORMALIZED_ROOT" || {
+    echo "ERROR: packaged p2p-net does not depend on registry package $name" >&2
+    exit 1
+  }
+  normalized_support="$(tar -xOf "$PACKAGE_TARGET_DIR/package/$name-0.1.0.crate" "$name-0.1.0/Cargo.toml")"
+  if normalized_manifest_has_path_dependency <<<"$normalized_support" || grep -Fq '[patch.crates-io]' <<<"$normalized_support"; then
+    echo "ERROR: packaged $name is not registry-self-contained" >&2
+    exit 1
+  fi
+done
 
 printf '\n==> Compile packaged payload as a downstream consumer\n'
 SMOKE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/p2p-net-crates-smoke.XXXXXX")"
 cleanup_smoke() { rm -rf "$SMOKE_ROOT"; }
 trap cleanup_smoke EXIT
 mkdir -p "$SMOKE_ROOT/unpacked" "$SMOKE_ROOT/consumer/src"
-tar -xf "$SUPPORT_CRATE" -C "$SMOKE_ROOT/unpacked"
 tar -xf "$ROOT_CRATE" -C "$SMOKE_ROOT/unpacked"
 ROOT_PACKAGE_DIR="$SMOKE_ROOT/unpacked/p2p-net-0.1.0"
-SUPPORT_PACKAGE_DIR="$SMOKE_ROOT/unpacked/p2p-net-webrtc-0.1.0"
+SMOKE_PATCHES=""
+for companion in "${COMPANIONS[@]}"; do
+  name="${companion%%:*}"
+  tar -xf "$PACKAGE_TARGET_DIR/package/$name-0.1.0.crate" -C "$SMOKE_ROOT/unpacked"
+  SMOKE_PATCHES+="$name = { path = \"$SMOKE_ROOT/unpacked/$name-0.1.0\" }"$'\n'
+done
 cat > "$SMOKE_ROOT/consumer/Cargo.toml" <<EOF
 [package]
 name = "p2p-net-package-consumer-smoke"
@@ -104,7 +125,7 @@ publish = false
 p2p-net = { path = "$ROOT_PACKAGE_DIR" }
 
 [patch.crates-io]
-p2p-net-webrtc = { path = "$SUPPORT_PACKAGE_DIR" }
+$SMOKE_PATCHES
 EOF
 cat > "$SMOKE_ROOT/consumer/src/main.rs" <<'EOF'
 async fn exercise_public_api() -> Result<(), p2p_net::NetError> {
@@ -124,18 +145,25 @@ cargo +1.98.0 check --manifest-path "$SMOKE_ROOT/consumer/Cargo.toml" --locked
 
 DIST_DIR="$ROOT_DIR/dist/crates"
 mkdir -p "$DIST_DIR"
-cp "$SUPPORT_CRATE" "$DIST_DIR/p2p-net-webrtc-0.1.0.crate"
+CRATE_FILES=()
+for companion in "${COMPANIONS[@]}"; do
+  name="${companion%%:*}"
+  cp "$PACKAGE_TARGET_DIR/package/$name-0.1.0.crate" "$DIST_DIR/$name-0.1.0.crate"
+  CRATE_FILES+=("$name-0.1.0.crate")
+done
 cp "$ROOT_CRATE" "$DIST_DIR/p2p-net-0.1.0.crate"
 (
   cd "$DIST_DIR"
-  sha256sum p2p-net-webrtc-0.1.0.crate p2p-net-0.1.0.crate > SHA256SUMS.txt
+  sha256sum "${CRATE_FILES[@]}" p2p-net-0.1.0.crate > SHA256SUMS.txt
 )
 cat > "$DIST_DIR/PUBLISH-ORDER.txt" <<'EOF'
 1. cargo +1.98.0 publish --dry-run --manifest-path external/libp2p-webrtc/Cargo.toml --registry crates-io
 2. cargo +1.98.0 publish --manifest-path external/libp2p-webrtc/Cargo.toml --registry crates-io
-3. Wait until crates.io/index.crates.io resolves p2p-net-webrtc 0.1.0.
-4. cargo +1.98.0 publish --dry-run --package p2p-net --registry crates-io --locked
-5. cargo +1.98.0 publish --package p2p-net --registry crates-io --locked
+3. cargo +1.98.0 publish --dry-run --manifest-path external/libp2p-relay/Cargo.toml --registry crates-io
+4. cargo +1.98.0 publish --manifest-path external/libp2p-relay/Cargo.toml --registry crates-io
+5. Wait until crates.io/index.crates.io resolves p2p-net-webrtc 0.1.0 and p2p-net-relay 0.1.0.
+6. cargo +1.98.0 publish --dry-run --package p2p-net --registry crates-io --locked
+7. cargo +1.98.0 publish --package p2p-net --registry crates-io --locked
 EOF
 
 printf '\nCrates.io package payloads are normalized and downstream-consumer checked.\n'

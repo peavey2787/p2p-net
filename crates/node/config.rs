@@ -47,6 +47,11 @@ pub struct NodeConfig {
     pub webrtc_certificate_path: String,
     /// Multiaddrs this node should listen on. Missing config uses safe shared-node defaults.
     pub listen_addresses: Vec<String>,
+    /// Operator-asserted externally reachable addresses (e.g. a port-forwarded
+    /// or LAN relay the public-IP probe cannot see). Advertised as confirmed
+    /// external addresses, including in Circuit Relay reservations.
+    #[serde(default)]
+    pub external_addresses: Vec<String>,
     /// Per-transport inbound listener switches. Disable WebSocket/WebRTC-direct when unused.
     #[serde(default)]
     pub listeners: ListenerConfig,
@@ -98,6 +103,7 @@ impl Default for NodeConfig {
             identity_key_path: ".p2p-net-identity-key".to_string(),
             webrtc_certificate_path: ".p2p-net-webrtc-cert.pem".to_string(),
             listen_addresses: default_listen_addresses(),
+            external_addresses: Vec::new(),
             listeners: ListenerConfig::default(),
             bootstrap_peers: Vec::new(),
             discovery: DiscoveryConfig::default(),
@@ -217,6 +223,10 @@ impl NodeConfig {
 
     pub fn parsed_bootstrap_peers(&self) -> Result<Vec<Multiaddr>, NetError> {
         parse_multiaddrs("bootstrap_peers", &self.bootstrap_peers)
+    }
+
+    pub fn parsed_external_addresses(&self) -> Result<Vec<Multiaddr>, NetError> {
+        parse_multiaddrs("external_addresses", &self.external_addresses)
     }
 
     pub fn parsed_relay_peers(&self) -> Result<Vec<Multiaddr>, NetError> {

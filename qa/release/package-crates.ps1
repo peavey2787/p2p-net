@@ -129,37 +129,45 @@ try {
     New-Item -ItemType Directory -Force -Path $PackageTargetDir | Out-Null
     $oldCargoTargetDir = $env:CARGO_TARGET_DIR
     $env:CARGO_TARGET_DIR = $PackageTargetDir
-    $supportManifest = Join-Path $RepoRoot "external\libp2p-webrtc\Cargo.toml"
-    Invoke-CheckedLive "cargo.exe" @(
-        "+1.98.0", "package",
-        "--manifest-path", $supportManifest,
-        "--allow-dirty"
-    ) "cargo package p2p-net-webrtc" 1
+    # Publishable companions (crates.io name -> directory under external/).
+    # Each is published before p2p-net, which depends on them by registry name.
+    $companions = @(
+        @{ Name = "p2p-net-webrtc"; Dir = "libp2p-webrtc" },
+        @{ Name = "p2p-net-relay"; Dir = "libp2p-relay" }
+    )
+    $patchArgs = @()
+    foreach ($companion in $companions) {
+        $supportManifest = Join-Path $RepoRoot "external\$($companion.Dir)\Cargo.toml"
+        Invoke-CheckedLive "cargo.exe" @(
+            "+1.98.0", "package",
+            "--manifest-path", $supportManifest,
+            "--allow-dirty"
+        ) "cargo package $($companion.Name)" 1
+        $patchArgs += @("--config", "patch.crates-io.$($companion.Name).path='external/$($companion.Dir)'")
+    }
 
     # p2p-net's normalized manifest intentionally changes the local path+version
-    # dependency into a crates.io dependency. Until the companion is actually
-    # published, verify that normalized package with a command-line-only Cargo
-    # patch. The override is local to this invocation and cannot be serialized
-    # into the .crate payload.
-    $supportPatch = "patch.crates-io.p2p-net-webrtc.path='external/libp2p-webrtc'"
-    Invoke-CheckedLive "cargo.exe" @(
+    # dependencies into crates.io dependencies. Until the companions are
+    # published, verify that normalized package with command-line-only Cargo
+    # patches. The overrides are local to this invocation and cannot be
+    # serialized into the .crate payload.
+    Invoke-CheckedLive "cargo.exe" (@(
         "+1.98.0", "package",
         "--package", "p2p-net",
-        "--locked", "--allow-dirty",
-        "--config", $supportPatch
-    ) "cargo package p2p-net with unpublished-companion verification patch" 1
-    Set-PackageProgress 1 "Both crates packaged and verified" -PhaseComplete
+        "--locked", "--allow-dirty"
+    ) + $patchArgs) "cargo package p2p-net with unpublished-companion verification patches" 1
+    Set-PackageProgress 1 "All crates packaged and verified" -PhaseComplete
 
     Write-Host ""
     Set-PackageProgress 2 "Locate normalized crates.io payloads"
     Write-Host "==> [2/$PackageProgressPhases] Locate normalized crates.io payloads"
-    $supportCrate = Join-Path $PackageTargetDir "package\p2p-net-webrtc-0.1.0.crate"
     $rootCrate = Join-Path $PackageTargetDir "package\p2p-net-0.1.0.crate"
-    foreach ($crate in @($supportCrate, $rootCrate)) {
+    $supportCrates = @($companions | ForEach-Object { Join-Path $PackageTargetDir "package\$($_.Name)-0.1.0.crate" })
+    foreach ($crate in @($rootCrate) + $supportCrates) {
         if (-not (Test-Path $crate -PathType Leaf)) { throw "Missing packaged crate: $crate" }
     }
     $env:CARGO_TARGET_DIR = $oldCargoTargetDir
-    Set-PackageProgress 2 "Both normalized .crate payloads found" -PhaseComplete
+    Set-PackageProgress 2 "All normalized .crate payloads found" -PhaseComplete
 
     Set-PackageProgress 3 "Inspect normalized package manifests"
     Write-Host ""
@@ -170,6 +178,7 @@ try {
         "p2p-net-0.1.0/.cargo/",
         "p2p-net-0.1.0/external/libp2p-dns/",
         "p2p-net-0.1.0/external/libp2p-mdns-placeholder/",
+        "p2p-net-0.1.0/external/libp2p-relay/",
         "p2p-net-0.1.0/external/libp2p-webrtc/"
     )) {
         if (($rootArchiveEntries -split "`r?`n") | Where-Object { $_.StartsWith($forbiddenEntry) }) {
@@ -181,16 +190,19 @@ try {
     if (Test-NormalizedManifestHasPathDependency $normalizedRoot) { throw "Packaged p2p-net still contains a dependency path" }
     if ($normalizedRoot.Contains("[patch.crates-io]")) { throw "Packaged p2p-net still contains [patch.crates-io]" }
     if ($normalizedRoot.Contains("[workspace]")) { throw "Packaged p2p-net unexpectedly retains the repository workspace table" }
-    if (-not $normalizedRoot.Contains('package = "p2p-net-webrtc"')) {
-        throw "Packaged p2p-net does not depend on registry package p2p-net-webrtc"
-    }
     if (-not $normalizedRoot.Contains('version = "0.1.0"')) {
-        throw "Packaged p2p-net does not retain the p2p-net-webrtc 0.1.0 registry constraint"
+        throw "Packaged p2p-net does not retain the companion 0.1.0 registry constraints"
     }
-
-    $normalizedSupport = Invoke-Checked "tar.exe" @("-xOf", $supportCrate, "p2p-net-webrtc-0.1.0/Cargo.toml") "inspect packaged p2p-net-webrtc Cargo.toml"
-    if (Test-NormalizedManifestHasPathDependency $normalizedSupport) { throw "Packaged p2p-net-webrtc contains a dependency path" }
-    if ($normalizedSupport.Contains("[patch.crates-io]")) { throw "Packaged p2p-net-webrtc contains [patch.crates-io]" }
+    foreach ($companion in $companions) {
+        $name = $companion.Name
+        if (-not $normalizedRoot.Contains("package = `"$name`"")) {
+            throw "Packaged p2p-net does not depend on registry package $name"
+        }
+        $supportCrate = Join-Path $PackageTargetDir "package\$name-0.1.0.crate"
+        $normalizedSupport = Invoke-Checked "tar.exe" @("-xOf", $supportCrate, "$name-0.1.0/Cargo.toml") "inspect packaged $name Cargo.toml"
+        if (Test-NormalizedManifestHasPathDependency $normalizedSupport) { throw "Packaged $name contains a dependency path" }
+        if ($normalizedSupport.Contains("[patch.crates-io]")) { throw "Packaged $name contains [patch.crates-io]" }
+    }
     Set-PackageProgress 3 "Normalized manifests are registry-self-contained" -PhaseComplete
 
     Write-Host ""
@@ -202,10 +214,16 @@ try {
         $consumer = Join-Path $smokeRoot "consumer"
         $consumerSrc = Join-Path $consumer "src"
         New-Item -ItemType Directory -Force -Path $unpacked, $consumerSrc | Out-Null
-        Invoke-Checked "tar.exe" @("-xf", $supportCrate, "-C", $unpacked) "extract packaged p2p-net-webrtc" | Out-Null
+        $smokePatches = ""
+        foreach ($companion in $companions) {
+            $name = $companion.Name
+            $supportCrate = Join-Path $PackageTargetDir "package\$name-0.1.0.crate"
+            Invoke-Checked "tar.exe" @("-xf", $supportCrate, "-C", $unpacked) "extract packaged $name" | Out-Null
+            $supportPackageDir = (Join-Path $unpacked "$name-0.1.0").Replace('\', '/')
+            $smokePatches += "$name = { path = `"$supportPackageDir`" }`n"
+        }
         Invoke-Checked "tar.exe" @("-xf", $rootCrate, "-C", $unpacked) "extract packaged p2p-net" | Out-Null
         $rootPackageDir = (Join-Path $unpacked "p2p-net-0.1.0").Replace('\', '/')
-        $supportPackageDir = (Join-Path $unpacked "p2p-net-webrtc-0.1.0").Replace('\', '/')
         $consumerManifest = @"
 [package]
 name = "p2p-net-package-consumer-smoke"
@@ -217,7 +235,7 @@ publish = false
 p2p-net = { path = "$rootPackageDir" }
 
 [patch.crates-io]
-p2p-net-webrtc = { path = "$supportPackageDir" }
+$smokePatches
 "@
         $consumerMain = @"
 async fn exercise_public_api() -> Result<(), p2p_net::NetError> {
@@ -245,22 +263,27 @@ fn main() {
     Write-Host ""
     Write-Host "==> [5/$PackageProgressPhases] Write crates.io release artifacts"
     New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
-    $distSupport = Join-Path $DistDir "p2p-net-webrtc-0.1.0.crate"
+    $hashLines = @()
+    foreach ($companion in $companions) {
+        $name = $companion.Name
+        $distSupport = Join-Path $DistDir "$name-0.1.0.crate"
+        Copy-Item (Join-Path $PackageTargetDir "package\$name-0.1.0.crate") $distSupport -Force
+        $supportHash = (Get-FileHash $distSupport -Algorithm SHA256).Hash.ToLowerInvariant()
+        $hashLines += "$supportHash  $(Split-Path $distSupport -Leaf)"
+    }
     $distRoot = Join-Path $DistDir "p2p-net-0.1.0.crate"
-    Copy-Item $supportCrate $distSupport -Force
     Copy-Item $rootCrate $distRoot -Force
-    $supportHash = (Get-FileHash $distSupport -Algorithm SHA256).Hash.ToLowerInvariant()
     $rootHash = (Get-FileHash $distRoot -Algorithm SHA256).Hash.ToLowerInvariant()
-    @(
-        "$supportHash  $(Split-Path $distSupport -Leaf)",
-        "$rootHash  $(Split-Path $distRoot -Leaf)"
-    ) | Set-Content -Path (Join-Path $DistDir "SHA256SUMS.txt") -Encoding ascii
+    $hashLines += "$rootHash  $(Split-Path $distRoot -Leaf)"
+    $hashLines | Set-Content -Path (Join-Path $DistDir "SHA256SUMS.txt") -Encoding ascii
     @(
         "1. cargo +1.98.0 publish --dry-run --manifest-path external/libp2p-webrtc/Cargo.toml --registry crates-io",
         "2. cargo +1.98.0 publish --manifest-path external/libp2p-webrtc/Cargo.toml --registry crates-io",
-        "3. Wait until crates.io/index.crates.io resolves p2p-net-webrtc 0.1.0.",
-        "4. cargo +1.98.0 publish --dry-run --package p2p-net --registry crates-io --locked",
-        "5. cargo +1.98.0 publish --package p2p-net --registry crates-io --locked"
+        "3. cargo +1.98.0 publish --dry-run --manifest-path external/libp2p-relay/Cargo.toml --registry crates-io",
+        "4. cargo +1.98.0 publish --manifest-path external/libp2p-relay/Cargo.toml --registry crates-io",
+        "5. Wait until crates.io/index.crates.io resolves p2p-net-webrtc 0.1.0 and p2p-net-relay 0.1.0.",
+        "6. cargo +1.98.0 publish --dry-run --package p2p-net --registry crates-io --locked",
+        "7. cargo +1.98.0 publish --package p2p-net --registry crates-io --locked"
     ) | Set-Content -Path (Join-Path $DistDir "PUBLISH-ORDER.txt") -Encoding ascii
 
     Set-PackageProgress 5 "Crates.io release artifacts ready" -PhaseComplete

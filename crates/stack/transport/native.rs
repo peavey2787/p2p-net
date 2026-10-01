@@ -58,6 +58,7 @@ pub(super) async fn build_swarm(
     ensure_rustls_crypto_provider();
     let local_peer = libp2p::PeerId::from(local_key.public());
     let relay_cfg = cfg.relay.clone();
+    let (relay_transport, relay_behaviour) = libp2p_relay::client::new(local_peer);
     let certificate = load_or_create_webrtc_certificate(storage, &cfg.webrtc_certificate_path)?;
 
     let builder = SwarmBuilder::with_existing_identity(local_key)
@@ -88,11 +89,23 @@ pub(super) async fn build_swarm(
             Ok::<_, Box<dyn std::error::Error + Send + Sync + 'static>>(websocket)
         })
         .map_err(|e| NetError::Build(e.to_string()))?
-        .with_relay_client(noise::Config::new, yamux::Config::default)
+        .with_other_transport(move |key| {
+            // Circuit Relay v2 client from p2p-net-relay (metered relay);
+            // same Noise + Yamux upgrade the libp2p relay builder applies.
+            let noise = noise::Config::new(key).map_err(
+                |err| -> Box<dyn std::error::Error + Send + Sync + 'static> { Box::new(err) },
+            )?;
+            Ok::<_, Box<dyn std::error::Error + Send + Sync + 'static>>(
+                relay_transport
+                    .upgrade(Version::V1Lazy)
+                    .authenticate(noise)
+                    .multiplex(yamux::Config::default()),
+            )
+        })
         .map_err(|e| NetError::Build(e.to_string()))?;
 
     let mut swarm = builder
-        .with_behaviour(|key, relay_behaviour| {
+        .with_behaviour(move |key| {
             build_behaviour(BehaviourBuildContext {
                 local_key: key,
                 local_peer,
@@ -119,6 +132,9 @@ pub(super) async fn build_swarm(
                 addr: addr.to_string(),
                 reason: e.to_string(),
             })?;
+    }
+    for addr in cfg.parsed_external_addresses()? {
+        swarm.add_external_address(addr);
     }
     Ok((swarm, transport_plan(cfg, resolved_cfg)))
 }

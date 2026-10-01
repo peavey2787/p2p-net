@@ -65,7 +65,12 @@ pub struct RelayState {
     /// LAN-relay circuits: in the dial binding, never external addresses.
     pub private_relayed_listen_addrs: BTreeSet<String>,
     pub requested_relay_listen_addrs: HashMap<PeerId, BTreeSet<Multiaddr>>,
+    /// Relay transit bytes (each forwarded byte once), derived from
+    /// `relay_meter`: completed circuits' final totals plus live circuits.
     pub relay_bytes_forwarded: u64,
+    pub relay_bytes_src_to_dst: u64,
+    pub relay_bytes_dst_to_src: u64,
+    pub relay_meter: super::RelayMeter,
     pub unverified_relayed_peers: HashMap<PeerId, Instant>,
     pub dcutr_enabled: bool,
     pub dcutr_attempts: usize,

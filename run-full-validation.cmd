@@ -471,6 +471,13 @@ if errorlevel 1 (
   set "FAILED_STEP=WebRTC companion tests"
   goto failed
 )
+echo.
+echo ==^> Relay companion tests
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%qa\tools\run-relay-companion-tests.ps1"
+if errorlevel 1 (
+  set "FAILED_STEP=Relay companion tests"
+  goto failed
+)
 
 :stage_dashboard
 echo.

@@ -82,6 +82,15 @@ pub(super) fn append_services(lines: &mut Vec<Line>, snap: &NodeSnapshot, width:
     );
     circuits.push("  bytes_fwd=", Tone::Muted);
     circuits.push(snap.relay_bytes_forwarded.to_string(), Tone::Text);
+    circuits.push(
+        format!(
+            " (src>dst={} dst>src={} done={})",
+            snap.relay_usage.bytes_src_to_dst,
+            snap.relay_usage.bytes_dst_to_src,
+            snap.relay_usage.completed_circuits
+        ),
+        Tone::Muted,
+    );
     circuits.push("   ", Tone::Text);
     circuits.push_bold("DCUtR  ", Tone::Muted);
     push_switch(&mut circuits, snap.dcutr_enabled);

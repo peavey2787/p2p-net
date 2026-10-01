@@ -1,12 +1,15 @@
 use std::sync::Arc;
 
-use libp2p::relay;
 use libp2p::{PeerId, Swarm};
-use tokio::sync::Mutex;
+use libp2p_relay as relay;
+use tokio::sync::{broadcast, Mutex};
+
+use crate::NodeEvent;
 
 use super::super::snapshot::NodeSnapshot;
 use crate::connectivity::relay::{
-    classify_relay_denial, RelayServiceConfig, RelayServiceHealth, RelayState,
+    classify_relay_denial, RelayCircuitCloseReason, RelayServiceConfig, RelayServiceHealth,
+    RelayState,
 };
 use crate::stack::MeshBehaviour;
 
@@ -53,6 +56,7 @@ pub(crate) async fn handle_event(
     ev: relay::Event,
     snapshot: &Arc<Mutex<NodeSnapshot>>,
     relay_state: &mut RelayState,
+    node_events: &broadcast::Sender<NodeEvent>,
 ) {
     relay_state.server_enabled = true;
     if matches!(relay_state.health, RelayServiceHealth::Disabled) {
@@ -84,10 +88,27 @@ pub(crate) async fn handle_event(
         relay::Event::CircuitReqAccepted {
             src_peer_id,
             dst_peer_id,
+            circuit_id,
+            usage,
         } => {
             relay_state.active_circuits = relay_state.active_circuits.saturating_add(1);
             relay_state.health = RelayServiceHealth::Enabled;
-            format!("relay_server circuit accepted src={src_peer_id} dst={dst_peer_id}")
+            relay_state.relay_meter.open(
+                *circuit_id,
+                *src_peer_id,
+                *dst_peer_id,
+                usage.clone(),
+                unix_timestamp_ms(),
+            );
+            let _ = node_events.send(NodeEvent::RelayCircuitOpened {
+                circuit_id: circuit_id.get(),
+                src_peer_id: src_peer_id.to_string(),
+                dst_peer_id: dst_peer_id.to_string(),
+            });
+            format!(
+                "relay_server circuit accepted id={} src={src_peer_id} dst={dst_peer_id}",
+                circuit_id.get()
+            )
         }
         relay::Event::CircuitReqDenied {
             src_peer_id,
@@ -103,23 +124,84 @@ pub(crate) async fn handle_event(
         relay::Event::CircuitClosed {
             src_peer_id,
             dst_peer_id,
+            circuit_id,
+            bytes,
             error,
         } => {
             relay_state.active_circuits = relay_state.active_circuits.saturating_sub(1);
-            if error.is_some() {
+            let usage = relay_state.relay_meter.close(
+                *circuit_id,
+                *src_peer_id,
+                *dst_peer_id,
+                *bytes,
+                error.as_ref(),
+                unix_timestamp_ms(),
+            );
+            // Quota/duration limits are relay policy working as intended, not
+            // service errors; only genuine transport failures degrade health.
+            if matches!(
+                usage.close_reason,
+                Some(RelayCircuitCloseReason::TransportError(_))
+            ) {
                 relay_state.server_errors = relay_state.server_errors.saturating_add(1);
                 relay_state.health = RelayServiceHealth::Error;
             }
-            format!(
-                "relay_server circuit closed src={src_peer_id} dst={dst_peer_id} error={error:?}"
-            )
+            let line = format!(
+                "relay_server circuit closed id={} src={src_peer_id} dst={dst_peer_id}                  bytes_src_to_dst={} bytes_dst_to_src={} reason={:?}",
+                usage.circuit_id,
+                usage.bytes_src_to_dst,
+                usage.bytes_dst_to_src,
+                usage.close_reason
+            );
+            let _ = node_events.send(NodeEvent::RelayCircuitClosed {
+                circuit_id: usage.circuit_id,
+                src_peer_id: usage.src_peer_id.clone(),
+                dst_peer_id: usage.dst_peer_id.clone(),
+                bytes_src_to_dst: usage.bytes_src_to_dst,
+                bytes_dst_to_src: usage.bytes_dst_to_src,
+                duration_ms: usage.duration_ms().unwrap_or_default(),
+                close_reason: usage
+                    .close_reason
+                    .clone()
+                    .unwrap_or(RelayCircuitCloseReason::Completed),
+            });
+            line
         }
         _ => format!("relay_server event: {ev:?}"),
     };
 
+    relay_state.refresh_relay_totals();
     let mut guard = snapshot.lock().await;
     guard.apply_relay_state(relay_state);
     push_pulse(&mut guard.pulses, line);
+}
+
+/// Coalesced per-circuit progress and fresh aggregates (observability tick).
+/// Relay serving is native-only, so browsers never drive this.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) async fn report_relay_usage(
+    snapshot: &Arc<Mutex<NodeSnapshot>>,
+    relay_state: &mut RelayState,
+    node_events: &broadcast::Sender<NodeEvent>,
+) -> bool {
+    let changed = relay_state.relay_meter.take_changed();
+    if changed.is_empty() {
+        return false;
+    }
+    for usage in changed {
+        let _ = node_events.send(NodeEvent::RelayCircuitUsage {
+            circuit_id: usage.circuit_id,
+            bytes_src_to_dst: usage.bytes_src_to_dst,
+            bytes_dst_to_src: usage.bytes_dst_to_src,
+        });
+    }
+    relay_state.refresh_relay_totals();
+    snapshot.lock().await.apply_relay_state(relay_state);
+    true
+}
+
+fn unix_timestamp_ms() -> u64 {
+    crate::common::utils::unix_timestamp_ns() / 1_000_000
 }
 
 fn apply_denial_health(relay_state: &mut RelayState, status_debug: &str) {
