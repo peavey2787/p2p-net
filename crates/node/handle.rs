@@ -126,10 +126,7 @@ impl NodeHandle {
     /// ICE, candidate pairs, and swarm internals never cross this boundary.
     pub async fn local_binding(&self) -> LocalNodeBinding {
         let snapshot = self.snapshot.lock().await;
-        let mut dial_addresses = snapshot.public_direct_listen_addresses.clone();
-        dial_addresses.extend(snapshot.relayed_listen_addresses.iter().cloned());
-        dial_addresses.sort();
-        dial_addresses.dedup();
+        let dial_addresses = snapshot.local_dial_addresses();
         LocalNodeBinding {
             peer_id: self.peer_id.to_string(),
             dial_addresses,

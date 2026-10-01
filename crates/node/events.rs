@@ -277,10 +277,7 @@ fn is_relay_infrastructure_peer(peer: PeerId, ctx: &SwarmEventContext<'_>) -> bo
 
 async fn emit_local_binding(ctx: &SwarmEventContext<'_>) {
     let snapshot = ctx.snapshot.lock().await;
-    let mut dial_addresses = snapshot.public_direct_listen_addresses.clone();
-    dial_addresses.extend(snapshot.relayed_listen_addresses.iter().cloned());
-    dial_addresses.sort();
-    dial_addresses.dedup();
+    let dial_addresses = snapshot.local_dial_addresses();
     let _ = ctx
         .node_events
         .send(NodeEvent::LocalBindingChanged(LocalNodeBinding {

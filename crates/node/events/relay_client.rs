@@ -5,8 +5,9 @@ use libp2p::{Multiaddr, Swarm};
 use tokio::sync::Mutex;
 
 use super::super::snapshot::NodeSnapshot;
+use super::connection::confirm_relayed_listen_addr;
 use crate::connectivity::relay::RelayState;
-use crate::stack::{add_external_address_candidate, MeshBehaviour};
+use crate::stack::MeshBehaviour;
 
 use super::super::push_pulse;
 
@@ -30,9 +31,8 @@ pub(crate) async fn handle_event(
             {
                 for address in addresses {
                     if let Ok(addr) = address.parse::<Multiaddr>() {
-                        add_external_address_candidate(swarm, addr);
+                        confirm_relayed_listen_addr(swarm, relay_state, &addr);
                     }
-                    relay_state.relayed_listen_addrs.insert(address);
                 }
             }
             format!("relay_client reservation accepted relay={relay_peer_id} renewal={renewal}")

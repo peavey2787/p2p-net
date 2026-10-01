@@ -256,6 +256,7 @@ pub async fn start_node_with_platform(
         // Reservation listen addresses are requests, not confirmed relay
         // reachability. `NewListenAddr` populates this after acceptance.
         relayed_listen_addresses: Vec::new(),
+        private_relayed_listen_addresses: Vec::new(),
         dcutr_enabled: resolved_config.dcutr_enabled,
         dcutr_attempt_after_relay_connection: resolved_config.dcutr_attempt_after_relay_connection,
         dcutr_keep_relay_fallback: resolved_config.dcutr_keep_relay_fallback,

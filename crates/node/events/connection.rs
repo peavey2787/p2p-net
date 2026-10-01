@@ -6,7 +6,7 @@ use web_time::Instant;
 
 use crate::api::PeerSource;
 use crate::connectivity::addr::{has_reachable_transport, is_local_direct_addr};
-use crate::connectivity::relay::{relay_peer_id, update_nat_state, RelayServiceHealth};
+use crate::connectivity::relay::{relay_peer_id, update_nat_state, RelayServiceHealth, RelayState};
 use crate::stack::{
     add_external_address_candidate, add_hole_punch_candidate, refresh_rendezvous, MeshBehaviour,
 };
@@ -295,14 +295,11 @@ pub(crate) async fn handle_new_listen_addr(
     } else if matches!(classification, ListenAddrClass::LocalOnly) {
         add_hole_punch_candidate(swarm, address.clone());
     }
-    if classification.is_relayed() && relayed_route_public {
+    if classification.is_relayed() {
         if let Some(relay) = relay_peer_id(&address) {
             if ctx.relay_state.relay_client_reservations.contains(&relay) {
-                relayed_addr_confirmed_by_reservation = true;
-                add_external_address_candidate(swarm, address.clone());
-                ctx.relay_state
-                    .relayed_listen_addrs
-                    .insert(address.to_string());
+                relayed_addr_confirmed_by_reservation = relayed_route_public;
+                confirm_relayed_listen_addr(swarm, ctx.relay_state, &address);
             } else {
                 ctx.relay_state
                     .pending_relay_listen_addrs
@@ -368,7 +365,24 @@ pub(crate) async fn handle_new_listen_addr(
     }
 }
 
-fn relayed_route_has_public_relay_endpoint(addr: &Multiaddr) -> bool {
+/// Record a reservation-confirmed circuit address. Only circuits through a
+/// public relay endpoint become external-address candidates.
+pub(crate) fn confirm_relayed_listen_addr(
+    swarm: &mut Swarm<MeshBehaviour>,
+    relay_state: &mut RelayState,
+    address: &Multiaddr,
+) {
+    if relayed_route_has_public_relay_endpoint(address) {
+        add_external_address_candidate(swarm, address.clone());
+        relay_state.relayed_listen_addrs.insert(address.to_string());
+    } else {
+        relay_state
+            .private_relayed_listen_addrs
+            .insert(address.to_string());
+    }
+}
+
+pub(crate) fn relayed_route_has_public_relay_endpoint(addr: &Multiaddr) -> bool {
     let mut relay_route = Multiaddr::empty();
     for protocol in addr.iter() {
         if matches!(protocol, Protocol::P2pCircuit) {
@@ -392,6 +406,9 @@ pub(crate) async fn handle_expired_listen_addr(
     if classification.is_relayed() {
         ctx.relay_state
             .relayed_listen_addrs
+            .remove(&address.to_string());
+        ctx.relay_state
+            .private_relayed_listen_addrs
             .remove(&address.to_string());
         let address_string = address.to_string();
         for pending in ctx.relay_state.pending_relay_listen_addrs.values_mut() {

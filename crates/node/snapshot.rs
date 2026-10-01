@@ -6,6 +6,7 @@ use serde_json::Value;
 
 use crate::connectivity::relay::{RelayServiceHealth, RelayState};
 
+mod dial_addresses;
 mod helpers;
 
 pub(crate) use helpers::network_label;
@@ -127,6 +128,7 @@ pub struct NodeSnapshot {
     pub relay_discovery_failures: usize,
     pub relay_discovery_replacements: usize,
     pub relayed_listen_addresses: Vec<String>,
+    pub private_relayed_listen_addresses: Vec<String>,
     pub dcutr_enabled: bool,
     pub dcutr_attempt_after_relay_connection: bool,
     pub dcutr_keep_relay_fallback: bool,
@@ -219,6 +221,7 @@ impl NodeSnapshot {
         self.relay_server_errors = relay_state.server_errors;
         self.relay_bytes_forwarded = relay_state.relay_bytes_forwarded;
         self.relayed_listen_addresses = relay_state.relayed_listen_addrs.iter().cloned().collect();
+        self.apply_private_relayed(relay_state);
         if self.public_addr.is_none() {
             self.public_addr = self.relayed_listen_addresses.first().cloned();
         }

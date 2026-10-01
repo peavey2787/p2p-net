@@ -62,6 +62,10 @@ pub struct RelayState {
     pub relay_discovery_failures: usize,
     pub relay_discovery_replacements: usize,
     pub relayed_listen_addrs: BTreeSet<String>,
+    /// Confirmed circuits through a relay reached on a private (LAN) endpoint.
+    /// Peers on the same network can dial them, so they belong in the local
+    /// dial binding, but they are never advertised as public reachability.
+    pub private_relayed_listen_addrs: BTreeSet<String>,
     pub relay_bytes_forwarded: u64,
     pub unverified_relayed_peers: HashMap<PeerId, Instant>,
     pub dcutr_enabled: bool,
