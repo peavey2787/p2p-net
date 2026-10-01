@@ -11,7 +11,7 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 libp2p = { version = "0.57.0", default-features = false }
 p2p-net = { path = "../..", features = ["fuzzing"] }
-libp2p-webrtc = { path = "../../external/libp2p-webrtc", features = ["fuzzing"] }
+libp2p-webrtc = { package = "p2p-net-webrtc", path = "../../external/libp2p-webrtc", features = ["fuzzing"] }
 serde_json = "1"
 
 [[bin]]
