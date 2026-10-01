@@ -25,6 +25,10 @@ pub(crate) async fn handle_event(
         } => {
             relay_state.reservation_attempted = true;
             relay_state.relay_client_reservations.insert(relay_peer_id);
+            let local = *swarm.local_peer_id();
+            for route in relay_state.requested_routes(&relay_peer_id, local) {
+                confirm_relayed_listen_addr(swarm, relay_state, &route);
+            }
             if let Some(addresses) = relay_state
                 .pending_relay_listen_addrs
                 .remove(&relay_peer_id)

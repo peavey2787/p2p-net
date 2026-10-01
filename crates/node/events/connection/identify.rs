@@ -198,6 +198,8 @@ fn maybe_reserve_dht_relay(
 
     match swarm.listen_on(reservation_addr.clone()) {
         Ok(_) => {
+            ctx.relay_state
+                .note_requested_reservation(&reservation_addr);
             ctx.relay_state.relay_client_reservation_attempts = ctx
                 .relay_state
                 .relay_client_reservation_attempts

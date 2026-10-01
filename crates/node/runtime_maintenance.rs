@@ -23,7 +23,7 @@ pub(crate) fn initial_relay_state(
     relay_reservation_plan: &RelayReservationPlan,
     relay_selection_plan: &RelaySelectionPlan,
 ) -> RelayState {
-    RelayState {
+    let mut state = RelayState {
         server_enabled: cfg.relay.is_active_now(),
         health: cfg.relay.health_now(),
         relay_client_reservation_attempts: relay_reservation_plan.attempted,
@@ -47,7 +47,11 @@ pub(crate) fn initial_relay_state(
         // the relay transport confirms them with `NewListenAddr`.
         relayed_listen_addrs: BTreeSet::new(),
         ..RelayState::default()
+    };
+    for addr in &relay_reservation_plan.listen_addrs {
+        state.note_requested_reservation(addr);
     }
+    state
 }
 
 #[allow(clippy::too_many_arguments)]
