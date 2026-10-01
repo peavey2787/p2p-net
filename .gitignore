@@ -211,3 +211,6 @@ apps/android/qa/evidence/
 
 # Machine-generated durable validation evidence (kept locally, not committed)
 /qa/evidence/runs/
+
+qa/fuzz/target/
+qa/fuzz/Cargo.lock
