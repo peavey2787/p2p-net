@@ -83,8 +83,8 @@ fn full_node_hot_paths_are_optimized_without_reducing_capability() {
     let cache = fs::read_to_string("crates/connectivity/peer_cache/store.rs").expect("read cache");
     let kademlia = fs::read_to_string("crates/node/events/kademlia.rs").expect("read kad events");
 
-    let events = fs::read_to_string("crates/node/events/observability.rs")
-        .expect("read event batching");
+    let events =
+        fs::read_to_string("crates/node/events/observability.rs").expect("read event batching");
     let identify = fs::read_to_string("crates/node/events/connection/identify.rs")
         .expect("read identify event handling");
 
