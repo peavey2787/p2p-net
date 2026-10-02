@@ -30,4 +30,6 @@ if [[ -n "$unpinned" ]]; then
 fi
 echo "Companion lockfile is a subset of the audited root Cargo.lock."
 
-cargo test --manifest-path "$MANIFEST" --locked --all-features -j 1
+# One test thread: upstream suites (e.g. gossipsub peer scoring) assert
+# wall-clock sleep windows that parallel tests on a loaded runner overshoot.
+cargo test --manifest-path "$MANIFEST" --locked --all-features -j 1 -- --test-threads=1
