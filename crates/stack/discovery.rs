@@ -125,8 +125,9 @@ pub fn reserve_selected_relays(
         };
 
         match swarm.listen_on(listen_addr.clone()) {
-            Ok(_) => {
+            Ok(listener) => {
                 plan.attempted = plan.attempted.saturating_add(1);
+                plan.listeners.push((listener, listen_addr.clone()));
                 plan.listen_addrs.push(listen_addr);
             }
             Err(err) => plan.errors.push(format!(

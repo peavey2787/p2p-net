@@ -79,7 +79,14 @@ impl AsyncWrite for FullFrameChannel {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<std::io::Result<usize>> {
-        Pin::new(&mut self.get_mut().0).poll_write(cx, buf)
+        // `PollDataChannel` sends each `poll_write` buffer as one SCTP message,
+        // but the framed writer above flushes only once its buffer reaches
+        // ~`MAX_DATA_LEN`, so one flush can carry nearly two frames (~32 KiB).
+        // webrtc-rs rejects anything over the 16 KiB message size ("outbound
+        // packet larger than maximum message size"). The channel is a byte
+        // stream to libp2p, so cap each message and let the caller continue.
+        let len = buf.len().min(MAX_MSG_LEN);
+        Pin::new(&mut self.get_mut().0).poll_write(cx, &buf[..len])
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {

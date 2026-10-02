@@ -245,6 +245,11 @@ name = "relay_metering"
 path = "qa/tests/relay/relay_metering.rs"
 required-features = ["native-tests"]
 
+[[test]]
+name = "relay_reservation_retry"
+path = "qa/tests/relay/relay_reservation_retry.rs"
+required-features = ["native-tests"]
+
 # runtime integration tests
 [[test]]
 name = "behaviour_policy"

@@ -2,9 +2,11 @@
 //!
 //! Two browsers that can only reach each other through a Circuit Relay use the
 //! relayed connection to exchange WebRTC signaling, then open a direct
-//! `RtcPeerConnection`. When that direct connection is up, application
-//! traffic moves to it: the relayed connections to that peer are closed. When
-//! the upgrade fails, the relayed connection simply stays as the path.
+//! `RtcPeerConnection`. Once the remote has the direct connection too (proven
+//! by its Identify arriving over it), application traffic moves there: the
+//! relayed connections to that peer are closed. Closing earlier would cut the
+//! remote's signaling while it is still completing its side. When the upgrade
+//! fails, the relayed connection simply stays as the path.
 //! Native peers keep using DCUtR; this module never applies to them.
 //!
 //! Lifecycle tags written to the node's pulses (concise; never per packet):
@@ -23,6 +25,8 @@ use libp2p::{Multiaddr, PeerId};
 #[derive(Debug, Default, Clone)]
 pub struct DirectUpgradeState {
     relayed: HashMap<PeerId, Vec<ConnectionId>>,
+    /// Direct connections up locally, awaiting proof the remote has them.
+    pending_direct: HashMap<PeerId, ConnectionId>,
     pub upgrades_succeeded: u64,
     pub upgrades_failed: u64,
     pub paths_migrated: u64,
@@ -36,7 +40,30 @@ impl DirectUpgradeState {
         }
     }
 
+    /// A direct browser connection is up locally.
+    pub(crate) fn direct_established(&mut self, peer: PeerId, connection: ConnectionId) {
+        self.pending_direct.insert(peer, connection);
+    }
+
+    /// The remote proved it has `connection` (its Identify arrived over it).
+    /// For a pending direct connection, returns the relayed connections the
+    /// direct path now replaces.
+    pub(crate) fn confirm_direct(
+        &mut self,
+        peer: &PeerId,
+        connection: ConnectionId,
+    ) -> Option<Vec<ConnectionId>> {
+        if self.pending_direct.get(peer) != Some(&connection) {
+            return None;
+        }
+        self.pending_direct.remove(peer);
+        Some(self.take_relayed(peer))
+    }
+
     pub(crate) fn connection_closed(&mut self, peer: PeerId, connection: ConnectionId) {
+        if self.pending_direct.get(&peer) == Some(&connection) {
+            self.pending_direct.remove(&peer);
+        }
         if let Some(connections) = self.relayed.get_mut(&peer) {
             connections.retain(|existing| *existing != connection);
             if connections.is_empty() {
@@ -126,5 +153,41 @@ mod tests {
         assert!(state.has_relayed(&other));
         state.connection_closed(other, c);
         assert!(!state.has_relayed(&other));
+    }
+
+    #[test]
+    fn relayed_path_is_kept_until_the_remote_confirms_the_direct_one() {
+        let mut state = DirectUpgradeState::default();
+        let peer = PeerId::random();
+        let (relayed, direct, other) = (
+            ConnectionId::new_unchecked(1),
+            ConnectionId::new_unchecked(2),
+            ConnectionId::new_unchecked(3),
+        );
+        state.relayed_established(peer, relayed);
+        state.direct_established(peer, direct);
+        // Identify over some other connection proves nothing about the direct one.
+        assert_eq!(state.confirm_direct(&peer, relayed), None);
+        assert_eq!(state.confirm_direct(&peer, other), None);
+        assert!(state.has_relayed(&peer));
+        assert_eq!(state.confirm_direct(&peer, direct), Some(vec![relayed]));
+        assert!(!state.has_relayed(&peer));
+        // Confirmed once.
+        assert_eq!(state.confirm_direct(&peer, direct), None);
+    }
+
+    #[test]
+    fn a_direct_connection_that_closes_unconfirmed_migrates_nothing() {
+        let mut state = DirectUpgradeState::default();
+        let peer = PeerId::random();
+        let (relayed, direct) = (
+            ConnectionId::new_unchecked(1),
+            ConnectionId::new_unchecked(2),
+        );
+        state.relayed_established(peer, relayed);
+        state.direct_established(peer, direct);
+        state.connection_closed(peer, direct);
+        assert_eq!(state.confirm_direct(&peer, direct), None);
+        assert!(state.has_relayed(&peer));
     }
 }

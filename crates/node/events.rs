@@ -41,6 +41,7 @@ mod relay_server;
 mod rendezvous;
 
 pub(crate) use observability::{flush_observability_snapshot, ObservabilityBatch};
+pub(crate) use relay_client::retry_due_reservations;
 pub(crate) use relay_server::enforce_relay_schedule;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use relay_server::report_relay_usage;
@@ -203,7 +204,6 @@ pub(crate) async fn handle_swarm_event(
                 &remote_addr,
                 relayed_endpoint,
                 outgoing,
-                swarm,
                 ctx,
             )
             .await;
@@ -292,6 +292,15 @@ pub(crate) async fn handle_swarm_event(
             connection::handle_expired_listen_addr(address, swarm, ctx).await;
             emit_local_binding(ctx).await;
         }
+        SwarmEvent::ListenerClosed {
+            listener_id,
+            reason,
+            ..
+        } => {
+            let error = reason.err().map(|error| error.to_string());
+            relay_client::handle_listener_closed(listener_id, error, ctx.snapshot, ctx.relay_state)
+                .await;
+        }
         SwarmEvent::ListenerError { error, .. } => {
             connection::handle_listener_error(format!("{error:?}"), ctx).await;
         }
@@ -360,6 +369,14 @@ pub(crate) async fn handle_swarm_event(
             gossip::handle_unexpected_topic_message(swarm, propagation_source, message_id, ctx);
         }
         SwarmEvent::Behaviour(MeshEvent::Identify(ev)) => {
+            if let libp2p::identify::Event::Received {
+                peer_id,
+                connection_id,
+                ..
+            } = ev.as_ref()
+            {
+                direct_upgrade::on_identify_received(*peer_id, *connection_id, swarm, ctx).await;
+            }
             connection::handle_identify_observed_addr(swarm, &ev, ctx).await;
             let event = MeshEvent::Identify(ev);
             on_mesh_event(

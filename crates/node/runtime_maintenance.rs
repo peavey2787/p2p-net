@@ -51,6 +51,9 @@ pub(crate) fn initial_relay_state(
     for addr in &relay_reservation_plan.listen_addrs {
         state.note_requested_reservation(addr);
     }
+    for (listener, addr) in &relay_reservation_plan.listeners {
+        state.reservation_retries.track(*listener, addr.clone());
+    }
     state
 }
 

@@ -5,6 +5,7 @@ mod config;
 mod metering;
 mod policy;
 mod requested;
+mod reservation_retry;
 mod schedule;
 mod state;
 
@@ -17,5 +18,6 @@ pub use metering::{
     RECENT_CLOSED_CIRCUITS,
 };
 pub use policy::classify_relay_denial;
+pub use reservation_retry::ReservationRetries;
 pub use schedule::{RelaySchedule, RelayWindow};
 pub use state::{update_nat_state, RelayReservationPlan, RelayServiceHealth, RelayState};

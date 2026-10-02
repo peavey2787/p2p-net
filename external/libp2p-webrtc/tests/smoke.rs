@@ -56,6 +56,73 @@ async fn smoke() {
     assert_eq!(b_connected, a_peer_id);
 }
 
+/// Two writes that each fit in one frame, without a flush in between, make
+/// the framed writer buffer ~32 KiB. Each data channel message must still stay
+/// within `MAX_MSG_LEN` (16 KiB); webrtc-rs otherwise rejects the write with
+/// "outbound packet larger than maximum message size" and the stream (on a
+/// relay: the whole circuit) dies.
+#[tokio::test]
+async fn coalesced_frames_never_exceed_the_message_size() {
+    const CHUNK: usize = 16_000;
+
+    let (_, mut a_transport) = create_transport();
+    let (_, mut b_transport) = create_transport();
+    let addr = start_listening(&mut a_transport, "/ip4/127.0.0.1/udp/0/webrtc-direct").await;
+    start_listening(&mut b_transport, "/ip4/127.0.0.1/udp/0/webrtc-direct").await;
+    let ((_, _, mut listener), (_, mut dialer)) =
+        connect(&mut a_transport, &mut b_transport, addr).await;
+    // The transports drive the UDP muxers; keep polling them.
+    tokio::spawn(async move { while a_transport.next().await.is_some() {} });
+    tokio::spawn(async move { while b_transport.next().await.is_some() {} });
+
+    let reader = tokio::spawn(async move {
+        let mut inbound = future::poll_fn(|cx| {
+            let _ = listener.poll_unpin(cx)?;
+            listener.poll_inbound_unpin(cx)
+        })
+        .await
+        .unwrap();
+        tokio::spawn(async move {
+            while future::poll_fn(|cx| listener.poll_unpin(cx)).await.is_ok() {}
+        });
+        let mut pong = [0u8; 4];
+        inbound.read_exact(&mut pong).await.unwrap();
+        assert_eq!(&pong, b"PONG");
+        inbound.write_all(b"PING").await.unwrap();
+        inbound.flush().await.unwrap();
+        let mut received = Vec::new();
+        inbound.read_to_end(&mut received).await.unwrap();
+        received
+    });
+
+    let mut outbound = future::poll_fn(|cx| {
+        let _ = dialer.poll_unpin(cx)?;
+        dialer.poll_outbound_unpin(cx)
+    })
+    .await
+    .unwrap();
+    tokio::spawn(async move { while future::poll_fn(|cx| dialer.poll_unpin(cx)).await.is_ok() {} });
+    // The remote sees the stream only once it carries data.
+    outbound.write_all(b"PONG").await.unwrap();
+    outbound.flush().await.unwrap();
+    let mut ping = [0u8; 4];
+    outbound.read_exact(&mut ping).await.unwrap();
+    assert_eq!(&ping, b"PING");
+
+    outbound.write_all(&[1u8; CHUNK]).await.unwrap();
+    outbound.write_all(&[2u8; CHUNK]).await.unwrap();
+    outbound.flush().await.unwrap();
+    outbound.close().await.unwrap();
+
+    let received = tokio::time::timeout(Duration::from_secs(20), reader)
+        .await
+        .expect("reader finished")
+        .unwrap();
+    assert_eq!(received.len(), 2 * CHUNK);
+    assert!(received[..CHUNK].iter().all(|&byte| byte == 1));
+    assert!(received[CHUNK..].iter().all(|&byte| byte == 2));
+}
+
 // Note: This test should likely be ported to the muxer compliance test suite.
 #[test]
 fn concurrent_connections_and_streams_tokio() {

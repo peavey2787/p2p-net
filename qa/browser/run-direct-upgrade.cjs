@@ -183,7 +183,7 @@ async function relayBytesGrewPast(harness, before, label) {
   }, 15000);
 }
 
-async function browserPair(browser, baseUrl, info, options) {
+async function browserPair(browser, baseUrl, info, options, harness) {
   const a = await openNode(browser, baseUrl, `${options.name}-a`, nodeConfig(info.relay.addr, options));
   const b = await openNode(browser, baseUrl, `${options.name}-b`, nodeConfig(info.relay.addr, options));
   await waitFor(`${options.name}: both reserved`, async () =>
@@ -192,8 +192,10 @@ async function browserPair(browser, baseUrl, info, options) {
       for (const node of [a, b]) {
         const snap = await snapshot(node);
         const pulses = snap.pulses.filter(line => !line.includes('heartbeat'));
-        log(`DIAG ${node.label}: reservations=${snap.relay_client_reservations} attempts=${snap.relay_client_reservation_attempts} failures=${snap.relay_client_reservation_failures} transports=${JSON.stringify(snap.active_transports)} pulses=${JSON.stringify(pulses.slice(-25))}`);
+        log(`DIAG ${node.label}: reservations=${snap.relay_client_reservations} attempts=${snap.relay_client_reservation_attempts} failures=${snap.relay_client_reservation_failures} transports=${JSON.stringify(snap.active_transports)} pulses=${JSON.stringify([...(node.pulseLog || [])].filter(line => !line.includes('heartbeat')).slice(-25))}`);
+        log(`DIAG ${node.label} events: ${JSON.stringify(await node.page.evaluate(() => window.__events.filter(e => !e.includes('local_binding')).slice(-20)))}`);
       }
+      log(`DIAG relay: ${JSON.stringify(await harness.stats())}`);
       throw error;
     });
   await subscribe(a, info.topic);
@@ -234,7 +236,7 @@ async function diagnose(...nodes) {
 }
 
 async function scenarioDirectSuccess(browser, baseUrl, info, harness) {
-  const { a, b } = await browserPair(browser, baseUrl, info, { name: 'success' });
+  const { a, b } = await browserPair(browser, baseUrl, info, { name: 'success' }, harness);
   const migrated = await waitFor('success: path migrated to direct WebRTC', async () => {
     const [sa, sb] = [await snapshot(a), await snapshot(b)];
     return sa.direct_upgrade.paths_migrated + sb.direct_upgrade.paths_migrated >= 1 &&
@@ -277,7 +279,7 @@ async function scenarioDirectSuccess(browser, baseUrl, info, harness) {
 }
 
 async function scenarioDirectFailure(browser, baseUrl, info, harness) {
-  const { a, b } = await browserPair(browser, baseUrl, info, { name: 'failure', relayOnlyIce: true });
+  const { a, b } = await browserPair(browser, baseUrl, info, { name: 'failure', relayOnlyIce: true }, harness);
   const failed = await waitFor('failure: upgrade failed and fell back', async () => {
     const snaps = [await snapshot(a), await snapshot(b)];
     return [a, b].some(n => sawPulse(n, 'DIRECT_UPGRADE_FAILED')) &&

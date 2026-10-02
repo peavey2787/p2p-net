@@ -11,47 +11,67 @@ use super::SwarmEventContext;
 use crate::connectivity::direct_upgrade::is_direct_browser_webrtc;
 use crate::stack::MeshBehaviour;
 
-/// Track relayed connections and, when a direct browser WebRTC connection to
-/// the same peer comes up, move the peer's traffic to it by closing the
-/// relayed connections. The relay reservation itself is untouched.
+/// Track relayed connections and direct browser WebRTC connections. A direct
+/// connection counts as a successful upgrade as soon as it is up locally; the
+/// relayed path is retired only once the remote confirms it (see
+/// [`on_identify_received`]).
 pub(super) async fn on_connection_established(
     peer: PeerId,
     connection: ConnectionId,
     remote_addr: &Multiaddr,
     relayed: bool,
     outgoing: bool,
-    swarm: &mut Swarm<MeshBehaviour>,
     ctx: &mut SwarmEventContext<'_>,
 ) {
+    let state = &mut ctx.relay_state.direct_upgrade;
     let line = if relayed {
-        ctx.relay_state
-            .direct_upgrade
-            .relayed_established(peer, connection);
+        state.relayed_established(peer, connection);
         format!("RELAY_CONNECT peer={peer}")
     } else if is_direct_browser_webrtc(remote_addr) {
-        let replaced = ctx.relay_state.direct_upgrade.take_relayed(&peer);
-        for relayed in &replaced {
-            swarm.close_connection(*relayed);
-        }
-        if !replaced.is_empty() {
-            ctx.relay_state.direct_upgrade.paths_migrated = ctx
-                .relay_state
-                .direct_upgrade
-                .paths_migrated
-                .saturating_add(1);
-        }
-        format!(
-            "PATH_MIGRATED_TO_DIRECT peer={peer} relayed_closed={}",
-            replaced.len()
-        )
+        state.direct_established(peer, connection);
+        state.upgrades_succeeded = state.upgrades_succeeded.saturating_add(1);
+        format!("DIRECT_UPGRADE_SUCCESS peer={peer}")
     } else if outgoing {
         format!("DIRECT_DIAL peer={peer} addr={remote_addr}")
     } else {
         return;
     };
+    record(ctx, [line]).await;
+}
+
+/// The remote's Identify arrived over `connection`, so the remote has that
+/// connection established. If it is a pending direct connection, move the
+/// peer's traffic to it by closing the relayed connections (the relay
+/// reservation itself is untouched).
+pub(super) async fn on_identify_received(
+    peer: PeerId,
+    connection: ConnectionId,
+    swarm: &mut Swarm<MeshBehaviour>,
+    ctx: &mut SwarmEventContext<'_>,
+) {
+    let state = &mut ctx.relay_state.direct_upgrade;
+    let Some(replaced) = state.confirm_direct(&peer, connection) else {
+        return;
+    };
+    for relayed in &replaced {
+        swarm.close_connection(*relayed);
+    }
+    if !replaced.is_empty() {
+        state.paths_migrated = state.paths_migrated.saturating_add(1);
+    }
+    let line = format!(
+        "PATH_MIGRATED_TO_DIRECT peer={peer} relayed_closed={}",
+        replaced.len()
+    );
+    record(ctx, [line]).await;
+}
+
+async fn record(ctx: &mut SwarmEventContext<'_>, lines: impl IntoIterator<Item = String>) {
     let mut guard = ctx.snapshot.lock().await;
     guard.direct_upgrade = ctx.relay_state.direct_upgrade.snapshot();
-    push_pulse(&mut guard.pulses, line);
+    for line in lines {
+        push_pulse(&mut guard.pulses, line);
+    }
 }
 
 pub(super) fn on_connection_closed(
@@ -72,12 +92,10 @@ pub(super) async fn on_signaling_event(event: SignalingEvent, ctx: &mut SwarmEve
                 "WEBRTC_SIGNALING peer={peer_id} initiator={initiator}"
             )]
         }
+        // Success is counted when the connection reaches the swarm
+        // (`on_connection_established`), which both sides observe.
         SignalingEvent::NewWebRTCConnection { peer_id } => {
-            state.upgrades_succeeded = state.upgrades_succeeded.saturating_add(1);
-            vec![
-                format!("ICE_CHECK peer={peer_id} outcome=connected"),
-                format!("DIRECT_UPGRADE_SUCCESS peer={peer_id}"),
-            ]
+            vec![format!("ICE_CHECK peer={peer_id} outcome=connected")]
         }
         SignalingEvent::WebRTCConnectionError { peer_id, error } => {
             state.upgrades_failed = state.upgrades_failed.saturating_add(1);
@@ -98,9 +116,5 @@ pub(super) async fn on_signaling_event(event: SignalingEvent, ctx: &mut SwarmEve
             lines
         }
     };
-    let mut guard = ctx.snapshot.lock().await;
-    guard.direct_upgrade = ctx.relay_state.direct_upgrade.snapshot();
-    for line in lines {
-        push_pulse(&mut guard.pulses, line);
-    }
+    record(ctx, lines).await;
 }

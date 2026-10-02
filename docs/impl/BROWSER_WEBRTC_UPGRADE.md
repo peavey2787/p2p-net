@@ -20,11 +20,14 @@ using DCUtR.
    `ICE_CHECK peer=… outcome=connected|failed|timeout` (the failure forms
    include the final `iceConnectionState`).
 4. **Upgrade.** On success the new connection is authenticated (Noise over
-   the data channel) and reported as `DIRECT_UPGRADE_SUCCESS`. When the direct
-   connection is established, p2p-net closes that peer's relayed connections,
-   moving application traffic to the direct path. Pulse:
+   the data channel) and reaches the swarm on each side, which counts it as
+   `DIRECT_UPGRADE_SUCCESS`. The relayed connection stays the path until the
+   remote proves it has the direct connection too: its Identify arriving over
+   that connection. Only then does p2p-net close the peer's relayed
+   connections, moving application traffic to the direct path. Pulse:
    `PATH_MIGRATED_TO_DIRECT peer=… relayed_closed=N`. The relay reservation
-   itself is kept.
+   itself is kept. (Closing as soon as the local side is up would cut the
+   remote's signaling while it is still completing its side of the upgrade.)
 5. **Fallback.** On failure: `DIRECT_UPGRADE_FAILED peer=… error=…`, and, when
    a relayed connection to the peer exists, `RELAY_FALLBACK peer=…`. Traffic
    keeps flowing over the relay. A failed `RtcPeerConnection` is closed.
@@ -72,9 +75,10 @@ addresses); without TURN servers it disables direct upgrades entirely.
   #5978): browser `/webrtc` signaling, with bounded signaling messages, failure
   reporting, `CloseOnFailure`, relay-only ICE, and the `ICE_CHECK` outcome.
 - `p2p-net-webrtc`: native WebRTC streams keep their full 16 KiB read
-  capacity when the data channel is cloned (`FullFrameChannel`). Before this
-  fix, browser frames above 8 KiB killed relayed circuits
-  (`ErrShortBuffer`).
+  capacity when the data channel is cloned, and never send a data channel
+  message over 16 KiB (`FullFrameChannel`). Before these fixes, browser frames
+  above 8 KiB (`ErrShortBuffer`) and coalesced outbound frames ("outbound
+  packet larger than maximum message size") killed relayed circuits.
 - `p2p-net-gossipsub`: a connection that is not a peer's first has no
   gossipsub outbound stream, and its handler was never woken by queued
   messages. After `PATH_MIGRATED_TO_DIRECT` closed the relayed (first)

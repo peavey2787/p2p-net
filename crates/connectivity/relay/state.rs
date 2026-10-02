@@ -65,6 +65,7 @@ pub struct RelayState {
     /// LAN-relay circuits: in the dial binding, never external addresses.
     pub private_relayed_listen_addrs: BTreeSet<String>,
     pub requested_relay_listen_addrs: HashMap<PeerId, BTreeSet<Multiaddr>>,
+    pub reservation_retries: super::ReservationRetries,
     /// Relay transit bytes (each forwarded byte once), derived from
     /// `relay_meter`: completed circuits' final totals plus live circuits.
     pub relay_bytes_forwarded: u64,
@@ -88,6 +89,7 @@ pub struct RelayState {
 pub struct RelayReservationPlan {
     pub attempted: usize,
     pub listen_addrs: Vec<Multiaddr>,
+    pub listeners: Vec<(libp2p::core::transport::ListenerId, Multiaddr)>,
     pub errors: Vec<String>,
 }
 

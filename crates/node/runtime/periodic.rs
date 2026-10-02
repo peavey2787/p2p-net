@@ -37,6 +37,10 @@ pub(super) async fn tick_runtime(
     {
         pulses.push(pulse);
     }
+    pulses.extend(events::retry_due_reservations(
+        swarm,
+        &mut runtime_state.relay_state,
+    ));
     pulses.extend(runtime_maintenance::maintain_application_connections(
         cfg,
         swarm,
