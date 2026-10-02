@@ -133,7 +133,9 @@ try {
     # Each is published before p2p-net, which depends on them by registry name.
     $companions = @(
         @{ Name = "p2p-net-webrtc"; Dir = "libp2p-webrtc" },
-        @{ Name = "p2p-net-relay"; Dir = "libp2p-relay" }
+        @{ Name = "p2p-net-relay"; Dir = "libp2p-relay" },
+        @{ Name = "p2p-net-webrtc-websys"; Dir = "libp2p-webrtc-websys" },
+        @{ Name = "p2p-net-gossipsub"; Dir = "libp2p-gossipsub" }
     )
     $patchArgs = @()
     foreach ($companion in $companions) {
@@ -179,6 +181,8 @@ try {
         "p2p-net-0.1.0/external/libp2p-dns/",
         "p2p-net-0.1.0/external/libp2p-mdns-placeholder/",
         "p2p-net-0.1.0/external/libp2p-relay/",
+        "p2p-net-0.1.0/external/libp2p-webrtc-websys/",
+        "p2p-net-0.1.0/external/libp2p-gossipsub/",
         "p2p-net-0.1.0/external/libp2p-webrtc/"
     )) {
         if (($rootArchiveEntries -split "`r?`n") | Where-Object { $_.StartsWith($forbiddenEntry) }) {
@@ -281,9 +285,13 @@ fn main() {
         "2. cargo +1.98.0 publish --manifest-path external/libp2p-webrtc/Cargo.toml --registry crates-io",
         "3. cargo +1.98.0 publish --dry-run --manifest-path external/libp2p-relay/Cargo.toml --registry crates-io",
         "4. cargo +1.98.0 publish --manifest-path external/libp2p-relay/Cargo.toml --registry crates-io",
-        "5. Wait until crates.io/index.crates.io resolves p2p-net-webrtc 0.1.0 and p2p-net-relay 0.1.0.",
-        "6. cargo +1.98.0 publish --dry-run --package p2p-net --registry crates-io --locked",
-        "7. cargo +1.98.0 publish --package p2p-net --registry crates-io --locked"
+        "5. cargo +1.98.0 publish --dry-run --manifest-path external/libp2p-webrtc-websys/Cargo.toml --registry crates-io",
+        "6. cargo +1.98.0 publish --manifest-path external/libp2p-webrtc-websys/Cargo.toml --registry crates-io",
+        "7. cargo +1.98.0 publish --dry-run --manifest-path external/libp2p-gossipsub/Cargo.toml --registry crates-io",
+        "8. cargo +1.98.0 publish --manifest-path external/libp2p-gossipsub/Cargo.toml --registry crates-io",
+        "9. Wait until crates.io/index.crates.io resolves p2p-net-webrtc, p2p-net-relay, p2p-net-webrtc-websys and p2p-net-gossipsub 0.1.0.",
+        "10. cargo +1.98.0 publish --dry-run --package p2p-net --registry crates-io --locked",
+        "11. cargo +1.98.0 publish --package p2p-net --registry crates-io --locked"
     ) | Set-Content -Path (Join-Path $DistDir "PUBLISH-ORDER.txt") -Encoding ascii
 
     Set-PackageProgress 5 "Crates.io release artifacts ready" -PhaseComplete

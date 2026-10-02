@@ -1778,7 +1778,6 @@ dependencies = [
  "libp2p-swarm",
  "libp2p-tcp",
  "libp2p-upnp",
- "libp2p-webrtc-websys",
  "libp2p-websocket-websys",
  "libp2p-webtransport-websys",
  "libp2p-yamux",
@@ -2004,7 +2003,6 @@ dependencies = [
  "futures",
  "libp2p-core",
  "libp2p-dcutr",
- "libp2p-gossipsub",
  "libp2p-identify",
  "libp2p-identity",
  "libp2p-kad",
@@ -2269,28 +2267,6 @@ dependencies = [
  "sha2 0.11.0",
  "tinytemplate",
  "tracing",
-]
-
-[[package]]
-name = "libp2p-webrtc-websys"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4599b0cb5869694f38b024e431565b1624dddb2cb873f359c5cda392427784c"
-dependencies = [
- "bytes",
- "futures",
- "getrandom 0.4.3",
- "hex",
- "js-sys",
- "libp2p-core",
- "libp2p-identity",
- "libp2p-webrtc-utils",
- "send_wrapper 0.6.0",
- "thiserror 2.0.21",
- "tracing",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
 ]
 
 [[package]]
@@ -2740,8 +2716,10 @@ dependencies = [
  "libp2p-stream",
  "libp2p-swarm-test",
  "libp2p-websocket",
+ "p2p-net-gossipsub",
  "p2p-net-relay",
  "p2p-net-webrtc",
+ "p2p-net-webrtc-websys",
  "quickcheck",
  "rand 0.8.8",
  "reqwest",
@@ -2772,6 +2750,34 @@ dependencies = [
  "p2p-net",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "p2p-net-gossipsub"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "asynchronous-codec",
+ "base64 0.23.1",
+ "byteorder",
+ "bytes",
+ "either",
+ "fnv",
+ "futures",
+ "futures-timer",
+ "getrandom 0.4.3",
+ "hashlink",
+ "hex_fmt",
+ "libp2p-core",
+ "libp2p-identity",
+ "libp2p-swarm",
+ "prost",
+ "prost-codec",
+ "rand 0.10.3",
+ "regex",
+ "sha2 0.11.0",
+ "tracing",
+ "web-time",
 ]
 
 [[package]]
@@ -2818,6 +2824,33 @@ dependencies = [
  "tokio-util",
  "tracing",
  "webrtc",
+]
+
+[[package]]
+name = "p2p-net-webrtc-websys"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "futures",
+ "futures-timer",
+ "getrandom 0.4.3",
+ "hex",
+ "js-sys",
+ "libp2p-core",
+ "libp2p-identity",
+ "libp2p-swarm",
+ "libp2p-webrtc-utils",
+ "prost",
+ "send_wrapper 0.6.0",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+ "unsigned-varint",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "web-time",
 ]
 
 [[package]]
@@ -4362,6 +4395,10 @@ name = "unsigned-varint"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eb066959b24b5196ae73cb057f45598450d2c5f71460e98c49b738086eff9c06"
+dependencies = [
+ "futures-io",
+ "futures-util",
+]
 
 [[package]]
 name = "untrusted"

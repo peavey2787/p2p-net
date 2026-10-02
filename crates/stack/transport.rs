@@ -66,6 +66,9 @@ pub(super) fn transport_plan(cfg: &NodeConfig, resolved_cfg: &ResolvedNodeConfig
     if resolved_cfg.transport_capabilities.webtransport {
         active.push("webtransport");
     }
+    if resolved_cfg.transport_capabilities.browser_webrtc {
+        active.push("webrtc-browser");
+    }
     if behaviour_policy.gossipsub {
         active.push("gossipsub");
     }

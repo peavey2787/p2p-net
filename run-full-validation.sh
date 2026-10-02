@@ -363,6 +363,17 @@ if should_run wasm; then
   run_step "WASM browser tests (Playwright Chromium + Firefox)" \
     env NODE_PATH="$PLAYWRIGHT_TOOL_DIR/node_modules" P2P_WASM_PKG_DIR="$P2P_WASM_PKG_DIR" \
     node "$ROOT/qa/browser/run-playwright.cjs"
+
+  # Relay-assisted browser WebRTC direct upgrade: real browsers against a
+  # loopback relay and native peers (qa/browser/run-direct-upgrade.cjs).
+  set_validation_target browser-relay-harness
+  run_step "Build native relay harness for browser direct-upgrade QA" \
+    cargo build --example qa_browser_relay --locked
+  P2P_QA_RELAY_BIN="$CARGO_TARGET_DIR/debug/examples/qa_browser_relay"
+  clear_validation_target
+  run_step "Browser WebRTC direct upgrade + relay fallback (Playwright Chromium)" \
+    env NODE_PATH="$PLAYWRIGHT_TOOL_DIR/node_modules" P2P_WASM_PKG_DIR="$P2P_WASM_PKG_DIR" \
+    P2P_QA_RELAY_BIN="$P2P_QA_RELAY_BIN" node "$ROOT/qa/browser/run-direct-upgrade.cjs"
 fi
 
 if should_run tests; then
@@ -370,7 +381,8 @@ if should_run tests; then
   echo "NOTE: The Rust harness will report three long hostile/load tests as ignored in this normal phase. They are deferred, not omitted: this runner executes each one once at the end, with the soak test last."
   run_step "Tests" cargo test --workspace --locked -j 1
   run_step "WebRTC companion tests" bash "$ROOT/qa/tools/run-webrtc-companion-tests.sh"
-  run_step "Relay companion tests" bash "$ROOT/qa/tools/run-relay-companion-tests.sh"
+  run_step "Relay companion tests" bash "$ROOT/qa/tools/run-companion-tests.sh" libp2p-relay
+  run_step "Gossipsub companion tests" bash "$ROOT/qa/tools/run-companion-tests.sh" libp2p-gossipsub
 fi
 
 if should_run dashboard; then

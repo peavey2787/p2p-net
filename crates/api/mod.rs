@@ -9,10 +9,8 @@
 
 use std::future::Future;
 
-use libp2p::{
-    gossipsub::{IdentTopic, TopicHash},
-    Multiaddr, PeerId,
-};
+use libp2p::{Multiaddr, PeerId};
+use libp2p_gossipsub::{IdentTopic, TopicHash};
 use rand::rngs::OsRng;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};

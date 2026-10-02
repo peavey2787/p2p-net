@@ -71,6 +71,23 @@ pub(super) async fn build_swarm(
         .map_err(|e| NetError::Build(e.to_string()))?
         .with_quic()
         .with_other_transport(move |key| {
+            // Circuit Relay v2 client from p2p-net-relay (metered relay);
+            // same Noise + Yamux upgrade the libp2p relay builder applies.
+            // It must precede the WebRTC transports: their address parser
+            // accepts `.../webrtc-direct/.../p2p/<relay>/p2p-circuit/...` and
+            // would dial the relay itself instead of through it.
+            let noise = noise::Config::new(key).map_err(
+                |err| -> Box<dyn std::error::Error + Send + Sync + 'static> { Box::new(err) },
+            )?;
+            Ok::<_, Box<dyn std::error::Error + Send + Sync + 'static>>(
+                relay_transport
+                    .upgrade(Version::V1Lazy)
+                    .authenticate(noise)
+                    .multiplex(yamux::Config::default()),
+            )
+        })
+        .map_err(|e| NetError::Build(e.to_string()))?
+        .with_other_transport(move |key| {
             Ok::<_, Box<dyn std::error::Error + Send + Sync + 'static>>(WebRtcTransport::new(
                 key.clone(),
                 certificate.clone(),
@@ -88,20 +105,6 @@ pub(super) async fn build_swarm(
                 .multiplex(yamux::Config::default());
             Ok::<_, Box<dyn std::error::Error + Send + Sync + 'static>>(websocket)
         })
-        .map_err(|e| NetError::Build(e.to_string()))?
-        .with_other_transport(move |key| {
-            // Circuit Relay v2 client from p2p-net-relay (metered relay);
-            // same Noise + Yamux upgrade the libp2p relay builder applies.
-            let noise = noise::Config::new(key).map_err(
-                |err| -> Box<dyn std::error::Error + Send + Sync + 'static> { Box::new(err) },
-            )?;
-            Ok::<_, Box<dyn std::error::Error + Send + Sync + 'static>>(
-                relay_transport
-                    .upgrade(Version::V1Lazy)
-                    .authenticate(noise)
-                    .multiplex(yamux::Config::default()),
-            )
-        })
         .map_err(|e| NetError::Build(e.to_string()))?;
 
     let mut swarm = builder
@@ -117,6 +120,7 @@ pub(super) async fn build_swarm(
                 connection_limits_cfg: &cfg.connection_limits,
                 discovery_cfg: &cfg.discovery,
                 resolved_cfg,
+                webrtc_signaling: None,
             })
         })
         .map_err(|e| NetError::Build(e.to_string()))?

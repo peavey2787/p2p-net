@@ -23,6 +23,14 @@ pub struct TransportCapabilities {
     pub secure_websocket: bool,
     pub webtransport: bool,
     pub circuit_relay: bool,
+    /// Browser-to-browser `/webrtc` (private-to-private), negotiated over a
+    /// relayed connection.
+    #[serde(default)]
+    pub browser_webrtc: bool,
+    /// Upgrade a relayed connection to a direct one: DCUtR on native nodes,
+    /// WebRTC signaling over the relayed connection in browsers.
+    #[serde(default)]
+    pub relay_assisted_upgrade: bool,
 }
 
 impl TransportCapabilities {
@@ -34,6 +42,8 @@ impl TransportCapabilities {
             secure_websocket: true,
             webtransport: false,
             circuit_relay: true,
+            browser_webrtc: false,
+            relay_assisted_upgrade: true,
         }
     }
 
@@ -43,10 +53,13 @@ impl TransportCapabilities {
             quic: false,
             webrtc_direct: true,
             secure_websocket: true,
-            // WebTransport is compiled in for an incremental follow-up but is
-            // not advertised/dial-selected until the swarm builder enables it.
-            webtransport: false,
+            // Dial only: the browser swarm wires libp2p-webtransport-websys.
+            // Native p2p-net nodes have no WebTransport listener (rust-libp2p
+            // ships none), so `native()` keeps it off.
+            webtransport: true,
             circuit_relay: true,
+            browser_webrtc: true,
+            relay_assisted_upgrade: true,
         }
     }
 
@@ -63,6 +76,9 @@ impl TransportCapabilities {
         }
         if transport.contains("/webtransport") {
             return self.webtransport;
+        }
+        if transport.ends_with("/webrtc") || transport.contains("/webrtc/") {
+            return self.browser_webrtc;
         }
         if transport.contains("/wss") || transport.contains("/tls/ws") {
             return self.secure_websocket;

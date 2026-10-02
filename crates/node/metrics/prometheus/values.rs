@@ -140,6 +140,22 @@ pub(super) fn snapshot_metric_values(s: &NodeSnapshot) -> Vec<(&'static str, Str
             s.relay_usage.completed_circuits,
         ),
         metric(
+            "p2p_direct_upgrade_successes",
+            s.direct_upgrade.upgrades_succeeded,
+        ),
+        metric(
+            "p2p_direct_upgrade_failures",
+            s.direct_upgrade.upgrades_failed,
+        ),
+        metric(
+            "p2p_direct_upgrade_paths_migrated",
+            s.direct_upgrade.paths_migrated,
+        ),
+        metric(
+            "p2p_direct_upgrade_relayed_peers",
+            s.direct_upgrade.relayed_peers,
+        ),
+        metric(
             "p2p_relay_discovery_enabled",
             flag(s.relay_discovery_enabled),
         ),

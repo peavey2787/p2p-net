@@ -4,6 +4,7 @@ pub(crate) mod addr;
 pub mod connection_strategy;
 pub mod dcutr;
 pub mod dht;
+pub mod direct_upgrade;
 pub mod discovery;
 pub mod dns;
 pub mod identity;

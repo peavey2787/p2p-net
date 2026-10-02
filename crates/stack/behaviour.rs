@@ -6,15 +6,16 @@ use libp2p::allow_block_list::{self, AllowedPeers, BlockedPeers};
 use libp2p::autonat;
 use libp2p::connection_limits;
 use libp2p::dcutr;
-use libp2p::gossipsub;
 use libp2p::identify;
 use libp2p::kad;
 use libp2p::ping;
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::PeerId;
+use libp2p_gossipsub as gossipsub;
 use libp2p_relay as relay;
 use libp2p_rendezvous as rendezvous;
+use libp2p_webrtc_websys::browser as webrtc_browser;
 
 use crate::connectivity::discovery::DiscoveryConfig;
 use crate::connectivity::limits::ConnectionLimitsConfig;
@@ -42,6 +43,9 @@ pub struct MeshBehaviour {
     pub rendezvous_server: Toggle<rendezvous::server::Behaviour>,
     pub identify: identify::Behaviour,
     pub ping: ping::Behaviour,
+    /// Browser-only relay-assisted direct WebRTC upgrade (off on native,
+    /// where DCUtR performs the direct upgrade).
+    pub webrtc_signaling: Toggle<webrtc_browser::Behaviour>,
 }
 
 #[derive(Debug)]
@@ -56,6 +60,7 @@ pub enum MeshEvent {
     RendezvousServer(Box<rendezvous::server::Event>),
     Identify(Box<identify::Event>),
     Ping(ping::Event),
+    WebrtcSignaling(webrtc_browser::SignalingEvent),
 }
 
 impl From<Infallible> for MeshEvent {
@@ -109,6 +114,11 @@ impl From<identify::Event> for MeshEvent {
         Self::Identify(Box::new(v))
     }
 }
+impl From<webrtc_browser::SignalingEvent> for MeshEvent {
+    fn from(v: webrtc_browser::SignalingEvent) -> Self {
+        Self::WebrtcSignaling(v)
+    }
+}
 impl From<ping::Event> for MeshEvent {
     fn from(v: ping::Event) -> Self {
         Self::Ping(v)
@@ -126,6 +136,7 @@ pub struct BehaviourBuildContext<'a> {
     pub connection_limits_cfg: &'a ConnectionLimitsConfig,
     pub discovery_cfg: &'a DiscoveryConfig,
     pub resolved_cfg: &'a ResolvedNodeConfig,
+    pub webrtc_signaling: Option<webrtc_browser::Behaviour>,
 }
 
 pub fn build_behaviour(ctx: BehaviourBuildContext<'_>) -> MeshBehaviour {
@@ -140,6 +151,7 @@ pub fn build_behaviour(ctx: BehaviourBuildContext<'_>) -> MeshBehaviour {
         connection_limits_cfg,
         discovery_cfg,
         resolved_cfg,
+        webrtc_signaling,
     } = ctx;
     let message_id_fn = |msg: &gossipsub::Message| {
         // Bind duplicate suppression to the signed author and outer topic as
@@ -285,5 +297,6 @@ pub fn build_behaviour(ctx: BehaviourBuildContext<'_>) -> MeshBehaviour {
         ping: ping::Behaviour::new(
             ping::Config::new().with_interval(Duration::from_secs(ping_interval_secs)),
         ),
+        webrtc_signaling: webrtc_signaling.into(),
     }
 }

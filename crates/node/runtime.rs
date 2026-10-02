@@ -6,9 +6,9 @@
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
-use libp2p::gossipsub::{IdentTopic, TopicHash};
 use libp2p::identity::Keypair;
 use libp2p::{Multiaddr, PeerId, Swarm};
+use libp2p_gossipsub::{IdentTopic, TopicHash};
 use tokio::sync::{broadcast, mpsc, Mutex};
 
 use crate::api::{AppFragmentReassembler, AppMessage, NodeEvent, NodeMetrics};

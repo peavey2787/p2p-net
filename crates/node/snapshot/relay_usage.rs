@@ -6,6 +6,7 @@ impl NodeSnapshot {
     pub(super) fn apply_relay_extensions(&mut self, relay_state: &RelayState) {
         self.relay_bytes_forwarded = relay_state.relay_bytes_forwarded;
         self.relay_usage = relay_state.relay_usage_snapshot();
+        self.direct_upgrade = relay_state.direct_upgrade.snapshot();
         self.apply_private_relayed(relay_state);
     }
 }

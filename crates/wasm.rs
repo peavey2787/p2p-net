@@ -264,6 +264,15 @@ impl WasmNode {
         serde_wasm_bindgen::to_value(&metrics).map_err(|e| js_error("serialize", &e.to_string()))
     }
 
+    /// Observability snapshot as a JSON string (same document as
+    /// `snapshot_to_json`), including relay usage, direct-upgrade counters and
+    /// recent lifecycle pulses.
+    pub async fn snapshot(&self) -> Result<String, JsValue> {
+        let snapshot = self.handle.snapshot.lock().await.clone();
+        serde_json::to_string(&crate::snapshot_to_json(&snapshot))
+            .map_err(|e| js_error("serialize", &e.to_string()))
+    }
+
     #[wasm_bindgen(js_name = localBinding)]
     pub async fn local_binding(&self) -> Result<JsValue, JsValue> {
         serde_wasm_bindgen::to_value(&self.handle.local_binding().await)

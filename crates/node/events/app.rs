@@ -1,5 +1,5 @@
-use libp2p::gossipsub::{MessageAcceptance, MessageId, TopicHash};
 use libp2p::{PeerId, Swarm};
+use libp2p_gossipsub::{MessageAcceptance, MessageId, TopicHash};
 
 use crate::api::{
     accounted_transport_bytes, app_ident_topic, decode_app_message, decode_fragment,

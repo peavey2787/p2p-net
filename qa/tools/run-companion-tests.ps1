@@ -1,15 +1,22 @@
-# Runs the p2p-net-relay companion crate's unit, smoke, and doc tests against
-# the audited root Cargo.lock. The companion is deliberately outside the
-# production workspace and has no committed lockfile (/external/**/Cargo.lock is
+# Runs a companion crate's (external\<dir>, e.g. libp2p-relay) unit, smoke, and
+# doc tests against the audited root Cargo.lock. Usage:
+#   run-companion-tests.ps1 -Companion <dir under external\>
+# Companions are deliberately outside the
+# production workspace and have no committed lockfile (/external/**/Cargo.lock is
 # ignored), so seed its lockfile from the root lock, let Cargo prune it to the
 # companion's graph, and fail if that graph needs any package version the root
 # lock does not pin.
+param([Parameter(Mandatory = $true)][string] $Companion)
 $ErrorActionPreference = 'Stop'
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$Manifest = Join-Path $Root 'external\libp2p-relay\Cargo.toml'
+$Manifest = Join-Path $Root "external\$Companion\Cargo.toml"
 $RootLock = Join-Path $Root 'Cargo.lock'
-$CompanionLock = Join-Path $Root 'external\libp2p-relay\Cargo.lock'
+$CompanionLock = Join-Path $Root "external\$Companion\Cargo.lock"
+if (-not (Test-Path -LiteralPath $Manifest)) {
+    Write-Host "ERROR: no companion manifest at $Manifest"
+    exit 1
+}
 
 function Get-LockPackages([string] $Path) {
     $name = $null

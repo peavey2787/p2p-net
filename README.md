@@ -11,7 +11,7 @@ On Windows, `build-android.cmd` is the one-click reproducible Android release la
 ## Features
 
 - Native transports: TCP, QUIC, WebSocket, `/webrtc-direct`, DNS, Noise, Yamux
-- Browser/WASM transports: libp2p WebRTC-direct and secure WebSocket dialing plus Circuit Relay fallback; raw TCP/QUIC listeners, LAN UDP discovery, AutoNAT/DCUtR, relay-server, and rendezvous-server roles are disabled by browser capability policy
+- Browser/WASM transports: libp2p WebRTC-direct, WebTransport and secure WebSocket dialing, Circuit Relay, and relay-assisted browser-to-browser `/webrtc` direct upgrades with relay fallback (see `docs/impl/BROWSER_WEBRTC_UPGRADE.md`); raw TCP/QUIC listeners, LAN UDP discovery, AutoNAT/DCUtR, relay-server, and rendezvous-server roles are disabled by browser capability policy
 - Discovery: network-scoped Kademlia provider/address records, bounded same-LAN UDP discovery, peer cache, bootstrap seeds, rendezvous, and public fallback policy
 - NAT traversal: relay client/reservations, DCUtR direct upgrades, AutoNAT, and optional mediator/relay server profiles
 - App API: the same six data-plane primitives on native and WASM, plus `get_metrics()`, `local_binding()`, and coarse node-event subscriptions
@@ -63,11 +63,11 @@ async fn run_node() -> Result<(), NetError> {
 }
 ```
 
-The hardened WebRTC implementation is published as the internal dependency `p2p-net-webrtc` 0.1.0. Application developers do **not** add that crate themselves; Cargo resolves it automatically from the `p2p-net` dependency graph. The repository keeps a local path to that companion only for development, and Cargo strips that path from the normalized crates.io package. There is no `[patch.crates-io]` requirement in downstream projects. The source workspace uses a checked-in `.cargo/config.toml` only to map rust-libp2p 0.57's resolution-only weak DNS/mDNS lock entries to audited no-Hickory local placeholders; the root publishable manifest remains patch-free, and the packaged downstream smoke test runs outside the repository configuration.
+p2p-net ships four companion crates, each an upstream rust-libp2p crate plus a small audited patch: `p2p-net-webrtc` (native WebRTC), `p2p-net-webrtc-websys` (browser WebRTC and browser-to-browser signaling), `p2p-net-relay` (metered Circuit Relay v2) and `p2p-net-gossipsub` (gossipsub with the stranded-message fix), all at 0.1.0. Application developers do **not** add these crates themselves; Cargo resolves them automatically from the `p2p-net` dependency graph. The repository keeps local paths to the companions only for development, and Cargo strips that path from the normalized crates.io package. There is no `[patch.crates-io]` requirement in downstream projects. The source workspace uses a checked-in `.cargo/config.toml` only to map rust-libp2p 0.57's resolution-only weak DNS/mDNS lock entries to audited no-Hickory local placeholders; the root publishable manifest remains patch-free, and the packaged downstream smoke test runs outside the repository configuration.
 
 For browser consumers, p2p-net's libp2p 0.57 graph defines one WASM ABI family: `wasm-bindgen =0.2.108`, `js-sys/web-sys =0.3.85`, and `wasm-bindgen-futures =0.4.58`. A workspace that also embeds another WASM crate must align its direct exact pins to that family. In particular, older companion pins such as `wasm-bindgen =0.2.100`, `js-sys =0.3.77`, and `wasm-bindgen-futures =0.4.50` are not compatible with the p2p-net browser graph and must be upgraded in that consumer (for example HYDRA / hydra-msg-wasm) rather than downgrading p2p-net.
 
-Maintainers can qualify the exact crates.io payloads with `package-crates.cmd` on Windows or `./package-crates.sh` on Linux. The Windows launcher pauses before closing on both success and failure so Cargo diagnostics remain visible. The packaging gate first verifies the committed production lockfile, packages `p2p-net-webrtc`, then packages `p2p-net` with a command-line-only crates.io patch that points the unpublished companion name at the local audited source. That local verification override is not serialized into the normalized `.crate`; the runners inspect the normalized manifests, compile a temporary downstream consumer from both packaged payloads, write `.crate` files and SHA-256 sums to `dist/crates/`, and record the required publish order. Publish `p2p-net-webrtc` first, wait until crates.io indexes version 0.1.0, then dry-run and publish `p2p-net`.
+Maintainers can qualify the exact crates.io payloads with `package-crates.cmd` on Windows or `./package-crates.sh` on Linux. The Windows launcher pauses before closing on both success and failure so Cargo diagnostics remain visible. The packaging gate first verifies the committed production lockfile and packages each companion. It then packages `p2p-net` with command-line-only crates.io patches that point the unpublished companion names at the local audited sources. That local verification override is not serialized into the normalized `.crate`; the runners inspect the normalized manifests, compile a temporary downstream consumer from the packaged payloads, write `.crate` files and SHA-256 sums to `dist/crates/`, and record the required publish order in `PUBLISH-ORDER.txt`. Publish the companions first, wait until crates.io indexes them, then dry-run and publish `p2p-net`.
 
 ## Run all stable tests and checks
 
@@ -292,6 +292,7 @@ Normally, do not run the individual commands manually. Use `run-full-validation.
 - `docs/impl/BEHAVIOUR_POLICY.md` documents profile-driven behaviour construction.
 - `docs/impl/RELAY_DISCOVERY.md` documents relay discovery and selection.
 - `docs/impl/DCUTR_POLICY.md` documents DCUtR policy and fallback counters.
+- `docs/impl/BROWSER_WEBRTC_UPGRADE.md` documents the relay-assisted browser WebRTC direct upgrade, its diagnostics, and its relay fallback.
 - `docs/impl/PLATFORM_RUNTIME.md` documents the platform runtime/storage abstraction.
 - `docs/impl/BINDINGS.md` documents the cross-platform binding facade.
 - `docs/spec/API_PRIMITIVES.md` documents the application API and telemetry query primitive.

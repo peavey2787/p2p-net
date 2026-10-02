@@ -1,0 +1,75 @@
+[package]
+name = "p2p-net-webrtc-websys"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.98"
+authors = ["Doug Anderson <DougAnderson444@peerpiper.io>"]
+description = "Browser WebRTC for p2p-net: rust-libp2p libp2p-webrtc-websys 0.5.0 plus browser-to-browser `/webrtc` (signaling over Circuit Relay, rust-libp2p PR 5978)."
+readme = "README.md"
+keywords = ["libp2p", "networking", "peer-to-peer", "webrtc", "wasm"]
+categories = ["asynchronous", "network-programming", "wasm", "web-programming"]
+license = "MIT"
+repository = "https://github.com/peavey2787/p2p-net"
+homepage = "https://github.com/peavey2787/p2p-net"
+documentation = "https://docs.rs/p2p-net-webrtc-websys"
+publish = true
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lib]
+name = "libp2p_webrtc_websys"
+path = "src/lib.rs"
+
+[dependencies]
+async-trait = "0.1"
+bytes = "1.12"
+futures = "0.3"
+futures-timer = { version = "=3.0.3", features = ["wasm-bindgen"] }
+hex = "0.4"
+js-sys = "0.3"
+libp2p-core = "0.44.0"
+libp2p-identity = "0.3.0"
+libp2p-swarm = "0.48.0"
+libp2p-webrtc-utils = "0.5.0"
+prost = "0.14"
+send_wrapper = { version = "0.6", features = ["futures"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+unsigned-varint = { version = "0.8", features = ["futures", "std"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "=0.4.58"
+web-time = "1.1"
+web-sys = { version = "0.3", features = [
+    "Document",
+    "Event",
+    "EventTarget",
+    "Location",
+    "MessageEvent",
+    "Navigator",
+    "RtcCertificate",
+    "RtcConfiguration",
+    "RtcDataChannel",
+    "RtcDataChannelEvent",
+    "RtcDataChannelInit",
+    "RtcDataChannelState",
+    "RtcDataChannelType",
+    "RtcIceCandidate",
+    "RtcIceCandidateInit",
+    "RtcIceConnectionState",
+    "RtcIceGatheringState",
+    "RtcIceServer",
+    "RtcIceTransportPolicy",
+    "RtcPeerConnection",
+    "RtcPeerConnectionIceEvent",
+    "RtcPeerConnectionState",
+    "RtcSdpType",
+    "RtcSessionDescription",
+    "RtcSessionDescriptionInit",
+    "RtcSignalingState",
+    "Window",
+] }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+getrandom = { version = "0.4", features = ["wasm_js"] }

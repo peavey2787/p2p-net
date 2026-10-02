@@ -34,19 +34,69 @@ use webrtc::data::data_channel::{DataChannel, PollDataChannel};
 /// To be a proper libp2p substream, we need to implement [`AsyncRead`] and [`AsyncWrite`] as well
 /// as support a half-closed state which we do by framing messages in a protobuf envelope.
 pub struct Stream {
-    inner: libp2p_webrtc_utils::Stream<Compat<PollDataChannel>>,
+    inner: libp2p_webrtc_utils::Stream<FullFrameChannel>,
 }
 
-pub(crate) type DropListener = libp2p_webrtc_utils::DropListener<Compat<PollDataChannel>>;
+pub(crate) type DropListener = libp2p_webrtc_utils::DropListener<FullFrameChannel>;
+
+/// A `PollDataChannel` that can read a whole libp2p WebRTC frame.
+///
+/// `libp2p_webrtc_utils::Stream::new` reads through a *clone* of the channel
+/// it is given, and `PollDataChannel::clone` resets the read buffer to
+/// webrtc-rs's 8 KiB default. A peer (e.g. a browser) that sends frames up to
+/// `MAX_MSG_LEN` (16 KiB) then fails every read of a larger frame with
+/// `ErrShortBuffer { size: 8192 }`, killing the stream (and, on a relay, the
+/// whole circuit). Cloning this wrapper keeps the full-frame read capacity.
+pub(crate) struct FullFrameChannel(Compat<PollDataChannel>);
+
+impl FullFrameChannel {
+    fn new(data_channel: Arc<DataChannel>) -> Self {
+        let mut channel = PollDataChannel::new(data_channel);
+        channel.set_read_buf_capacity(MAX_MSG_LEN);
+        Self(channel.compat())
+    }
+}
+
+impl Clone for FullFrameChannel {
+    fn clone(&self) -> Self {
+        Self::new(self.0.get_ref().clone_inner())
+    }
+}
+
+impl AsyncRead for FullFrameChannel {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<std::io::Result<usize>> {
+        Pin::new(&mut self.get_mut().0).poll_read(cx, buf)
+    }
+}
+
+impl AsyncWrite for FullFrameChannel {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        Pin::new(&mut self.get_mut().0).poll_write(cx, buf)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.get_mut().0).poll_flush(cx)
+    }
+
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.get_mut().0).poll_close(cx)
+    }
+}
 
 impl Stream {
     /// Returns a new `Substream` and a listener, which will notify the receiver when/if the
     /// substream is dropped.
     pub(crate) fn new(data_channel: Arc<DataChannel>) -> (Self, DropListener) {
-        let mut data_channel = PollDataChannel::new(data_channel).compat();
-        data_channel.get_mut().set_read_buf_capacity(MAX_MSG_LEN);
-
-        let (inner, drop_listener) = libp2p_webrtc_utils::Stream::new(data_channel);
+        let (inner, drop_listener) =
+            libp2p_webrtc_utils::Stream::new(FullFrameChannel::new(data_channel));
 
         (Self { inner }, drop_listener)
     }

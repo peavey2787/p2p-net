@@ -20,10 +20,24 @@ fn crates_io_manifest_is_publishable_without_manifest_patches() {
     assert!(manifest.contains("rust-version = \"1.98\""));
     assert!(manifest.contains("members = [\"apps/android/native\"]"));
     assert!(manifest.contains(
-        "exclude = [\"qa/fuzz\", \"external/libp2p-webrtc\", \"external/libp2p-relay\"]"
+        "exclude = [\"qa/fuzz\", \"external/libp2p-webrtc\", \"external/libp2p-relay\", \"external/libp2p-webrtc-websys\", \"external/libp2p-gossipsub\"]"
     ));
     assert!(manifest.contains("\"external/libp2p-webrtc/**\""));
     assert!(manifest.contains("\"external/libp2p-relay/**\""));
+    assert!(manifest.contains("\"external/libp2p-webrtc-websys/**\""));
+    assert!(manifest.contains("\"external/libp2p-gossipsub/**\""));
+    // Gossipsub comes from the p2p-net-gossipsub companion (stranded-message
+    // fix), never from libp2p's own `gossipsub` feature.
+    assert!(manifest.contains(
+        "libp2p-gossipsub = { package = \"p2p-net-gossipsub\", version = \"0.1.0\", path = \"external/libp2p-gossipsub\" }"
+    ));
+    assert!(
+        !manifest.lines().any(|line| line.trim() == "\"gossipsub\","),
+        "the libp2p `gossipsub` feature must stay disabled; gossipsub must be the patched companion"
+    );
+    assert!(manifest.contains(
+        "libp2p-webrtc-websys = { package = \"p2p-net-webrtc-websys\", version = \"0.1.0\", path = \"external/libp2p-webrtc-websys\" }"
+    ));
     // Circuit Relay comes from the metered p2p-net-relay companion, never from
     // libp2p's own `relay` feature (which would bypass relay metering).
     assert!(manifest.contains(

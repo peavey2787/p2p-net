@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use libp2p::gossipsub::TopicHash;
 use libp2p::{PeerId, Swarm};
+use libp2p_gossipsub::TopicHash;
 use tokio::sync::Mutex;
 
 use crate::api::{

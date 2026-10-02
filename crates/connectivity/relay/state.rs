@@ -71,6 +71,7 @@ pub struct RelayState {
     pub relay_bytes_src_to_dst: u64,
     pub relay_bytes_dst_to_src: u64,
     pub relay_meter: super::RelayMeter,
+    pub direct_upgrade: crate::connectivity::direct_upgrade::DirectUpgradeState,
     pub unverified_relayed_peers: HashMap<PeerId, Instant>,
     pub dcutr_enabled: bool,
     pub dcutr_attempts: usize,

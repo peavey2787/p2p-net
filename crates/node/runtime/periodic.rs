@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use libp2p::gossipsub::IdentTopic;
 use libp2p::identity::Keypair;
 use libp2p::{PeerId, Swarm};
+use libp2p_gossipsub::IdentTopic;
 use tokio::sync::Mutex;
 
 use crate::connectivity::dht::{

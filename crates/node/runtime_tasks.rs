@@ -3,8 +3,8 @@
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::Arc;
 
-use libp2p::gossipsub::IdentTopic;
 use libp2p::{PeerId, Swarm};
+use libp2p_gossipsub::IdentTopic;
 #[cfg(not(target_arch = "wasm32"))]
 use tokio::sync::Mutex;
 

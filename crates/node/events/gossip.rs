@@ -1,5 +1,5 @@
-use libp2p::gossipsub::{MessageAcceptance, MessageId};
 use libp2p::{PeerId, Swarm};
+use libp2p_gossipsub::{MessageAcceptance, MessageId};
 
 use crate::api::{accounted_transport_bytes, PeerSource};
 use crate::protocol::pulse::{validate_heartbeat_wire, HeartbeatValidationDecision};

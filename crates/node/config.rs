@@ -20,9 +20,11 @@ use super::profile::{NodeProfile, ResolvedNodeConfig};
 use super::public_ip::PublicIpProbeConfig;
 
 mod listeners;
+mod webrtc;
 
 use listeners::default_listen_addresses;
 pub use listeners::ListenerConfig;
+pub use webrtc::{BrowserWebRtcConfig, IceTransportPolicy};
 
 /// Swarm + heartbeat configuration for a standalone P2P network instance.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -52,6 +54,9 @@ pub struct NodeConfig {
     /// external addresses, including in Circuit Relay reservations.
     #[serde(default)]
     pub external_addresses: Vec<String>,
+    /// Browser-to-browser direct upgrade ICE settings (no third-party default).
+    #[serde(default)]
+    pub browser_webrtc: BrowserWebRtcConfig,
     /// Per-transport inbound listener switches. Disable WebSocket/WebRTC-direct when unused.
     #[serde(default)]
     pub listeners: ListenerConfig,
@@ -104,6 +109,7 @@ impl Default for NodeConfig {
             webrtc_certificate_path: ".p2p-net-webrtc-cert.pem".to_string(),
             listen_addresses: default_listen_addresses(),
             external_addresses: Vec::new(),
+            browser_webrtc: BrowserWebRtcConfig::default(),
             listeners: ListenerConfig::default(),
             bootstrap_peers: Vec::new(),
             discovery: DiscoveryConfig::default(),

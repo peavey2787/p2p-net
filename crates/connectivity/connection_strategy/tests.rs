@@ -136,3 +136,24 @@ fn pending_plans_return_remaining_attempts_after_failure() {
     assert_eq!(fallback.addr, tcp);
     assert_eq!(pending.pending_count(), 0);
 }
+
+#[test]
+fn capabilities_describe_what_each_platform_actually_runs() {
+    let native = TransportCapabilities::native();
+    let browser = TransportCapabilities::browser();
+    // Browsers cannot open raw TCP/QUIC; native has no WebTransport listener
+    // and does not run the browser `/webrtc` stack.
+    assert!(!browser.tcp && !browser.quic);
+    assert!(!native.webtransport && browser.webtransport);
+    assert!(!native.browser_webrtc && browser.browser_webrtc);
+    // Both upgrade relayed connections (DCUtR natively, WebRTC signaling in
+    // browsers) and keep Circuit Relay as the fallback.
+    assert!(native.relay_assisted_upgrade && browser.relay_assisted_upgrade);
+    assert!(native.circuit_relay && browser.circuit_relay);
+
+    let peer = PeerId::random();
+    let direct_browser: Multiaddr = format!("/webrtc/p2p/{peer}").parse().unwrap();
+    let server: Multiaddr = "/ip4/203.0.114.1/udp/9/webrtc-direct".parse().unwrap();
+    assert!(browser.allows(&direct_browser) && !native.allows(&direct_browser));
+    assert!(browser.allows(&server) && native.allows(&server));
+}

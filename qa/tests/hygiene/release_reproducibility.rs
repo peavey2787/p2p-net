@@ -274,7 +274,7 @@ fn crates_io_release_has_no_root_patch_dependency() {
     assert!(manifest.contains("version = \"0.1.0\""));
     assert!(manifest.contains("members = [\"apps/android/native\"]"));
     assert!(manifest.contains(
-        "exclude = [\"qa/fuzz\", \"external/libp2p-webrtc\", \"external/libp2p-relay\"]"
+        "exclude = [\"qa/fuzz\", \"external/libp2p-webrtc\", \"external/libp2p-relay\", \"external/libp2p-webrtc-websys\", \"external/libp2p-gossipsub\"]"
     ));
     for excluded in [
         "\".cargo/**\"",
@@ -282,6 +282,8 @@ fn crates_io_release_has_no_root_patch_dependency() {
         "\"external/libp2p-mdns-placeholder/**\"",
         "\"external/libp2p-relay/**\"",
         "\"external/libp2p-webrtc/**\"",
+        "\"external/libp2p-webrtc-websys/**\"",
+        "\"external/libp2p-gossipsub/**\"",
     ] {
         assert!(
             manifest.contains(excluded),
@@ -295,6 +297,20 @@ fn crates_io_release_has_no_root_patch_dependency() {
     assert!(relay_support.contains("name = \"p2p-net-relay\""));
     assert!(relay_support.contains("publish = true"));
     assert!(relay_support.contains("documentation = \"https://docs.rs/p2p-net-relay\""));
+    for (support, name) in [
+        (
+            include_str!("../../../external/libp2p-webrtc-websys/Cargo.toml"),
+            "p2p-net-webrtc-websys",
+        ),
+        (
+            include_str!("../../../external/libp2p-gossipsub/Cargo.toml"),
+            "p2p-net-gossipsub",
+        ),
+    ] {
+        assert!(support.contains(&format!("name = \"{name}\"")));
+        assert!(support.contains("publish = true"));
+        assert!(support.contains(&format!("documentation = \"https://docs.rs/{name}\"")));
+    }
     assert!(
         gitignore.lines().any(|line| line == "/external/**/target/")
             && gitignore
@@ -323,6 +339,10 @@ fn crates_io_release_has_no_root_patch_dependency() {
             "p2p-net-webrtc",
             "p2p-net-relay",
             "libp2p-relay",
+            "p2p-net-webrtc-websys",
+            "libp2p-webrtc-websys",
+            "p2p-net-gossipsub",
+            "libp2p-gossipsub",
             "p2p-net",
             "external/libp2p-dns",
             "external/libp2p-mdns-placeholder",

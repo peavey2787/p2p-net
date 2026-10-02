@@ -84,9 +84,10 @@ pub use libp2p::{Multiaddr, PeerId};
 pub use node::start_node;
 pub use node::{
     apply_resolved_capabilities, resolve_node_config, snapshot_to_json,
-    snapshot_to_prometheus_metrics, start_node_with_platform, BehaviourSet, EnvironmentConfig,
-    EnvironmentReport, ListenerConfig, NatKind, NetworkReachability, NodeConfig, NodeHandle,
-    NodeProfile, NodeRole, NodeSnapshot, PlatformKind, PublicIpProbeConfig, ResolvedNodeConfig,
+    snapshot_to_prometheus_metrics, start_node_with_platform, BehaviourSet, BrowserWebRtcConfig,
+    EnvironmentConfig, EnvironmentReport, IceTransportPolicy, ListenerConfig, NatKind,
+    NetworkReachability, NodeConfig, NodeHandle, NodeProfile, NodeRole, NodeSnapshot, PlatformKind,
+    PublicIpProbeConfig, ResolvedNodeConfig,
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use platform::{AndroidPlatformRuntime, DesktopPlatformRuntime, IosPlatformRuntime};

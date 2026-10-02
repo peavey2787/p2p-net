@@ -450,6 +450,26 @@ if errorlevel 1 (
   set "FAILED_STEP=WASM Playwright browser tests"
   goto failed
 )
+
+echo.
+echo ==^> Build native relay harness for browser direct-upgrade QA
+set "CARGO_TARGET_DIR=%ROOT%target\full-validation\browser-relay-harness"
+cargo build --example qa_browser_relay --locked
+if errorlevel 1 (
+  set "FAILED_STEP=Build browser relay harness"
+  goto failed
+)
+set "P2P_QA_RELAY_BIN=!CARGO_TARGET_DIR!\debug\examples\qa_browser_relay.exe"
+set "CARGO_TARGET_DIR="
+
+echo.
+echo ==^> Browser WebRTC direct upgrade + relay fallback ^(Playwright Chromium^)
+node "%ROOT%qa\browser\run-direct-upgrade.cjs"
+if errorlevel 1 (
+  set "FAILED_STEP=Browser WebRTC direct upgrade QA"
+  goto failed
+)
+set "P2P_QA_RELAY_BIN="
 set "NODE_PATH="
 set "P2P_WASM_PKG_DIR="
 
@@ -473,9 +493,16 @@ if errorlevel 1 (
 )
 echo.
 echo ==^> Relay companion tests
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%qa\tools\run-relay-companion-tests.ps1"
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%qa\tools\run-companion-tests.ps1" -Companion libp2p-relay
 if errorlevel 1 (
   set "FAILED_STEP=Relay companion tests"
+  goto failed
+)
+echo.
+echo ==^> Gossipsub companion tests
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%qa\tools\run-companion-tests.ps1" -Companion libp2p-gossipsub
+if errorlevel 1 (
+  set "FAILED_STEP=Gossipsub companion tests"
   goto failed
 )
 

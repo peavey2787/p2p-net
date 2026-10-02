@@ -106,6 +106,7 @@ pub struct NodeSnapshot {
     /// Relay transit bytes (each forwarded byte once) from per-circuit metering.
     pub relay_bytes_forwarded: u64,
     pub relay_usage: RelayUsageSnapshot,
+    pub direct_upgrade: crate::connectivity::direct_upgrade::DirectUpgradeSnapshot,
     pub relay_denied_reservations: usize,
     pub relay_denied_circuits: usize,
     pub relay_rate_limited_events: usize,

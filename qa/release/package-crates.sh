@@ -23,7 +23,12 @@ normalized_manifest_has_path_dependency() {
 
 # Publishable companions, as "<crates.io package name>:<directory under external/>".
 # Each is published before p2p-net, which depends on them by registry name.
-COMPANIONS=("p2p-net-webrtc:libp2p-webrtc" "p2p-net-relay:libp2p-relay")
+COMPANIONS=(
+  "p2p-net-webrtc:libp2p-webrtc"
+  "p2p-net-relay:libp2p-relay"
+  "p2p-net-webrtc-websys:libp2p-webrtc-websys"
+  "p2p-net-gossipsub:libp2p-gossipsub"
+)
 
 printf '==> Package publishable crates\n'
 PACKAGE_TARGET_DIR="$ROOT_DIR/target/package-crates"
@@ -161,9 +166,13 @@ cat > "$DIST_DIR/PUBLISH-ORDER.txt" <<'EOF'
 2. cargo +1.98.0 publish --manifest-path external/libp2p-webrtc/Cargo.toml --registry crates-io
 3. cargo +1.98.0 publish --dry-run --manifest-path external/libp2p-relay/Cargo.toml --registry crates-io
 4. cargo +1.98.0 publish --manifest-path external/libp2p-relay/Cargo.toml --registry crates-io
-5. Wait until crates.io/index.crates.io resolves p2p-net-webrtc 0.1.0 and p2p-net-relay 0.1.0.
-6. cargo +1.98.0 publish --dry-run --package p2p-net --registry crates-io --locked
-7. cargo +1.98.0 publish --package p2p-net --registry crates-io --locked
+5. cargo +1.98.0 publish --dry-run --manifest-path external/libp2p-webrtc-websys/Cargo.toml --registry crates-io
+6. cargo +1.98.0 publish --manifest-path external/libp2p-webrtc-websys/Cargo.toml --registry crates-io
+7. cargo +1.98.0 publish --dry-run --manifest-path external/libp2p-gossipsub/Cargo.toml --registry crates-io
+8. cargo +1.98.0 publish --manifest-path external/libp2p-gossipsub/Cargo.toml --registry crates-io
+9. Wait until crates.io/index.crates.io resolves p2p-net-webrtc, p2p-net-relay, p2p-net-webrtc-websys and p2p-net-gossipsub 0.1.0.
+10. cargo +1.98.0 publish --dry-run --package p2p-net --registry crates-io --locked
+11. cargo +1.98.0 publish --package p2p-net --registry crates-io --locked
 EOF
 
 printf '\nCrates.io package payloads are normalized and downstream-consumer checked.\n'

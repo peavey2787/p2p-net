@@ -1,6 +1,6 @@
 [workspace]
 members = ["apps/android/native"]
-exclude = ["qa/fuzz", "external/libp2p-webrtc", "external/libp2p-relay"]
+exclude = ["qa/fuzz", "external/libp2p-webrtc", "external/libp2p-relay", "external/libp2p-webrtc-websys", "external/libp2p-gossipsub"]
 resolver = "2"
 
 [package]
@@ -20,9 +20,11 @@ publish = true
 exclude = [
     ".cargo/**",
     "external/libp2p-dns/**",
+    "external/libp2p-gossipsub/**",
     "external/libp2p-mdns-placeholder/**",
     "external/libp2p-relay/**",
     "external/libp2p-webrtc/**",
+    "external/libp2p-webrtc-websys/**",
 ]
 
 [package.metadata.docs.rs]
@@ -62,6 +64,11 @@ path = "apps/windows/p2p_node.rs"
 required-features = ["dashboard"]
 test = false
 bench = false
+
+[[example]]
+name = "qa_browser_relay"
+path = "examples/qa_browser_relay.rs"
+test = false
 
 [[example]]
 name = "six_primitives"
@@ -308,7 +315,6 @@ h2 = ">=0.4.16, <0.5"
 libp2p = { version = "0.57", default-features = false, features = [
     "noise",
     "yamux",
-    "gossipsub",
     "kad",
     "identify",
     "ping",
@@ -319,9 +325,16 @@ libp2p = { version = "0.57", default-features = false, features = [
     "serde",
 ] }
 libp2p-rendezvous = "0.18.0"
+# Gossipsub with the stranded-message fix (companion crate: upstream
+# libp2p-gossipsub 0.50.0 plus a waker patch so messages for a peer still flow
+# after its first connection closes, e.g. a relayed path upgraded to direct).
+libp2p-gossipsub = { package = "p2p-net-gossipsub", version = "0.1.0", path = "external/libp2p-gossipsub" }
 # Circuit Relay v2 with exact per-circuit, per-direction metering (companion
 # crate: upstream libp2p-relay 0.22.0 plus the metering patch).
 libp2p-relay = { package = "p2p-net-relay", version = "0.1.0", path = "external/libp2p-relay" }
+# Browser WebRTC: `/webrtc-direct` dialing plus browser-to-browser `/webrtc`
+# (relay-assisted direct upgrade). Compiles everywhere; only browsers enable it.
+libp2p-webrtc-websys = { package = "p2p-net-webrtc-websys", version = "0.1.0", path = "external/libp2p-webrtc-websys" }
 crossterm = { version = "0.28", optional = true, features = ["event-stream"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -351,7 +364,7 @@ rkyv = { version = ">=0.8.18, <0.9", default-features = false }
 libp2p-webrtc = { package = "p2p-net-webrtc", version = "0.1.0", path = "external/libp2p-webrtc", features = ["tokio", "pem"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-libp2p = { version = "0.57", default-features = false, features = ["webrtc-websys", "websocket-websys", "webtransport-websys"] }
+libp2p = { version = "0.57", default-features = false, features = ["websocket-websys", "webtransport-websys"] }
 # rust-libp2p 0.57 caps wasm-bindgen-futures at 0.4.58 because the
 # corresponding wasm-bindgen ABI generation is 0.2.108 / js-sys 0.3.85.
 # Consumer workspaces must align any direct WASM pins (including HYDRA-style
@@ -395,10 +408,14 @@ web-sys = { version = "=0.3.85", features = [
 
 [dev-dependencies]
 base64 = "0.22"
-# Pinned here so the audited root Cargo.lock covers the p2p-net-relay
-# companion's test graph (qa/tools/run-relay-companion-tests.*).
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Pinned here so the audited root Cargo.lock covers the p2p-net-relay and
+# p2p-net-gossipsub companions' test graphs (qa/tools/run-companion-tests.*).
+# Native-only: libp2p-swarm-test pulls tokio's networking, which does not build
+# for wasm32 (the browser test gate compiles dev-dependencies).
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 libp2p-plaintext = "0.44.0"
 libp2p-stream = "0.5.0-alpha"
 libp2p-swarm-test = "0.7.0"
 quickcheck = "1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }

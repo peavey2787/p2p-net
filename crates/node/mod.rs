@@ -21,8 +21,8 @@ use std::collections::VecDeque;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
-use libp2p::gossipsub::IdentTopic;
 use libp2p::PeerId;
+use libp2p_gossipsub::IdentTopic;
 use tokio::sync::{broadcast, mpsc, Mutex};
 
 use crate::common::error::NetError;
@@ -39,7 +39,7 @@ use crate::stack::{
 };
 
 pub use capabilities::{apply_resolved_capabilities, resolve_node_config};
-pub use config::{ListenerConfig, NodeConfig};
+pub use config::{BrowserWebRtcConfig, IceTransportPolicy, ListenerConfig, NodeConfig};
 pub use environment::{
     EnvironmentConfig, EnvironmentReport, NatKind, NetworkReachability, PlatformKind,
 };
