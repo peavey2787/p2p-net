@@ -14,6 +14,7 @@ On Windows, `build-android.cmd` is the one-click reproducible Android release la
 - Browser/WASM transports: libp2p WebRTC-direct, WebTransport and secure WebSocket dialing, Circuit Relay, and relay-assisted browser-to-browser `/webrtc` direct upgrades with relay fallback (see `docs/impl/BROWSER_WEBRTC_UPGRADE.md`); raw TCP/QUIC listeners, LAN UDP discovery, AutoNAT/DCUtR, relay-server, and rendezvous-server roles are disabled by browser capability policy
 - Discovery: network-scoped Kademlia provider/address records, bounded same-LAN UDP discovery, peer cache, bootstrap seeds, rendezvous, and public fallback policy
 - NAT traversal: relay client/reservations, DCUtR direct upgrades, AutoNAT, and optional mediator/relay server profiles
+- TURN: built-in TURN server role (`profile = "turn"`), a libp2p credential broker so browsers use TURN with zero config, Cloudflare Realtime TURN, and a provider contract for more providers (`providers/turn/`)
 - App API: the same six data-plane primitives on native and WASM, plus `get_metrics()`, `local_binding()`, and coarse node-event subscriptions
 - Safety/ops: connection caps, replay/timestamp checks, peer scoring, snapshots, Prometheus-style export, and dashboard UI
 - Portability: platform runtime/storage abstraction for desktop/mobile plus a first-class `WasmNode` JS facade with IndexedDB persistence and per-profile tab ownership
@@ -231,7 +232,7 @@ Operator guidance is in `docs/operator/`.
 
 Important fields:
 
-- `profile`: high-level node role selection: `auto`, `full`, `lite`, `relay`, `mediator`, `rendezvous`, `bootstrap`, or `mobile_lite`.
+- `profile`: high-level node role selection: `auto`, `full`, `lite`, `relay`, `mediator`, `rendezvous`, `bootstrap`, `turn`, or `mobile_lite`. `docs/operator/CHOOSING_A_ROLE.md` explains each role in plain terms.
 - `identity_key_path`: stable private node identity; keep this file private and back it up according to `docs/spec/IDENTITY_KEY_BACKUP_ROTATION.md`.
 - `listen_addresses`: local TCP/QUIC/WebSocket/WebRTC-direct listen multiaddrs. Use concrete `/ip4` or `/ip6` listen addresses, not DNS names.
 - `external_addresses`: operator-asserted externally reachable multiaddrs (for example a port-forwarded relay the public-IP probe cannot see, or a relay serving a private network). They are advertised as confirmed external addresses, including in Circuit Relay reservations; a relay must advertise at least one reachable address for clients to accept its reservations.
@@ -257,6 +258,10 @@ Important fields:
 - `relay.enabled`: opt-in generic relay server mode. Defaults to `false`.
 - `relay.allow_peers` / `relay.deny_peers`: connection-level relay-node ACLs; deny wins.
 - `relay.schedule`: UTC relay service windows.
+- `browser_webrtc`: browser-to-browser WebRTC as its own capability. `enabled`, `ice_transport_policy` (`all`/`relay`), `direct_connections`, and `stun` (`enabled`, `servers`); the original `ice_servers` list is still accepted. See `docs/operator/BROWSER_WEBRTC.md`.
+- `turn.client`: TURN relay sources that feed `browser_webrtc`: TURN-serving p2p-net peers (`auto_discover`, the `libp2p` source), static `servers` (`self_hosted`), and `cloudflare`/`http` credential endpoints, in an automatic or explicit `providers` order. Defaults contact no third-party service.
+- `turn.server`: built-in UDP TURN server (`profile = "turn"`). Relays only to public addresses by default; the relay port range caps allocations.
+- `turn.broker`: hands short-lived TURN credentials to peers over `/p2p-net/turn-credentials/1.0.0` from the built-in server and/or a provider such as Cloudflare. See `docs/operator/TURN.md` and `providers/turn/`.
 
 Minimal volunteer relay config:
 
@@ -273,6 +278,14 @@ Minimal DCUtR mediator config:
 ```json
 {
   "profile": "mediator"
+}
+```
+
+Minimal TURN node config (UDP 3478 and 49160-49359 must be reachable):
+
+```json
+{
+  "profile": "turn"
 }
 ```
 
@@ -300,6 +313,7 @@ Normally, do not run the individual commands manually. Use `run-full-validation.
 - `docs/spec/DISCOVERY_NAMESPACES.md` documents hashed app discovery namespace derivation.
 - `docs/spec/PUBLIC_FALLBACK.md` documents default public bootstrap, rendezvous, relay, and auto-connect fallback policy.
 - `docs/operator/README.md` links deployment examples and production operator guidance.
+- `docs/operator/TURN.md` documents the TURN client, built-in TURN server, credential broker, and Cloudflare provider.
 - `docs/spec/DHT_PROVIDER_DISCOVERY.md` documents DHT provider-record namespace discovery.
 - `docs/spec/PEER_BOOK.md` documents normalized peer metadata returned by `get_peers()`.
 - `docs/impl/DHT_PROVIDER_DISCOVERY_IMPLEMENTATION.md` documents DHT provider wiring and observability.

@@ -155,6 +155,24 @@ pub(super) fn snapshot_metric_values(s: &NodeSnapshot) -> Vec<(&'static str, Str
             "p2p_direct_upgrade_relayed_peers",
             s.direct_upgrade.relayed_peers,
         ),
+        metric("p2p_turn_ice_servers", s.turn.ice_servers),
+        metric("p2p_turn_turn_servers", s.turn.turn_servers),
+        metric(
+            "p2p_turn_server_running",
+            flag(s.turn.server_state == crate::connectivity::turn::TurnServerState::Running),
+        ),
+        metric("p2p_turn_server_allocations", s.turn.server_allocations),
+        metric(
+            "p2p_turn_server_allocation_capacity",
+            s.turn.server_allocation_capacity,
+        ),
+        metric("p2p_turn_broker_granted", s.turn.broker_granted),
+        metric("p2p_turn_broker_rate_limited", s.turn.broker_rate_limited),
+        metric("p2p_turn_broker_source_errors", s.turn.broker_source_errors),
+        metric(
+            "p2p_turn_credential_servers_accepted",
+            s.turn.credential_servers_accepted,
+        ),
         metric(
             "p2p_relay_discovery_enabled",
             flag(s.relay_discovery_enabled),

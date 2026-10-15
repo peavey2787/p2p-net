@@ -107,6 +107,7 @@ pub struct NodeSnapshot {
     pub relay_bytes_forwarded: u64,
     pub relay_usage: RelayUsageSnapshot,
     pub direct_upgrade: crate::connectivity::direct_upgrade::DirectUpgradeSnapshot,
+    pub turn: crate::connectivity::turn::TurnSnapshot,
     pub relay_denied_reservations: usize,
     pub relay_denied_circuits: usize,
     pub relay_rate_limited_events: usize,

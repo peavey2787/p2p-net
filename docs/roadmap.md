@@ -310,3 +310,38 @@ Implemented notes:
 - The runtime performs bounded DHT namespace refreshes according to `discovery.dht.refresh_interval_secs` so provider announce/query does not depend on one startup moment.
 - If `discovery.public_bootstrap.relay_peers` is empty, resolved public bootstrap seed peers are also considered best-effort public relay candidates. Nodes that support Circuit Relay v2 can accept reservations; nodes that do not support it fail visibly without blocking DHT discovery or direct dials.
 - Peer-book source accounting records these derived relay candidates as public relay discovery candidates when public relay fallback is selected.
+
+## Step 11 — Robust TURN: server role, credential broker, and providers
+
+Status: implemented; pending full validation.
+
+Goal: browsers keep a working WebRTC path on UDP-hostile networks, anyone can run a TURN helper with one setting, and TURN providers (Cloudflare first) plug in without provider-specific node code. Browser WebRTC and TURN stay separate capabilities, so every connectivity mechanism can be enabled on its own, and the defaults form an automatic mode.
+
+Scope:
+
+- Credential-capable, runtime-updatable ICE servers in the browser WebRTC companion (`IceServer`, shared `IceServers`).
+- `browser_webrtc` remains a first-class section that owns WebRTC: `enabled`, `ice_transport_policy`, `direct_connections`, and `stun`. The original `ice_servers` list is still accepted.
+- `turn.client` (relay sources: `libp2p` brokers, `self_hosted`, `cloudflare`, `http`, with automatic or explicit `providers` order), `turn.server` and `turn.broker`, plus a `turn` node profile/role.
+- Built-in UDP TURN server with TURN REST API shared-secret auth, a bounded relay port range, and relaying to public peers only by default.
+- libp2p credential broker (`/p2p-net/turn-credentials/1.0.0`) so browsers obtain short-lived TURN credentials without holding secrets.
+- Provider registry (`http`, `cloudflare`, `shared_secret`) behind one credential contract, plus the `providers/turn/cloudflare` Worker template.
+
+Acceptance criteria:
+
+- `{"profile": "turn"}` starts a TURN server and broker; lite, mobile, browser and background-restricted nodes cannot.
+- WebRTC without TURN, STUN only, direct with TURN fallback, TURN-only (relay-only ICE with STUN removed), Cloudflare, and self-hosted TURN are each configurable and tested. Conflicting combinations are rejected rather than ignored.
+- Existing `browser_webrtc` configs keep their meaning: legacy STUN and TURN entries are composed in, and relay-only policy is never weakened.
+- Browser configs cannot hold secrets; brokers keep them server-side.
+- A real TURN client allocates a relay with broker-issued credentials, and the relay refuses private peers by default.
+- TURN state is visible in `NodeSnapshot.turn`, Prometheus, pulses and the dashboard.
+
+Implemented notes:
+
+- `crates/connectivity/ice.rs` holds the shared ICE server model. `crates/node/config/webrtc.rs` owns the `browser_webrtc` config and `BrowserIcePlan::compose`, which merges STUN with TURN servers under WebRTC's policy. `crates/connectivity/turn/` owns secrets, the credential contract, providers, refresh, client source ordering, the broker and the server. `crates/node/turn.rs` and `crates/node/events/turn.rs` are the runtime glue.
+- Precedence: relay-only wins; `turn.client.enabled: false` turns every TURN source off; an explicit `providers` list is used exactly as written. Browsers accept broker-offered TURN servers under `same_host` (the dialed host or a trusted provider host such as `turn.cloudflare.com`), cap TURN entries at `max_servers`, and refresh at three quarters of the credential lifetime.
+- Tests:
+  - `qa/tests/turn/turn_service.rs` exercises broker credentials, a real allocation and the private-peer filter.
+  - `qa/tests/turn/turn_config.rs` covers roles, validation and the examples.
+  - `qa/tests/turn/connectivity_modes.rs` covers each WebRTC/TURN combination, legacy configs and conflicts.
+  - Validation also runs `node --test` over `providers/**/*.test.mjs`.
+- Docs: `docs/operator/BROWSER_WEBRTC.md`, `docs/operator/TURN.md`, `docs/operator/CHOOSING_A_ROLE.md`, `providers/turn/README.md`.

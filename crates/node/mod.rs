@@ -16,6 +16,7 @@ mod runtime_maintenance;
 mod runtime_tasks;
 mod snapshot;
 mod startup;
+mod turn;
 
 use std::collections::VecDeque;
 use std::sync::atomic::AtomicU64;
@@ -39,7 +40,9 @@ use crate::stack::{
 };
 
 pub use capabilities::{apply_resolved_capabilities, resolve_node_config};
-pub use config::{BrowserWebRtcConfig, IceTransportPolicy, ListenerConfig, NodeConfig};
+pub use config::{
+    BrowserIcePlan, BrowserWebRtcConfig, ListenerConfig, NodeConfig, StunConfig, MAX_STUN_SERVERS,
+};
 pub use environment::{
     EnvironmentConfig, EnvironmentReport, NatKind, NetworkReachability, PlatformKind,
 };

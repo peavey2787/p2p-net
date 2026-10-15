@@ -505,6 +505,19 @@ if errorlevel 1 (
   set "FAILED_STEP=Gossipsub companion tests"
   goto failed
 )
+echo.
+echo ==^> TURN provider template tests
+where node >nul 2>nul
+if errorlevel 1 (
+  echo Node.js is required for the TURN provider template tests.
+  set "FAILED_STEP=TURN provider template tests"
+  goto failed
+)
+node --test "providers/**/*.test.mjs"
+if errorlevel 1 (
+  set "FAILED_STEP=TURN provider template tests"
+  goto failed
+)
 
 :stage_dashboard
 echo.

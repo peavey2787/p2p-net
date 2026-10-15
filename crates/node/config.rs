@@ -9,22 +9,22 @@ use crate::connectivity::dns::DnsaddrConfig;
 use crate::connectivity::limits::ConnectionLimitsConfig;
 use crate::connectivity::mediator::MediatorConfig;
 use crate::connectivity::relay::RelayServiceConfig;
+use crate::connectivity::turn::TurnConfig;
 use crate::platform::PlatformRuntime;
 use crate::protocol::pulse::MessageSecurityConfig;
 
-use libp2p::Multiaddr;
-
-use super::config_validation::{parse_multiaddrs, validate_node_config};
+use super::config_validation::validate_node_config;
 use super::environment::{EnvironmentConfig, EnvironmentReport};
 use super::profile::{NodeProfile, ResolvedNodeConfig};
 use super::public_ip::PublicIpProbeConfig;
 
+mod addresses;
 mod listeners;
 mod webrtc;
 
 use listeners::default_listen_addresses;
 pub use listeners::ListenerConfig;
-pub use webrtc::{BrowserWebRtcConfig, IceTransportPolicy};
+pub use webrtc::{BrowserIcePlan, BrowserWebRtcConfig, StunConfig, MAX_STUN_SERVERS};
 
 /// Swarm + heartbeat configuration for a standalone P2P network instance.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -54,9 +54,13 @@ pub struct NodeConfig {
     /// external addresses, including in Circuit Relay reservations.
     #[serde(default)]
     pub external_addresses: Vec<String>,
-    /// Browser-to-browser direct upgrade ICE settings (no third-party default).
+    /// Browser-to-browser WebRTC: ICE policy, direct connections and STUN.
     #[serde(default)]
     pub browser_webrtc: BrowserWebRtcConfig,
+    /// TURN relay sources for browsers, built-in TURN server and credential
+    /// broker (no third-party default).
+    #[serde(default)]
+    pub turn: TurnConfig,
     /// Per-transport inbound listener switches. Disable WebSocket/WebRTC-direct when unused.
     #[serde(default)]
     pub listeners: ListenerConfig,
@@ -110,6 +114,7 @@ impl Default for NodeConfig {
             listen_addresses: default_listen_addresses(),
             external_addresses: Vec::new(),
             browser_webrtc: BrowserWebRtcConfig::default(),
+            turn: TurnConfig::default(),
             listeners: ListenerConfig::default(),
             bootstrap_peers: Vec::new(),
             discovery: DiscoveryConfig::default(),
@@ -212,66 +217,6 @@ impl NodeConfig {
         runtime: &dyn PlatformRuntime,
     ) -> EnvironmentReport {
         EnvironmentReport::detect_with_runtime(self, runtime)
-    }
-
-    pub fn parsed_listen_addresses(&self) -> Result<Vec<Multiaddr>, NetError> {
-        parse_multiaddrs("listen_addresses", &self.listen_addresses)
-    }
-
-    /// Return only configured listen addresses whose transport listener is enabled.
-    pub fn enabled_listen_addresses(&self) -> Result<Vec<Multiaddr>, NetError> {
-        Ok(self
-            .parsed_listen_addresses()?
-            .into_iter()
-            .filter(|addr| self.listeners.allows(addr))
-            .collect())
-    }
-
-    pub fn parsed_bootstrap_peers(&self) -> Result<Vec<Multiaddr>, NetError> {
-        parse_multiaddrs("bootstrap_peers", &self.bootstrap_peers)
-    }
-
-    pub fn parsed_external_addresses(&self) -> Result<Vec<Multiaddr>, NetError> {
-        parse_multiaddrs("external_addresses", &self.external_addresses)
-    }
-
-    pub fn parsed_relay_peers(&self) -> Result<Vec<Multiaddr>, NetError> {
-        parse_multiaddrs("relay_peers", &self.relay_peers)
-    }
-
-    pub fn parsed_bootstrap_seed_peers(&self) -> Result<Vec<Multiaddr>, NetError> {
-        parse_multiaddrs(
-            "discovery.bootstrap_seed_peers",
-            &self.discovery.bootstrap_seed_peers,
-        )
-    }
-
-    pub fn parsed_public_bootstrap_seed_peers(&self) -> Result<Vec<Multiaddr>, NetError> {
-        parse_multiaddrs(
-            "discovery.public_bootstrap.bootstrap_seed_peers",
-            &self.discovery.public_bootstrap.bootstrap_seed_peers,
-        )
-    }
-
-    pub fn parsed_public_rendezvous_peers(&self) -> Result<Vec<Multiaddr>, NetError> {
-        parse_multiaddrs(
-            "discovery.public_bootstrap.rendezvous_peers",
-            &self.discovery.public_bootstrap.rendezvous_peers,
-        )
-    }
-
-    pub fn parsed_public_relay_peers(&self) -> Result<Vec<Multiaddr>, NetError> {
-        parse_multiaddrs(
-            "discovery.public_bootstrap.relay_peers",
-            &self.discovery.public_bootstrap.relay_peers,
-        )
-    }
-
-    pub fn parsed_rendezvous_peers(&self) -> Result<Vec<Multiaddr>, NetError> {
-        parse_multiaddrs(
-            "discovery.rendezvous_peers",
-            &self.discovery.rendezvous_peers,
-        )
     }
 }
 

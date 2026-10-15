@@ -1,0 +1,14 @@
+{
+  "browser_webrtc": {
+    "enabled": true,
+    "ice_transport_policy": "relay",
+    "stun": { "enabled": false }
+  },
+  "turn": {
+    "client": {
+      "enabled": true,
+      "auto_discover": true,
+      "cloudflare": { "url": "https://p2p-net-turn.YOUR_ACCOUNT.workers.dev/ice-servers" }
+    }
+  }
+}

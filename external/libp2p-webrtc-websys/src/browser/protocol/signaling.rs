@@ -462,7 +462,7 @@ impl Signaling for ProtocolHandler {
 
         let rtc_conn = RtcPeerConnection::new(
             "sha-256".to_string(),
-            self.config.stun_servers.clone(),
+            &self.config.ice_servers.current(),
             self.config.relay_only_ice,
         )
         .await?;
@@ -542,7 +542,7 @@ impl Signaling for ProtocolHandler {
 
         let rtc_conn = RtcPeerConnection::new(
             "sha-256".to_string(),
-            self.config.stun_servers.clone(),
+            &self.config.ice_servers.current(),
             self.config.relay_only_ice,
         )
         .await?;

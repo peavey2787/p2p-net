@@ -9,9 +9,10 @@ use libp2p::dcutr;
 use libp2p::identify;
 use libp2p::kad;
 use libp2p::ping;
+use libp2p::request_response::{self, json::codec::Codec as JsonCodec, ProtocolSupport};
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::swarm::NetworkBehaviour;
-use libp2p::PeerId;
+use libp2p::{PeerId, StreamProtocol};
 use libp2p_gossipsub as gossipsub;
 use libp2p_relay as relay;
 use libp2p_rendezvous as rendezvous;
@@ -20,11 +21,22 @@ use libp2p_webrtc_websys::browser as webrtc_browser;
 use crate::connectivity::discovery::DiscoveryConfig;
 use crate::connectivity::limits::ConnectionLimitsConfig;
 use crate::connectivity::relay::{RelayAccess, RelayServiceConfig};
+use crate::connectivity::turn::{
+    CredentialRequest, CredentialResponse, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES,
+    TURN_CREDENTIALS_PROTOCOL,
+};
 use crate::ResolvedNodeConfig;
 
 use super::{DcutrBehaviour, ExternalAddressCandidates};
 
 const KADEMLIA_QUERY_TIMEOUT: Duration = Duration::from_secs(20);
+const TURN_CREDENTIALS_TIMEOUT: Duration = Duration::from_secs(10);
+const TURN_CREDENTIALS_MAX_STREAMS: usize = 16;
+
+/// TURN credential broker protocol (see `connectivity::turn`).
+pub type TurnCredentialsBehaviour =
+    request_response::json::Behaviour<CredentialRequest, CredentialResponse>;
+pub type TurnCredentialsEvent = request_response::Event<CredentialRequest, CredentialResponse>;
 
 #[derive(NetworkBehaviour)]
 #[behaviour(to_swarm = "MeshEvent")]
@@ -46,6 +58,8 @@ pub struct MeshBehaviour {
     /// Browser-only relay-assisted direct WebRTC upgrade (off on native,
     /// where DCUtR performs the direct upgrade).
     pub webrtc_signaling: Toggle<webrtc_browser::Behaviour>,
+    /// TURN credential broker: inbound on broker nodes, outbound on browsers.
+    pub turn_credentials: Toggle<TurnCredentialsBehaviour>,
 }
 
 #[derive(Debug)]
@@ -61,6 +75,7 @@ pub enum MeshEvent {
     Identify(Box<identify::Event>),
     Ping(ping::Event),
     WebrtcSignaling(webrtc_browser::SignalingEvent),
+    TurnCredentials(Box<TurnCredentialsEvent>),
 }
 
 impl From<Infallible> for MeshEvent {
@@ -117,6 +132,11 @@ impl From<identify::Event> for MeshEvent {
 impl From<webrtc_browser::SignalingEvent> for MeshEvent {
     fn from(v: webrtc_browser::SignalingEvent) -> Self {
         Self::WebrtcSignaling(v)
+    }
+}
+impl From<TurnCredentialsEvent> for MeshEvent {
+    fn from(v: TurnCredentialsEvent) -> Self {
+        Self::TurnCredentials(Box::new(v))
     }
 }
 impl From<ping::Event> for MeshEvent {
@@ -298,5 +318,29 @@ pub fn build_behaviour(ctx: BehaviourBuildContext<'_>) -> MeshBehaviour {
             ping::Config::new().with_interval(Duration::from_secs(ping_interval_secs)),
         ),
         webrtc_signaling: webrtc_signaling.into(),
+        turn_credentials: build_turn_credentials(
+            resolved_cfg.turn_broker_enabled,
+            resolved_cfg.turn_network_client_enabled,
+        )
+        .into(),
     }
+}
+
+fn build_turn_credentials(serve: bool, ask: bool) -> Option<TurnCredentialsBehaviour> {
+    let support = match (serve, ask) {
+        (true, true) => ProtocolSupport::Full,
+        (true, false) => ProtocolSupport::Inbound,
+        (false, true) => ProtocolSupport::Outbound,
+        (false, false) => return None,
+    };
+    let codec = JsonCodec::default()
+        .set_request_size_maximum(MAX_REQUEST_BYTES)
+        .set_response_size_maximum(MAX_RESPONSE_BYTES);
+    Some(TurnCredentialsBehaviour::with_codec(
+        codec,
+        [(StreamProtocol::new(TURN_CREDENTIALS_PROTOCOL), support)],
+        request_response::Config::default()
+            .with_request_timeout(TURN_CREDENTIALS_TIMEOUT)
+            .with_max_concurrent_streams(TURN_CREDENTIALS_MAX_STREAMS),
+    ))
 }

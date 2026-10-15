@@ -76,6 +76,16 @@ pub(crate) fn is_local_direct_addr(addr: &Multiaddr) -> bool {
     })
 }
 
+/// Return true when `ip` is globally routable (same rules as
+/// [`is_public_direct_addr`]). Used by the native TURN relay filter.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn is_public_ip(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(ip) => is_public_ipv4(ip),
+        std::net::IpAddr::V6(ip) => is_public_ipv6(ip),
+    }
+}
+
 fn is_public_ipv4(ip: std::net::Ipv4Addr) -> bool {
     let octets = ip.octets();
     if ip.is_unspecified()

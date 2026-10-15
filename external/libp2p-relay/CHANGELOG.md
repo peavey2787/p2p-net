@@ -7,6 +7,9 @@
   is now counted toward the limit as well as forwarded.
 - A relayed dial issued while the dial to that relay is still in flight waits for
   the relay connection instead of being cancelled.
+- That deferred reservation keeps its listener and address bookkeeping on the
+  relay connection that carries it, and a reservation accepted after its
+  listener closed no longer panics (`Relay connection exist`).
 
 ## 0.22.0
 

@@ -11,9 +11,12 @@ use libp2p_swarm::{ConnectionId, NetworkBehaviour, NotifyHandler, ToSwarm};
 use tracing::info;
 use web_time::Instant;
 
-use crate::browser::{
-    handler::{FromBehaviourEvent, SignalingHandler, ToBehaviourEvent},
-    transport::ConnectionRequest,
+use crate::{
+    browser::{
+        handler::{FromBehaviourEvent, SignalingHandler, ToBehaviourEvent},
+        transport::ConnectionRequest,
+    },
+    IceServers,
 };
 
 #[derive(Clone, Debug)]
@@ -22,7 +25,7 @@ pub struct SignalingConfig {
     pub(crate) signaling_delay: Duration,
     pub(crate) connection_establishment_delay_in_millis: Duration,
     pub(crate) max_connection_establishment_checks: u32,
-    pub(crate) stun_servers: Option<Vec<String>>,
+    pub(crate) ice_servers: IceServers,
     /// `iceTransportPolicy: "relay"` (TURN candidates only).
     pub(crate) relay_only_ice: bool,
 }
@@ -33,14 +36,14 @@ impl SignalingConfig {
         signaling_delay: Duration,
         connection_establishment_delay_in_millis: Duration,
         max_connection_establishment_checks: u32,
-        stun_servers: Option<Vec<String>>,
+        ice_servers: IceServers,
     ) -> Self {
         Self {
             max_signaling_retries: max_retries,
             signaling_delay,
             connection_establishment_delay_in_millis,
             max_connection_establishment_checks,
-            stun_servers,
+            ice_servers,
             relay_only_ice: false,
         }
     }
@@ -101,6 +104,12 @@ pub struct Behaviour {
 }
 
 impl Behaviour {
+    /// Shared handle to the ICE server list: replacing its contents changes
+    /// the servers every later peer connection uses.
+    pub fn ice_servers(&self) -> IceServers {
+        self.signaling_config.ice_servers.clone()
+    }
+
     pub fn new(
         config: SignalingConfig,
         pending_dials: Arc<Mutex<HashMap<PeerId, oneshot::Sender<crate::Connection>>>>,

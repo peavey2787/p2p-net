@@ -56,6 +56,8 @@ pub fn apply_resolved_capabilities(raw: &NodeConfig, resolved: &ResolvedNodeConf
         cfg.dcutr.enabled = false;
         cfg.discovery.rendezvous.server_enabled = false;
     }
+    cfg.turn.server.enabled = resolved.turn_server_enabled;
+    cfg.turn.broker.enabled = resolved.turn_broker_enabled;
 
     cfg
 }
@@ -82,6 +84,7 @@ fn resolve_role_for_environment(cfg: &NodeConfig, environment: &EnvironmentRepor
         NodeProfile::Mediator => NodeRole::Mediator,
         NodeProfile::Rendezvous => NodeRole::Rendezvous,
         NodeProfile::Bootstrap => NodeRole::Bootstrap,
+        NodeProfile::Turn => NodeRole::Turn,
         NodeProfile::MobileLite => NodeRole::MobileLite,
     }
 }
@@ -93,6 +96,8 @@ fn explicit_config_role(cfg: &NodeConfig) -> Option<NodeRole> {
         Some(NodeRole::Relay)
     } else if cfg.discovery.rendezvous.server_enabled {
         Some(NodeRole::Rendezvous)
+    } else if cfg.turn.server.enabled {
+        Some(NodeRole::Turn)
     } else {
         None
     }
@@ -211,6 +216,19 @@ fn validate_resolved_config(
         return Err(config_error_at(
             "<capability-resolver>",
             "relay server capability requires TCP or QUIC listen support",
+        ));
+    }
+
+    let wants_turn_service = raw.with_profile_defaults_applied().turn.server.enabled;
+    if wants_turn_service
+        && (matches!(
+            role,
+            NodeRole::Lite | NodeRole::MobileLite | NodeRole::WasmLite
+        ) || environment.background_restricted)
+    {
+        return Err(config_error_at(
+            "<capability-resolver>",
+            "turn.server needs a full, always-on node; lite, mobile and browser roles cannot run it",
         ));
     }
 

@@ -18,6 +18,7 @@ use web_sys::{
 };
 
 use super::{Error, Stream};
+use crate::IceServer;
 use crate::{browser::protocol::ConnectionCallbacks, stream::DropListener};
 
 /// A WebRTC Connection.
@@ -199,7 +200,7 @@ pub(crate) struct RtcPeerConnection {
 impl RtcPeerConnection {
     pub(crate) async fn new(
         algorithm: String,
-        stun_servers: Option<Vec<String>>,
+        ice_servers: &[IceServer],
         relay_only_ice: bool,
     ) -> Result<Self, Error> {
         let algo: Object = Object::new();
@@ -219,16 +220,12 @@ impl RtcPeerConnection {
         certificate_arr.push(&certificate);
         config.set_certificates(&certificate_arr);
 
-        // configure rtc configuration with stun servers, if any
-        if let Some(servers) = stun_servers {
-            let ice_servers = js_sys::Array::new();
-            for server in servers {
-                let stun_server = RtcIceServer::new();
-                stun_server.set_url(&server);
-                ice_servers.push(&stun_server);
+        if !ice_servers.is_empty() {
+            let servers = js_sys::Array::new();
+            for server in ice_servers {
+                servers.push(&rtc_ice_server(server));
             }
-
-            config.set_ice_servers(&ice_servers.into());
+            config.set_ice_servers(&servers.into());
         }
         if relay_only_ice {
             config.set_ice_transport_policy(web_sys::RtcIceTransportPolicy::Relay);
@@ -337,6 +334,22 @@ fn parse_fingerprint(sdp: &str) -> Option<Fingerprint> {
         }
     }
     None
+}
+
+fn rtc_ice_server(server: &IceServer) -> RtcIceServer {
+    let entry = RtcIceServer::new();
+    let urls = js_sys::Array::new();
+    for url in &server.urls {
+        urls.push(&JsValue::from_str(url));
+    }
+    entry.set_urls(&urls.into());
+    if let Some(username) = &server.username {
+        entry.set_username(username);
+    }
+    if let Some(credential) = &server.credential {
+        entry.set_credential(credential);
+    }
+    entry
 }
 
 #[cfg(test)]

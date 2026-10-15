@@ -1,0 +1,17 @@
+{
+  "profile": "full",
+  "identity_key_path": "state/turn-broker.identity.hex",
+  "turn": {
+    "broker": {
+      "enabled": true,
+      "provider": {
+        "type": "cloudflare",
+        "key_id": "your-cloudflare-turn-key-id",
+        "api_token": { "env": "CLOUDFLARE_TURN_API_TOKEN" }
+      }
+    }
+  },
+  "discovery": {
+    "peer_cache_path": "state/turn-broker-peer-cache.json"
+  }
+}

@@ -30,6 +30,9 @@ p2p-net changes on top of the pull request:
   an attempt; a failed connectivity check is a typed `Error::IceCheck` with
   `IceCheckOutcome::{Failed, TimedOut}` and the final ICE state.
 - `browser::SignalingConfig::with_relay_only_ice` restricts ICE to TURN candidates.
+- `IceServers` carries STUN and TURN entries with credentials; it is shared and
+  updatable at runtime so short-lived TURN credentials refresh without
+  rebuilding the swarm.
 
 ICE servers are optional configuration: nothing here contacts a public STUN or
 TURN service unless the application configures one.

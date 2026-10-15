@@ -27,6 +27,7 @@ use crate::stack::{on_mesh_event, IdentifyAddressState, MeshBehaviour, MeshEvent
 
 use super::dial::AutoDialStats;
 use super::snapshot::NodeSnapshot;
+use super::turn::TurnRuntime;
 
 mod app;
 mod connection;
@@ -39,12 +40,14 @@ mod presence;
 mod relay_client;
 mod relay_server;
 mod rendezvous;
+mod turn;
 
 pub(crate) use observability::{flush_observability_snapshot, ObservabilityBatch};
 pub(crate) use relay_client::retry_due_reservations;
 pub(crate) use relay_server::enforce_relay_schedule;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use relay_server::report_relay_usage;
+pub(crate) use turn::request_credentials as request_turn_credentials;
 
 pub(crate) struct SwarmEventContext<'a> {
     pub(crate) snapshot: &'a Arc<Mutex<NodeSnapshot>>,
@@ -56,6 +59,7 @@ pub(crate) struct SwarmEventContext<'a> {
     pub(crate) pending_connections: &'a mut PendingConnectionPlans,
     pub(crate) auto_dial_stats: &'a mut AutoDialStats,
     pub(crate) connection_caps: &'a mut ConnectionCapState,
+    pub(crate) turn: &'a mut TurnRuntime,
     pub(crate) relay_cfg: &'a RelayServiceConfig,
     pub(crate) dcutr_policy: &'a DcutrPolicy,
     pub(crate) discovery_cfg: &'a DiscoveryConfig,
@@ -198,6 +202,7 @@ pub(crate) async fn handle_swarm_event(
             let relayed_endpoint = endpoint.is_relayed();
             let outgoing = endpoint.is_dialer();
             let endpoint_debug = format!("{endpoint:?}");
+            ctx.turn.on_connection(peer_id, &remote_addr);
             direct_upgrade::on_connection_established(
                 peer_id,
                 connection_id,
@@ -238,6 +243,7 @@ pub(crate) async fn handle_swarm_event(
             direct_upgrade::on_connection_closed(peer_id, connection_id, ctx);
             connection::handle_connection_closed(peer_id, connection_id, swarm, ctx).await;
             if presence::is_last_connection(num_established) {
+                ctx.turn.on_disconnected(&peer_id);
                 let _ = ctx.node_events.send(NodeEvent::PeerDisconnected {
                     peer_id: peer_id.to_string(),
                 });
@@ -316,6 +322,9 @@ pub(crate) async fn handle_swarm_event(
         SwarmEvent::Behaviour(MeshEvent::WebrtcSignaling(ev)) => {
             direct_upgrade::on_signaling_event(ev, ctx).await;
         }
+        SwarmEvent::Behaviour(MeshEvent::TurnCredentials(ev)) => {
+            turn::handle_event(*ev, swarm, ctx).await;
+        }
         SwarmEvent::Behaviour(MeshEvent::Dcutr(ev)) => {
             dcutr::handle_event(ev, ctx.snapshot, ctx.relay_state, ctx.dcutr_policy).await;
         }
@@ -372,10 +381,11 @@ pub(crate) async fn handle_swarm_event(
             if let libp2p::identify::Event::Received {
                 peer_id,
                 connection_id,
-                ..
+                info,
             } = ev.as_ref()
             {
                 direct_upgrade::on_identify_received(*peer_id, *connection_id, swarm, ctx).await;
+                turn::on_identify(*peer_id, &info.protocols, swarm, ctx.turn);
             }
             connection::handle_identify_observed_addr(swarm, &ev, ctx).await;
             let event = MeshEvent::Identify(ev);

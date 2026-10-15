@@ -119,7 +119,16 @@ pub struct Behaviour {
     /// because a dial to that relay was already in flight. They are delivered
     /// to the relay connection once it is established (or dropped if dialing
     /// the relay fails), instead of being lost to a startup race.
-    awaiting_relay_connection: HashMap<PeerId, Vec<handler::In>>,
+    awaiting_relay_connection: HashMap<PeerId, Vec<AwaitingCommand>>,
+}
+
+/// p2p-net: a command waiting for the relay connection, plus the reservation
+/// bookkeeping recorded under the refused dial's connection id, which moves to
+/// the connection that actually carries the command.
+struct AwaitingCommand {
+    command: handler::In,
+    refused_connection: ConnectionId,
+    reservation: Option<(Multiaddr, ReservationStatus)>,
 }
 
 /// Create a new client relay [`Behaviour`] with it's corresponding [`Transport`].
@@ -278,15 +287,24 @@ impl NetworkBehaviour for Behaviour {
                     .entry(peer_id)
                     .or_default()
                     .push(connection_id);
-                for command in self
+                for awaiting in self
                     .awaiting_relay_connection
                     .remove(&peer_id)
                     .unwrap_or_default()
                 {
+                    if let Some(reservation) = awaiting.reservation {
+                        self.reservation_addresses
+                            .insert(connection_id, reservation);
+                        for cid in self.listener_id_to_connection_id.values_mut() {
+                            if *cid == awaiting.refused_connection {
+                                *cid = connection_id;
+                            }
+                        }
+                    }
                     self.queued_actions.push_back(ToSwarm::NotifyHandler {
                         peer_id,
                         handler: NotifyHandler::One(connection_id),
-                        event: Either::Left(command),
+                        event: Either::Left(awaiting.command),
                     });
                 }
             }
@@ -299,7 +317,7 @@ impl NetworkBehaviour for Behaviour {
                 peer_id,
                 error,
             }) => {
-                self.reservation_addresses.remove(&connection_id);
+                let reservation = self.reservation_addresses.remove(&connection_id);
                 let command = self.pending_handler_commands.remove(&connection_id);
                 match (peer_id, command) {
                     // Another dial to the relay is already in flight: wait for it.
@@ -309,7 +327,11 @@ impl NetworkBehaviour for Behaviour {
                         self.awaiting_relay_connection
                             .entry(relay)
                             .or_default()
-                            .push(command);
+                            .push(AwaitingCommand {
+                                command,
+                                refused_connection: connection_id,
+                                reservation,
+                            });
                     }
                     // Dialing the relay genuinely failed: fail waiting circuits too.
                     (Some(relay), _) if !matches!(error, DialError::DialPeerConditionFalse(_)) => {
@@ -335,15 +357,14 @@ impl NetworkBehaviour for Behaviour {
 
         let event = match handler_event {
             handler::Event::ReservationReqAccepted { renewal, limit } => {
-                let (addr, status) = self
-                    .reservation_addresses
-                    .get_mut(&connection)
-                    .expect("Relay connection exist");
-
-                if !renewal && *status == ReservationStatus::Pending {
-                    *status = ReservationStatus::Confirmed;
-                    self.queued_actions
-                        .push_back(ToSwarm::ExternalAddrConfirmed(addr.clone()));
+                // p2p-net: a reservation whose listener already closed has no
+                // address left to confirm; report the event without panicking.
+                if let Some((addr, status)) = self.reservation_addresses.get_mut(&connection) {
+                    if !renewal && *status == ReservationStatus::Pending {
+                        *status = ReservationStatus::Confirmed;
+                        self.queued_actions
+                            .push_back(ToSwarm::ExternalAddrConfirmed(addr.clone()));
+                    }
                 }
 
                 Event::ReservationReqAccepted {

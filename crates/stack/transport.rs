@@ -117,5 +117,14 @@ pub(super) fn transport_plan(cfg: &NodeConfig, resolved_cfg: &ResolvedNodeConfig
             active.push("relay-schedule");
         }
     }
+    if resolved_cfg.turn_server_enabled {
+        active.push("turn-server");
+    }
+    if resolved_cfg.turn_broker_enabled {
+        active.push("turn-broker");
+    }
+    if resolved_cfg.turn_network_client_enabled {
+        active.push("turn-network-client");
+    }
     TransportPlan { active }
 }

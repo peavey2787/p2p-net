@@ -1,0 +1,33 @@
+{
+  "profile": "turn",
+  "identity_key_path": "state/turn-node.identity.hex",
+  "external_addresses": ["/dns4/turn.example.org/tcp/4002/ws"],
+  "relay": {
+    "enabled": true
+  },
+  "turn": {
+    "server": {
+      "bind_ip": "0.0.0.0",
+      "listen_port": 3478,
+      "public_ip": "203.0.113.10",
+      "public_host": "turn.example.org",
+      "realm": "turn.example.org",
+      "shared_secret": { "env": "P2P_NET_TURN_SECRET" },
+      "relay_port_min": 49160,
+      "relay_port_max": 49659,
+      "allow_private_peers": false
+    },
+    "broker": {
+      "provider": {
+        "type": "cloudflare",
+        "key_id": "your-cloudflare-turn-key-id",
+        "api_token": { "env": "CLOUDFLARE_TURN_API_TOKEN" }
+      },
+      "credential_ttl_secs": 3600,
+      "max_requests_per_peer_per_minute": 6
+    }
+  },
+  "discovery": {
+    "peer_cache_path": "state/turn-node-peer-cache.json"
+  }
+}

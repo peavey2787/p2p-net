@@ -30,11 +30,27 @@ pub enum NodeProfile {
     Rendezvous,
     /// Infrastructure node optimized for stable discovery/bootstrap addressing.
     Bootstrap,
+    /// Full node running the built-in TURN server and handing out short-lived
+    /// TURN credentials to peers (browsers) over libp2p.
+    Turn,
     /// Lite profile with conservative assumptions for mobile/tablet platforms.
     MobileLite,
 }
 
 impl NodeProfile {
+    /// Every profile, in the order shown to users.
+    pub const ALL: [Self; 9] = [
+        Self::Auto,
+        Self::Full,
+        Self::Lite,
+        Self::Relay,
+        Self::Mediator,
+        Self::Rendezvous,
+        Self::Bootstrap,
+        Self::Turn,
+        Self::MobileLite,
+    ];
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Auto => "auto",
@@ -44,6 +60,7 @@ impl NodeProfile {
             Self::Mediator => "mediator",
             Self::Rendezvous => "rendezvous",
             Self::Bootstrap => "bootstrap",
+            Self::Turn => "turn",
             Self::MobileLite => "mobile_lite",
         }
     }
@@ -68,7 +85,29 @@ impl NodeProfile {
                 cfg.discovery.rendezvous.client_enabled = true;
                 cfg.discovery.rendezvous.server_enabled = true;
             }
+            Self::Turn => {
+                cfg.turn.server.enabled = true;
+                cfg.turn.broker.enabled = true;
+            }
         }
+    }
+}
+
+impl std::str::FromStr for NodeProfile {
+    type Err = String;
+
+    /// Parse a profile name such as `turn` (the JSON spelling).
+    fn from_str(name: &str) -> Result<Self, Self::Err> {
+        Self::ALL
+            .into_iter()
+            .find(|profile| profile.as_str() == name)
+            .ok_or_else(|| {
+                let names: Vec<&str> = Self::ALL.iter().map(|p| p.as_str()).collect();
+                format!(
+                    "unknown profile `{name}`; choose one of: {}",
+                    names.join(", ")
+                )
+            })
     }
 }
 
@@ -83,6 +122,7 @@ pub enum NodeRole {
     Mediator,
     Rendezvous,
     Bootstrap,
+    Turn,
     MobileLite,
     /// Browser/WASM role: outbound browser transports, DHT/relay/rendezvous clients only.
     WasmLite,
@@ -97,6 +137,7 @@ impl NodeRole {
             Self::Mediator => "mediator",
             Self::Rendezvous => "rendezvous",
             Self::Bootstrap => "bootstrap",
+            Self::Turn => "turn",
             Self::MobileLite => "mobile_lite",
             Self::WasmLite => "wasm_lite",
         }
@@ -124,7 +165,11 @@ impl BehaviourSet {
     pub fn for_role(role: NodeRole, cfg: &NodeConfig) -> Self {
         let infrastructure = matches!(
             role,
-            NodeRole::Relay | NodeRole::Mediator | NodeRole::Rendezvous | NodeRole::Bootstrap
+            NodeRole::Relay
+                | NodeRole::Mediator
+                | NodeRole::Rendezvous
+                | NodeRole::Bootstrap
+                | NodeRole::Turn
         );
         let lite = matches!(
             role,
@@ -188,6 +233,13 @@ pub struct ResolvedNodeConfig {
     pub mediator_advertise_for_dcutr: bool,
     pub rendezvous_client_enabled: bool,
     pub rendezvous_server_enabled: bool,
+    /// Run the built-in TURN server.
+    pub turn_server_enabled: bool,
+    /// Answer TURN credential requests from peers.
+    pub turn_broker_enabled: bool,
+    /// Ask broker peers for TURN credentials (browser WebRTC with the
+    /// `libp2p` TURN source only).
+    pub turn_network_client_enabled: bool,
     pub transport_capabilities: TransportCapabilities,
 }
 
@@ -234,6 +286,17 @@ impl ResolvedNodeConfig {
             NodeRole::Lite | NodeRole::MobileLite | NodeRole::WasmLite
         );
         let no_public_listeners = matches!(role, NodeRole::MobileLite | NodeRole::WasmLite);
+        let mut transport_capabilities = if matches!(role, NodeRole::WasmLite) {
+            TransportCapabilities::browser()
+        } else {
+            TransportCapabilities::native()
+        };
+        if !effective.browser_webrtc.enabled {
+            // In browsers the relay-assisted upgrade is the WebRTC signaling.
+            transport_capabilities.browser_webrtc = false;
+            transport_capabilities.relay_assisted_upgrade &= !matches!(role, NodeRole::WasmLite);
+        }
+        let turn = &effective.turn;
         let has_relay_selection_source = lite_role
             || has_relay_peers
             || has_public_relay_candidates
@@ -255,6 +318,10 @@ impl ResolvedNodeConfig {
             mediator_advertise_for_dcutr: effective.mediator.advertise_for_dcutr,
             rendezvous_client_enabled: enabled_behaviours.rendezvous_client,
             rendezvous_server_enabled: enabled_behaviours.rendezvous_server,
+            turn_server_enabled: turn.server.enabled && !no_public_listeners,
+            turn_broker_enabled: turn.broker.enabled && !no_public_listeners,
+            turn_network_client_enabled: transport_capabilities.browser_webrtc
+                && turn.client.discovery().is_some(),
             reserve_configured_relays: effective.reserve_configured_relays,
             should_reserve_configured_relays: effective.reserve_configured_relays
                 && has_relay_peers
@@ -279,11 +346,7 @@ impl ResolvedNodeConfig {
             dcutr_keep_relay_fallback: effective.dcutr.keep_relay_fallback,
             dcutr_retry_interval_secs: effective.dcutr.retry_interval_secs,
             dcutr_max_attempts_per_peer: effective.dcutr.max_attempts_per_peer,
-            transport_capabilities: if matches!(role, NodeRole::WasmLite) {
-                TransportCapabilities::browser()
-            } else {
-                TransportCapabilities::native()
-            },
+            transport_capabilities,
             enabled_behaviours,
         }
     }

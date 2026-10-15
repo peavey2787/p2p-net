@@ -1,0 +1,10 @@
+{
+  "name": "p2p-net-turn-cloudflare",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "test": "node --test \"test/*.test.mjs\""
+  }
+}

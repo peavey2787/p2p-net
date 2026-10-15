@@ -17,6 +17,9 @@ pub(super) async fn build_swarm(
 ) -> Result<(libp2p::Swarm<MeshBehaviour>, TransportPlan), NetError> {
     let local_peer = libp2p::PeerId::from(local_key.public());
     let relay_cfg = cfg.relay.clone();
+    // `browser_webrtc.enabled: false` keeps the transport inert: no signaling
+    // behaviour negotiates `/webrtc` and no `/webrtc` listener is opened.
+    let browser_webrtc = resolved_cfg.transport_capabilities.browser_webrtc;
     let (direct_upgrade_transport, webrtc_signaling) = webrtc_browser::Transport::new(
         webrtc_browser::Config {
             keypair: local_key.clone(),
@@ -84,7 +87,7 @@ pub(super) async fn build_swarm(
                 connection_limits_cfg: &cfg.connection_limits,
                 discovery_cfg: &cfg.discovery,
                 resolved_cfg,
-                webrtc_signaling: Some(webrtc_signaling),
+                webrtc_signaling: browser_webrtc.then_some(webrtc_signaling),
             })
         })
         .map_err(|e| NetError::Build(e.to_string()))?
@@ -98,16 +101,18 @@ pub(super) async fn build_swarm(
     // Circuit Relay reservation and remains invisible to applications. The
     // `/webrtc` listener only surfaces direct connections that the signaling
     // behaviour negotiated over an existing relayed connection.
-    swarm
-        .listen_on(
-            WEBRTC_DIRECT_UPGRADE_LISTEN
-                .parse()
-                .expect("static multiaddr"),
-        )
-        .map_err(|e| NetError::Listen {
-            addr: WEBRTC_DIRECT_UPGRADE_LISTEN.to_string(),
-            reason: e.to_string(),
-        })?;
+    if browser_webrtc {
+        swarm
+            .listen_on(
+                WEBRTC_DIRECT_UPGRADE_LISTEN
+                    .parse()
+                    .expect("static multiaddr"),
+            )
+            .map_err(|e| NetError::Listen {
+                addr: WEBRTC_DIRECT_UPGRADE_LISTEN.to_string(),
+                reason: e.to_string(),
+            })?;
+    }
     Ok((swarm, transport_plan(cfg, resolved_cfg)))
 }
 
@@ -115,19 +120,16 @@ const WEBRTC_DIRECT_UPGRADE_LISTEN: &str = "/webrtc";
 
 /// Relay-assisted direct upgrade timing: start signaling shortly after the
 /// relayed connection is up, allow up to 15 s of ICE checks (60 x 250 ms),
-/// retry twice, then stay on the relay.
+/// retry twice, then stay on the relay. The ICE server list starts empty;
+/// the TURN runtime publishes the composed `browser_webrtc` + TURN list into
+/// it once the swarm exists.
 fn signaling_config(cfg: &NodeConfig) -> webrtc_browser::SignalingConfig {
-    let webrtc = &cfg.browser_webrtc;
-    let ice_servers = (!webrtc.ice_servers.is_empty()).then(|| webrtc.ice_servers.clone());
     webrtc_browser::SignalingConfig::new(
         2,
         Duration::from_millis(300),
         Duration::from_millis(250),
         60,
-        ice_servers,
+        webrtc_websys::IceServers::default(),
     )
-    .with_relay_only_ice(matches!(
-        webrtc.ice_transport_policy,
-        crate::IceTransportPolicy::Relay
-    ))
+    .with_relay_only_ice(cfg.browser_webrtc.effective_policy() == crate::IceTransportPolicy::Relay)
 }

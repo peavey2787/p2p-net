@@ -21,7 +21,7 @@ use super::super::super::public_ip;
 use super::super::super::runtime_tasks::apply_public_ip_probe_result;
 use super::super::NodeRuntimeContext;
 use super::super::RuntimeState;
-use super::super::{observability, periodic};
+use super::super::{observability, periodic, turn_upkeep};
 
 const OBSERVABILITY_FLUSH_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -62,6 +62,13 @@ pub(in crate::node::runtime) async fn run_node_runtime(ctx: NodeRuntimeContext) 
         dht_state,
         peer_book,
     );
+    runtime_state.attach_webrtc_signaling(&swarm);
+    if let Some(relay_ip) = runtime_state.turn.configured_relay_ip() {
+        if let Some(line) = runtime_state.turn.start_server(relay_ip).await {
+            runtime_state.observability.pulse(line);
+        }
+    }
+    snapshot.lock().await.turn = runtime_state.turn.snapshot().clone();
     let heartbeat_topic_hash = heartbeat_topic.hash().clone();
     let application_protocol_version = cfg
         .discovery
@@ -121,6 +128,9 @@ pub(in crate::node::runtime) async fn run_node_runtime(ctx: NodeRuntimeContext) 
                 snapshot_revision.fetch_add(1, Ordering::Relaxed);
             }
             _ = observability_ticker.tick() => {
+                if turn_upkeep::maintain_turn(&mut swarm, &snapshot, &mut runtime_state).await {
+                    snapshot_revision.fetch_add(1, Ordering::Relaxed);
+                }
                 if events::report_relay_usage(
                     &snapshot,
                     &mut runtime_state.relay_state,
@@ -220,6 +230,18 @@ pub(in crate::node::runtime) async fn run_node_runtime(ctx: NodeRuntimeContext) 
             public_ip_result = &mut public_ip_probe, if !public_ip_probe_done => {
                 public_ip_probe_done = true;
                 let refreshed_dht = !public_ip_result.external_addresses.is_empty();
+                let probed_ip = public_ip_result
+                    .public_ip
+                    .as_deref()
+                    .and_then(|ip| ip.parse().ok());
+                let turn_line = match probed_ip {
+                    Some(ip) => runtime_state.turn.start_server(ip).await,
+                    None => runtime_state.turn.public_ip_unavailable(),
+                };
+                if let Some(line) = turn_line {
+                    runtime_state.observability.pulse(line);
+                    snapshot.lock().await.turn = runtime_state.turn.snapshot().clone();
+                }
                 apply_public_ip_probe_result(
                     public_ip_result,
                     &cfg,
@@ -294,6 +316,7 @@ pub(in crate::node::runtime) async fn run_node_runtime(ctx: NodeRuntimeContext) 
                         pending_connections: &mut runtime_state.pending_connections,
                         auto_dial_stats: &mut runtime_state.auto_dial_stats,
                         connection_caps: &mut runtime_state.connection_caps,
+                        turn: &mut runtime_state.turn,
                         relay_cfg: &cfg.relay,
                         dcutr_policy: &cfg.dcutr,
                         discovery_cfg: &cfg.discovery,
@@ -333,6 +356,7 @@ pub(in crate::node::runtime) async fn run_node_runtime(ctx: NodeRuntimeContext) 
             }
         }
     }
+    runtime_state.turn.shutdown().await;
     runtime_state.flush_peer_cache(&cfg, storage.as_ref());
     observability::flush_observability(&cfg, &snapshot, storage.as_ref(), &mut runtime_state).await;
 }

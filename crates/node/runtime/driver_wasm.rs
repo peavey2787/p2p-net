@@ -13,7 +13,7 @@ use crate::runtime;
 
 use super::super::super::commands::{self, NodeCommandContext};
 use super::super::super::events::{self, SwarmEventContext};
-use super::super::{observability, periodic, NodeRuntimeContext, RuntimeState};
+use super::super::{observability, periodic, turn_upkeep, NodeRuntimeContext, RuntimeState};
 
 const OBSERVABILITY_FLUSH_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -57,6 +57,7 @@ pub(in crate::node::runtime) async fn run_node_runtime(ctx: NodeRuntimeContext) 
         dht_state,
         peer_book,
     );
+    runtime_state.attach_webrtc_signaling(&swarm);
     let heartbeat_topic_hash = heartbeat_topic.hash().clone();
     let application_protocol_version = cfg
         .discovery
@@ -114,6 +115,7 @@ pub(in crate::node::runtime) async fn run_node_runtime(ctx: NodeRuntimeContext) 
                     pending_connections: &mut runtime_state.pending_connections,
                     auto_dial_stats: &mut runtime_state.auto_dial_stats,
                     connection_caps: &mut runtime_state.connection_caps,
+                        turn: &mut runtime_state.turn,
                     relay_cfg: &cfg.relay,
                     dcutr_policy: &cfg.dcutr,
                     discovery_cfg: &cfg.discovery,
@@ -160,6 +162,9 @@ pub(in crate::node::runtime) async fn run_node_runtime(ctx: NodeRuntimeContext) 
                 snapshot_revision.fetch_add(1, Ordering::Relaxed);
             },
             _ = observable => {
+                if turn_upkeep::maintain_turn(&mut swarm, &snapshot, &mut runtime_state).await {
+                    snapshot_revision.fetch_add(1, Ordering::Relaxed);
+                }
                 if observability::flush_observability(&cfg, &snapshot, storage.as_ref(), &mut runtime_state).await {
                     snapshot_revision.fetch_add(1, Ordering::Relaxed);
                 }

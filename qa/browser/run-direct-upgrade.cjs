@@ -80,6 +80,7 @@ function nodeConfig(relayAddr, { relayOnlyIce = false } = {}) {
       rendezvous: { client_enabled: false, server_enabled: false },
     },
     browser_webrtc: { ice_servers: [], ice_transport_policy: relayOnlyIce ? 'relay' : 'all' },
+    turn: { client: { enabled: false } },
   };
 }
 

@@ -1,4 +1,4 @@
-use p2p_net::NodeSnapshot;
+use p2p_net::{NodeSnapshot, TurnServerState};
 
 use super::text::{
     count_tone, event_tone, failure_tone, format_uptime, status_tone, wrap_terminal_text,
@@ -242,8 +242,37 @@ pub(super) fn append_compact_summary(lines: &mut Vec<Line>, snap: &NodeSnapshot,
     services.push("   transports=", Tone::Muted);
     services.push(join_or_dash(&snap.active_transports), Tone::Accent);
     lines.push(panel_content(width, services));
+    append_turn(lines, snap, width);
 
     lines.push(panel_footer(width));
+}
+
+/// TURN server/broker line, shown only on nodes that serve TURN.
+fn append_turn(lines: &mut Vec<Line>, snap: &NodeSnapshot, width: usize) {
+    let turn = &snap.turn;
+    if turn.server_state == TurnServerState::Disabled && !turn.broker_enabled {
+        return;
+    }
+    let state = turn.server_state.as_str();
+    let mut line = Line::default();
+    line.push_bold("TURN  ", Tone::Muted);
+    line.push(state, status_tone(state));
+    line.push("  alloc=", Tone::Muted);
+    line.push(
+        format!(
+            "{}/{}",
+            turn.server_allocations, turn.server_allocation_capacity
+        ),
+        Tone::Text,
+    );
+    line.push("  granted=", Tone::Muted);
+    line.push(turn.broker_granted.to_string(), Tone::Text);
+    line.push("  errors=", Tone::Muted);
+    line.push(
+        turn.broker_source_errors.to_string(),
+        failure_tone(turn.broker_source_errors),
+    );
+    lines.push(panel_content(width, line));
 }
 
 pub(super) fn append_events(lines: &mut Vec<Line>, snap: &NodeSnapshot, width: usize, rows: usize) {

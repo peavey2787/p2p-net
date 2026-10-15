@@ -34,11 +34,13 @@ use super::handle::NodeCommand;
 use super::profile::ResolvedNodeConfig;
 use super::runtime_maintenance;
 use super::snapshot::NodeSnapshot;
+use super::turn::TurnRuntime;
 
 mod dht_schedule;
 mod driver;
 mod observability;
 mod periodic;
+mod turn_upkeep;
 
 pub(super) const PEER_CACHE_FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
 
@@ -81,6 +83,7 @@ pub(super) struct RuntimeState {
     pub(super) identify_addresses: IdentifyAddressState,
     pub(super) observability: ObservabilityBatch,
     pub(super) peer_cache_writes: PeerCacheWriteBatch,
+    pub(super) turn: TurnRuntime,
     dht_refresh_schedule: dht_schedule::DhtRefreshSchedule,
     pub(super) last_peer_cache_flush: web_time::Instant,
 }
@@ -117,10 +120,20 @@ impl RuntimeState {
             identify_addresses: IdentifyAddressState::default(),
             observability: ObservabilityBatch::default(),
             peer_cache_writes: PeerCacheWriteBatch::default(),
+            turn: TurnRuntime::new(cfg, resolved_config),
             dht_refresh_schedule: dht_schedule::DhtRefreshSchedule::new(
                 cfg.discovery.dht.refresh_interval_secs,
             ),
             last_peer_cache_flush: web_time::Instant::now(),
+        }
+    }
+
+    /// Let TURN manage the ICE servers of browser WebRTC signaling, when the
+    /// swarm has it (browser builds).
+    pub(super) fn attach_webrtc_signaling(&mut self, swarm: &Swarm<MeshBehaviour>) {
+        if let Some(signaling) = swarm.behaviour().webrtc_signaling.as_ref() {
+            self.turn
+                .attach_browser_ice_servers(signaling.ice_servers());
         }
     }
 

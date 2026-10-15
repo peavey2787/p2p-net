@@ -9,6 +9,9 @@
   `SignalingEvent::SignalingStarted`; typed `Error::IceCheck` /
   `IceCheckOutcome` for failed or timed-out connectivity checks.
 - `browser::SignalingConfig::with_relay_only_ice`.
+- `IceServer` (urls + TURN username/credential) and the shared, runtime-updatable
+  `IceServers` list read by every new `RtcPeerConnection`, replacing the
+  STUN-only URL list.
 
 ## 0.5.0
 

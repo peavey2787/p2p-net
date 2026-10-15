@@ -2,6 +2,7 @@
 
 use crate::common::error::{config_error, NetError};
 use crate::connectivity::dns::DnsaddrConfig;
+use crate::connectivity::turn::MAX_ICE_SERVERS;
 
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
@@ -29,6 +30,7 @@ pub(crate) fn validate_node_config(cfg: &NodeConfig) -> Result<(), NetError> {
 
     cfg.dnsaddr.validate()?;
     cfg.public_ip_probe.validate()?;
+    validate_webrtc_and_turn(cfg)?;
     validate_listen_addrs("listen_addresses", &cfg.listen_addresses)?;
     cfg.parsed_external_addresses()?;
     validate_peer_addrs("bootstrap_peers", &cfg.bootstrap_peers, true)?;
@@ -93,6 +95,36 @@ pub(crate) fn validate_node_config(cfg: &NodeConfig) -> Result<(), NetError> {
     cfg.mediator.validate(&cfg.relay)?;
     Ok(())
 }
+
+/// Browser WebRTC and TURN are separate capabilities; validate each, then
+/// the ways they combine. TURN is checked as the profile will run it
+/// (`turn` enables the server) and with original `browser_webrtc.ice_servers`
+/// TURN entries counted as `self_hosted` servers.
+fn validate_webrtc_and_turn(cfg: &NodeConfig) -> Result<(), NetError> {
+    let webrtc = &cfg.browser_webrtc;
+    webrtc.validate()?;
+    let mut turn = cfg.with_profile_defaults_applied().turn;
+    turn.client = webrtc.with_legacy_turn(&turn.client);
+    turn.validate()?;
+    if turn.server.enabled && turn.server.public_ip.is_none() && !cfg.public_ip_probe.enabled {
+        return Err(config_error(
+            "turn.server needs turn.server.public_ip when public_ip_probe is disabled",
+        ));
+    }
+    if !webrtc.enabled && turn.client.has_explicit_sources() {
+        return Err(config_error(
+            "turn.client sources only feed browser WebRTC, but browser_webrtc.enabled is false",
+        ));
+    }
+    let ice_servers = webrtc.stun_servers().len() + turn.client.max_servers;
+    if ice_servers > MAX_ICE_SERVERS {
+        return Err(config_error(format!(
+            "browser_webrtc STUN servers plus turn.client.max_servers must not exceed {MAX_ICE_SERVERS} ICE servers"
+        )));
+    }
+    Ok(())
+}
+
 pub(crate) fn parse_multiaddrs(field: &str, values: &[String]) -> Result<Vec<Multiaddr>, NetError> {
     values
         .iter()

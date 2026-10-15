@@ -1,0 +1,26 @@
+# Cloudflare Worker that turns Cloudflare Realtime TURN into the p2p-net TURN
+# credential contract. See README.md for the three-step setup.
+name = "p2p-net-turn"
+main = "src/worker.js"
+compatibility_date = "2025-09-01"
+
+[vars]
+# TURN key ID from the Cloudflare dashboard (Realtime > TURN Server).
+TURN_KEY_ID = "your-cloudflare-turn-key-id"
+# Comma-separated origins of the web app(s) allowed to fetch credentials,
+# e.g. "https://app.example.org". "*" allows any website to spend your quota.
+ALLOWED_ORIGINS = "https://app.example.org"
+CREDENTIAL_TTL_SECS = "3600"
+
+# The TURN key's API token is a secret, never a var:
+#   npx wrangler secret put TURN_KEY_API_TOKEN
+
+# Optional per-client rate limit (requests per IP per minute). Remove this
+# block if your plan does not include Workers rate limiting.
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 20
+  period = 60

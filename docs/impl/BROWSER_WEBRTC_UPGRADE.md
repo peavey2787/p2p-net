@@ -47,20 +47,39 @@ The upgrade depends on nothing but the relay p2p-net already uses: no LAN
 discovery, no mDNS, and no public STUN/TURN. With no ICE servers configured,
 browsers offer their host candidates only. That connects browsers on the same
 host or network; across NATs it usually fails, and the pair stays on the
-relay. Operators who want direct paths across NATs configure their own
-STUN/TURN through `browser_webrtc`:
+relay.
+
+Two separate config sections add more paths:
+
+- `browser_webrtc` owns the connection and its ICE policy: `enabled`,
+  `ice_transport_policy`, `direct_connections` and `stun`.
+- `turn.client` only supplies TURN relay servers and their credentials, from
+  broker peers (`libp2p`), static `servers` (`self_hosted`), and `cloudflare` or
+  `http` credential endpoints.
 
 ```json
 {
   "browser_webrtc": {
-    "ice_servers": ["stun:stun.example.org:3478"],
-    "ice_transport_policy": "all"
-  }
+    "ice_transport_policy": "all",
+    "stun": { "servers": ["stun:stun.example.org:3478"] }
+  },
+  "turn": { "client": { "enabled": true } }
 }
 ```
 
-`ice_transport_policy: "relay"` restricts ICE to TURN candidates (hides local
-addresses); without TURN servers it disables direct upgrades entirely.
+`BrowserIcePlan::compose` builds each peer connection's `iceServers` list: STUN
+servers first, then TURN servers in source order. TURN never changes the policy.
+Under `relay` (or `direct_connections: false`), and when `stun.enabled` is
+false, all STUN URLs are removed, including ones a TURN source offered. Relay-only
+ICE with no TURN server never upgrades, so the pair stays on the relay.
+
+The signaling behaviour reads a shared ICE server list that can change at runtime,
+for every new `RTCPeerConnection`. Short-lived TURN credentials therefore refresh
+without rebuilding the swarm. Setting `browser_webrtc.enabled: false` drops the
+signaling behaviour and the `/webrtc` listener.
+
+See `docs/operator/BROWSER_WEBRTC.md` for every mode and
+`docs/operator/TURN.md` for TURN.
 
 ## Capability flags
 

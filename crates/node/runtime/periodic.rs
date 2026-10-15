@@ -41,6 +41,8 @@ pub(super) async fn tick_runtime(
         swarm,
         &mut runtime_state.relay_state,
     ));
+    #[cfg(not(target_arch = "wasm32"))]
+    runtime_state.turn.refresh_server_stats().await;
     pulses.extend(runtime_maintenance::maintain_application_connections(
         cfg,
         swarm,
@@ -80,6 +82,7 @@ pub(super) async fn tick_runtime(
         &runtime_state.pending_connections,
         cfg.discovery.public_bootstrap.auto_connect_discovered_peers,
     );
+    guard.turn = runtime_state.turn.snapshot().clone();
     for pulse in pulses {
         super::super::push_pulse(&mut guard.pulses, pulse);
     }

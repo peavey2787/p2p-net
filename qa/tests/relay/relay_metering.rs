@@ -69,8 +69,16 @@ async fn real_relayed_traffic_is_metered_into_events_snapshot_and_metrics() {
         recv(&mut src_inbox).await;
     }
 
-    // Live metering is visible while the circuit is still open.
-    let live = wait_for_live_usage(&relay, circuit_id).await;
+    // Live metering is visible while the circuit is still open. The relay
+    // publishes live usage on its 1 s observability tick, so wait for the
+    // published totals to cover every delivered message.
+    let live = wait_for_live_usage(
+        &relay,
+        circuit_id,
+        (MESSAGES * MESSAGE_BYTES) as u64,
+        (MESSAGES * MESSAGE_BYTES / 2) as u64,
+    )
+    .await;
     assert!(live.bytes_src_to_dst >= (MESSAGES * MESSAGE_BYTES) as u64);
     assert!(live.bytes_dst_to_src >= (MESSAGES * MESSAGE_BYTES / 2) as u64);
 
@@ -174,16 +182,20 @@ async fn wait_closed(events: &mut NodeEventSubscription, id: u64) -> NodeEvent {
     }
 }
 
-async fn wait_for_live_usage(relay: &NodeHandle, id: u64) -> p2p_net::RelayCircuitUsage {
+async fn wait_for_live_usage(
+    relay: &NodeHandle,
+    id: u64,
+    min_src_to_dst: u64,
+    min_dst_to_src: u64,
+) -> p2p_net::RelayCircuitUsage {
     tokio::time::timeout(STEP, async {
         loop {
             let snapshot = relay.snapshot.lock().await.clone();
-            if let Some(usage) = snapshot
-                .relay_usage
-                .active_circuits
-                .iter()
-                .find(|usage| usage.circuit_id == id && usage.bytes_src_to_dst > 0)
-            {
+            if let Some(usage) = snapshot.relay_usage.active_circuits.iter().find(|usage| {
+                usage.circuit_id == id
+                    && usage.bytes_src_to_dst >= min_src_to_dst
+                    && usage.bytes_dst_to_src >= min_dst_to_src
+            }) {
                 return usage.clone();
             }
             tokio::time::sleep(Duration::from_millis(200)).await;

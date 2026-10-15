@@ -1,0 +1,13 @@
+{
+  "browser_webrtc": {
+    "enabled": true,
+    "direct_connections": true,
+    "stun": {
+      "enabled": true,
+      "servers": ["stun:stun.cloudflare.com:3478"]
+    }
+  },
+  "turn": {
+    "client": { "enabled": false }
+  }
+}

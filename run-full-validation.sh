@@ -383,6 +383,8 @@ if should_run tests; then
   run_step "WebRTC companion tests" bash "$ROOT/qa/tools/run-webrtc-companion-tests.sh"
   run_step "Relay companion tests" bash "$ROOT/qa/tools/run-companion-tests.sh" libp2p-relay
   run_step "Gossipsub companion tests" bash "$ROOT/qa/tools/run-companion-tests.sh" libp2p-gossipsub
+  command -v node >/dev/null 2>&1 || { echo "Node.js is required for the TURN provider template tests." >&2; exit 1; }
+  run_step "TURN provider template tests" node --test "$ROOT/providers/**/*.test.mjs"
 fi
 
 if should_run dashboard; then

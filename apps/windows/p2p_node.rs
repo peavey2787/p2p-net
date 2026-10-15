@@ -2,6 +2,7 @@
 //!
 //! Run:
 //! `cargo run --release --features dashboard --example p2p_node`
+//! `cargo run --release --features dashboard --example p2p_node -- --profile turn`
 //!
 //! The example starts as a full-capability node by default: full Kademlia server,
 //! normal protocol cadences, all configured inbound transports, relay/rendezvous
@@ -52,11 +53,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    let cfg = if let Some(path) = arg_value(&args, "--config") {
+    let mut cfg = if let Some(path) = arg_value(&args, "--config") {
         NodeConfig::load_json_file(path)?
     } else {
         full_node_default_config()
     };
+    // One-word role selection (see docs/operator/CHOOSING_A_ROLE.md).
+    if let Some(profile) = arg_value(&args, "--profile") {
+        cfg.profile = profile.parse::<NodeProfile>()?;
+        cfg.validate()?;
+    }
 
     println!(
         "starting p2p_node profile={} tcp={} quic={} websocket={} webrtc_direct={} gossip={}s ping={}s dht_parallel={} dht_replicas={} max_connections={:?}",

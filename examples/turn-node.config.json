@@ -1,0 +1,7 @@
+{
+  "profile": "turn",
+  "identity_key_path": "state/turn-node.identity.hex",
+  "discovery": {
+    "peer_cache_path": "state/turn-node-peer-cache.json"
+  }
+}

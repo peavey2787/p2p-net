@@ -51,6 +51,7 @@ pub use connectivity::discovery::DiscoveryConfig;
 pub use connectivity::dns::{
     DnsaddrConfig, DEFAULT_DNSADDR_DOH_ENDPOINT, DEFAULT_DNSADDR_TIMEOUT_SECS,
 };
+pub use connectivity::ice::{IceServer, IceTransportPolicy};
 pub use connectivity::lan::LanDiscoveryConfig;
 pub use connectivity::limits::{ConnectionCapState, ConnectionLimitsConfig};
 pub use connectivity::mediator::MediatorConfig;
@@ -75,6 +76,12 @@ pub use connectivity::relay_discovery::{
     RelaySelectionPlan,
 };
 pub use connectivity::rendezvous::{RendezvousConfig, RendezvousState};
+pub use connectivity::turn::{
+    CloudflareProviderConfig, CredentialRequest, CredentialResponse, DiscoveryTrust,
+    HttpProviderConfig, SecretRef, SharedSecretProviderConfig, TurnBrokerConfig, TurnClientConfig,
+    TurnConfig, TurnCredentials, TurnProviderConfig, TurnServerConfig, TurnServerState,
+    TurnSnapshot, TurnSource, TURN_CREDENTIALS_PROTOCOL,
+};
 pub use connectivity::webrtc::{
     has_webrtc_direct_certhash, is_webrtc_direct_addr, DEFAULT_WEBRTC_DIRECT_LISTEN_ADDR,
     WEBRTC_DIRECT_TRANSPORT,
@@ -84,10 +91,10 @@ pub use libp2p::{Multiaddr, PeerId};
 pub use node::start_node;
 pub use node::{
     apply_resolved_capabilities, resolve_node_config, snapshot_to_json,
-    snapshot_to_prometheus_metrics, start_node_with_platform, BehaviourSet, BrowserWebRtcConfig,
-    EnvironmentConfig, EnvironmentReport, IceTransportPolicy, ListenerConfig, NatKind,
+    snapshot_to_prometheus_metrics, start_node_with_platform, BehaviourSet, BrowserIcePlan,
+    BrowserWebRtcConfig, EnvironmentConfig, EnvironmentReport, ListenerConfig, NatKind,
     NetworkReachability, NodeConfig, NodeHandle, NodeProfile, NodeRole, NodeSnapshot, PlatformKind,
-    PublicIpProbeConfig, ResolvedNodeConfig,
+    PublicIpProbeConfig, ResolvedNodeConfig, StunConfig, MAX_STUN_SERVERS,
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use platform::{AndroidPlatformRuntime, DesktopPlatformRuntime, IosPlatformRuntime};
