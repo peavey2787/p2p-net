@@ -1,323 +1,123 @@
 # p2p-net
 
-`p2p-net` is a Rust libp2p node core that gives applications a small, stable API for peer connectivity and messaging while the crate handles transport mechanics, discovery, relay fallback, native DCUtR where supported, browser/native WebRTC-direct, telemetry, and platform storage/runtime details.
-
 <p align="center">
   <img src="assets/p2p-net-logo.png" alt="p2p-net Logo" width="400">
 </p>
 
-On Windows, `build-android.cmd` is the one-click reproducible Android release launcher; it performs the two-build byte-for-byte verification and leaves verified unsigned artifacts under `dist/android/`.
+`p2p-net` is a Rust peer-to-peer node built on libp2p. It handles transports,
+discovery, NAT traversal and relays for you. Your app sees six simple calls.
+
+## How it works
+
+1. Give every node of your app the same `network_id` and `discovery.namespace.app_id`.
+2. Start the nodes. They find each other on the LAN, through the DHT and through
+   public bootstrap peers, and connect directly or through relays.
+3. Use the six API calls to send and receive messages.
+
+You don't write any discovery, NAT or transport code.
 
 ## Features
 
-- Native transports: TCP, QUIC, WebSocket, `/webrtc-direct`, DNS, Noise, Yamux
-- Browser/WASM transports: libp2p WebRTC-direct, WebTransport and secure WebSocket dialing, Circuit Relay, and relay-assisted browser-to-browser `/webrtc` direct upgrades with relay fallback (see `docs/impl/BROWSER_WEBRTC_UPGRADE.md`); raw TCP/QUIC listeners, LAN UDP discovery, AutoNAT/DCUtR, relay-server, and rendezvous-server roles are disabled by browser capability policy
-- Discovery: network-scoped Kademlia provider/address records, bounded same-LAN UDP discovery, peer cache, bootstrap seeds, rendezvous, and public fallback policy
-- NAT traversal: relay client/reservations, DCUtR direct upgrades, AutoNAT, and optional mediator/relay server profiles
-- TURN: built-in TURN server role (`profile = "turn"`), a libp2p credential broker so browsers use TURN with zero config, Cloudflare Realtime TURN, and a provider contract for more providers (`providers/turn/`)
-- App API: the same six data-plane primitives on native and WASM, plus `get_metrics()`, `local_binding()`, and coarse node-event subscriptions
-- Safety/ops: connection caps, replay/timestamp checks, peer scoring, snapshots, Prometheus-style export, and dashboard UI
-- Portability: platform runtime/storage abstraction for desktop/mobile plus a first-class `WasmNode` JS facade with IndexedDB persistence and per-profile tab ownership
+- **Runs anywhere:** native (Windows, Linux, macOS, Android) and in the browser
+  (WASM), with the same API.
+- **Finds peers:** LAN discovery, Kademlia DHT, rendezvous, and public bootstrap
+  fallback. No servers are required.
+- **Connects through NAT:** relays, DCUtR hole punching, AutoNAT, and
+  browser-to-browser WebRTC.
+- **TURN:** run your own TURN node or use Cloudflare. Browsers get TURN
+  credentials automatically.
+- **Roles:** pick a `profile` (`full`, `lite`, `relay`, `turn`, …) and the node
+  configures itself. Every setting can still be changed.
+- **Safe defaults:** connection caps, replay protection, peer scoring, and
+  authenticated messages.
+- **Telemetry:** per-peer and per-topic bandwidth, storage and compute counters,
+  plus Prometheus export and a terminal dashboard.
 
-DNS support is enabled by default through p2p-net's own no-Hickory resolver path. Peer addresses using `/dns`, `/dns4`, `/dns6`, or `/dnsaddr` are resolved before dialing, including manual `connect_peer` calls. WebSocket DNS names are resolved by p2p-net's transport adapter rather than rust-libp2p's Hickory-backed DNS feature, so the published crate has no repository-only Cargo patch requirement. `/dnsaddr` uses bounded DNS-over-HTTPS TXT lookup support with a configurable endpoint; the default is Cloudflare, while production deployments can point it at an internal/self-hosted resolver or disable `/dnsaddr`. Upstream libp2p mDNS is not included. Instead, p2p-net enables its own bounded, compatibility-scoped UDP LAN discovery by default, with multicast/broadcast on normal LANs and an Android Emulator host-assist path using the emulator's `10.0.2.2` host alias.
-
-## Repository layout
-
-```text
-crates/              Shared Rust P2P core modules
-docs/impl/          Implementation docs
-docs/spec/          Core specifications
-docs/operator/      Operator deployment guides
-docs/validation/    Validation docs
-docs/project/       Project/audit notes
-docs/future-work/   Deferred ideas and long-term proposals
-docs/roadmap.md      Active roadmap, when one exists
-qa/ci/              Validation policy/config helpers used by the root launchers
-qa/tests/           Domain-grouped global/system/invariant integration tests
-qa/fuzz/            Fuzz targets
-qa/tools/           Internal QA utilities
-qa/vectors/         Protocol fixtures and test vectors
-examples/           Runnable examples and minimal demo configs
-external/           Publishable hardened companion transport source
-```
-
-## Use p2p-net from crates.io
-
-After `p2p-net` 0.1.0 is published, downstream Rust applications only need the root crate:
+## Add to your project
 
 ```toml
 [dependencies]
-p2p-net = "0.1.0"
+p2p-net = { git = "https://github.com/peavey2787/p2p-net" }
 ```
 
-Then use the high-level async API from your application's existing executor:
+## The six API calls
 
 ```rust
-use p2p_net::{start_node, NetError, NodeConfig};
+use p2p_net::{start_node, NodeConfig};
 
-async fn run_node() -> Result<(), NetError> {
-    let node = start_node(NodeConfig::default()).await?;
-    let peers = node.get_peers().await?;
-    println!("known peers: {}", peers.len());
-    node.shutdown().await;
-    Ok(())
-}
+let handle = start_node(NodeConfig::load_json_file("p2p-node.json")?).await?;
+
+handle.connect_peer(addr).await?;                            // connect to a peer
+handle.disconnect_peer(peer_id).await?;                      // disconnect
+handle.send_message(peer_id, "chat/general", payload).await?; // send to one peer
+handle.broadcast("game/lobby", payload).await?;              // send to a topic
+let mut messages = handle.subscribe("chat/general").await?;  // receive from a topic
+let peers = handle.get_peers().await?;                       // list known peers
 ```
 
-p2p-net ships four companion crates, each an upstream rust-libp2p crate plus a small audited patch: `p2p-net-webrtc` (native WebRTC), `p2p-net-webrtc-websys` (browser WebRTC and browser-to-browser signaling), `p2p-net-relay` (metered Circuit Relay v2) and `p2p-net-gossipsub` (gossipsub with the stranded-message fix), all at 0.1.0. Application developers do **not** add these crates themselves; Cargo resolves them automatically from the `p2p-net` dependency graph. The repository keeps local paths to the companions only for development, and Cargo strips that path from the normalized crates.io package. There is no `[patch.crates-io]` requirement in downstream projects. The source workspace uses a checked-in `.cargo/config.toml` only to map rust-libp2p 0.57's resolution-only weak DNS/mDNS lock entries to audited no-Hickory local placeholders; the root publishable manifest remains patch-free, and the packaged downstream smoke test runs outside the repository configuration.
+Messages travel over gossipsub, so encrypt payloads end to end if they are
+private. Payloads can be up to 1 MiB. See
+[API_PRIMITIVES.md](docs/spec/API_PRIMITIVES.md).
 
-For browser consumers, p2p-net's libp2p 0.57 graph defines one WASM ABI family: `wasm-bindgen =0.2.108`, `js-sys/web-sys =0.3.85`, and `wasm-bindgen-futures =0.4.58`. A workspace that also embeds another WASM crate must align its direct exact pins to that family. In particular, older companion pins such as `wasm-bindgen =0.2.100`, `js-sys =0.3.77`, and `wasm-bindgen-futures =0.4.50` are not compatible with the p2p-net browser graph and must be upgraded in that consumer (for example HYDRA / hydra-msg-wasm) rather than downgrading p2p-net.
-
-Maintainers can qualify the exact crates.io payloads with `package-crates.cmd` on Windows or `./package-crates.sh` on Linux. The Windows launcher pauses before closing on both success and failure so Cargo diagnostics remain visible. The packaging gate first verifies the committed production lockfile and packages each companion. It then packages `p2p-net` with command-line-only crates.io patches that point the unpublished companion names at the local audited sources. That local verification override is not serialized into the normalized `.crate`; the runners inspect the normalized manifests, compile a temporary downstream consumer from the packaged payloads, write `.crate` files and SHA-256 sums to `dist/crates/`, and record the required publish order in `PUBLISH-ORDER.txt`. Publish the companions first, wait until crates.io indexes them, then dry-run and publish `p2p-net`.
-
-## Run all stable tests and checks
-
-Use the single full-validation launcher for your OS from the crate root. On Windows, double-click `run-full-validation.cmd`; on Linux, `run-full-validation.sh` is executable and can be launched directly from a file manager/terminal:
-
-```cmd
-run-full-validation.cmd
-```
-
-It cleans stale build artifacts, verifies the committed dependency lockfile with `--locked`, checks formatting without mutating source, compiles `wasm32-unknown-unknown`, builds the browser package with `wasm-pack --target web`, and runs the browser/WASM gate in Playwright-managed Chromium and Firefox before native tests, dashboard-feature tests, clippy, `cargo audit`, and `cargo deny`. The browser gate does not use an installed Chrome/Firefox, ChromeDriver, GeckoDriver, or the `wasm-bindgen-test` WebDriver harness. Playwright is pinned to 1.63.0 and owns the matching browser binaries in its normal user cache; Node.js/npm are the only additional browser-QA prerequisites. Three intentionally long hostile/load/soak tests are deferred so they run once at the end, with the one-minute soak test last. The full runner has no skip option for those tests: `run-full-validation` means all registered tests run. It uses isolated validation target directories to avoid stale/incomplete `rlib` artifacts on Windows. Rust is pinned to 1.98.0; audit/deny and `wasm-pack` tool releases are pinned, and the WASM target plus missing exact tools/browser binaries are installed unless `--no-install-tools` is used.
-
-After an intentional dependency-manifest change, regenerate `Cargo.lock` with the pinned Rust/Cargo 1.98.0 toolchain, review the resulting dependency diff, and commit that exact resolver output before treating validation as release evidence. The canonical validation launchers are read-only: they verify the committed lockfile with `--locked` and never regenerate or repair dependency state at runtime.
-
-On an MSVC Rust host, the Windows launcher also initializes the installed Visual Studio C++ developer environment before Cargo can link anything. It verifies that the x64 Universal CRT (`ucrt.lib`) is installed and performs a tiny `rustc` link smoke test up front, so an incomplete Build Tools/Windows SDK installation fails immediately with an actionable preflight error instead of surfacing halfway through Clippy.
-
-Useful options:
-
-```cmd
-run-full-validation.cmd --no-install-tools
-run-full-validation.cmd --no-clean
-run-full-validation.cmd --from clippy
-```
-
-Linux equivalent:
-
-```bash
-./run-full-validation.sh
-./run-full-validation.sh --from clippy
-```
-
-Resume mode accepts `lockfile`, `format`, `dependency-graph`, `wasm`, `tests`, `dashboard`, `clippy`, `audit`, or `deny`. For example, after fixing a Clippy-only failure, `--from clippy` skips the already-passed earlier stages, preserves `target/full-validation` automatically (equivalent to `--no-clean`), and continues from Clippy through audit, dependency policy, and all three deferred hostile/soak tests. Resume mode assumes the earlier stages already passed for the source tree you are continuing; CI never uses resume mode, and release builds only accept full-mode evidence (running the complete gate automatically when matching full evidence is absent).
-
-Every validation invocation now persists its own evidence beneath `qa/evidence/runs/`: a complete transcript, PASS/FAIL manifest, Git status when available, exact Cargo.lock hash, toolchain versions, and a release-input fingerprint. Validation can run directly from a source ZIP with no `.git` directory; in that case the evidence layer builds a temporary external Git object database and records `source_fingerprint_mode=synthetic-worktree`. The generated run directories are Git-ignored. On Windows, the outer CMD launcher keeps a double-clicked console open even if evidence setup fails before the validator starts; use `--no-pause` for automation.
-
-Fuzz targets are included under `qa/fuzz/`. They are not part of the cross-platform stable launcher, but the scheduled security workflow builds/runs every fuzz target and also repeats the complete validation suite including deferred hostile/load/soak tests. Additional validation and hostile-network notes are in `docs/validation/VALIDATION.md`.
-
-
-### Browser/WASM consumer
-
-Browser consumers use the same `NodeHandle` core through the thin `WasmNode` facade. `profile = "auto"` resolves internally to `wasm_lite`: Kademlia client, relay client, rendezvous client, Identify, Ping, and Gossipsub remain available, while native-only listener/server and hole-punch assumptions are disabled. Browser dial planning rejects raw TCP/QUIC candidates before dialing and keeps browser-compatible WebRTC-direct, WSS, and `/p2p-circuit` candidates. WebTransport is intentionally not advertised yet; its dependency remains available for a later interoperability-qualified transport addition.
-
-`BrowserNodeStorage` asynchronously hydrates a synchronous in-memory journal from IndexedDB before startup. The identity is flushed durably before the swarm starts, later peer-cache/public-state changes are periodically flushed, and page-hide/visibility/shutdown trigger best-effort immediate flushes. A Web Locks profile lock (with an IndexedDB lease fallback) prevents two tabs from silently running the same stored PeerId. The storage namespace is caller-defined, so applications can maintain one persistent identity per profile.
-
-Build the reference browser package with `wasm-pack build --target web --dev --out-dir apps/browser/pkg`. `apps/browser/` intentionally contains no SDP, ICE, STUN, `RTCPeerConnection`, WebSocket, relay, or libp2p logic; it only invokes `WasmNode`.
-
-Large application payloads retain the documented 1 MiB API ceiling. Internally, p2p-net fragments payloads above 16 KiB into bounded authenticated-topic fragments, applies per-peer/global reassembly ceilings and expiry, rejects malformed/mismatched fragments, verifies a full-payload BLAKE3 hash, and delivers exactly one reconstructed `AppMessage` to subscribers.
-
-## The General-Purpose Application API
-
-Applications should build on our stable, high-level API surface instead of depending on low-level swarm or libp2p internals. Every application builds on the same six primitives exposed by `NodeHandle`:
+## Telemetry
 
 ```rust
-// Establish connection to a target address
-handle.connect_peer(addr).await?;
-
-// Drop connection to a peer
-handle.disconnect_peer(peer_id).await?;
-
-// Addressed delivery to a specific peer. The carrier is gossipsub, so encrypt
-// payloads end-to-end when confidentiality is required.
-handle.send_message(peer_id, "chat/general", payload).await?;
-
-// Gossip/PubSub broadcast to all subscribed peers on a topic
-handle.broadcast("game/lobby", payload).await?;
-
-// Subscribe to a topic and receive a local message stream
-let mut messages = handle.subscribe("chat/general").await?;
-
-// Query known peers and discovery metrics
-let peers = handle.get_peers().await?;
+let all = handle.get_metrics(None).await?;
+let one_peer = handle.get_metrics(Some(peer_id)).await?;
 ```
 
-This simple interface effectively decouples your business logic (chat, gaming, database sync) from transport mechanics (TCP, WebRTC, QUIC, NAT-punting).
-
-Application messages use `AppMessage` envelopes and app topics namespaced as `p2p-net/app/v2/net-<network_id>/<topic>`. See `docs/spec/API_PRIMITIVES.md` and `docs/impl/API_IMPLEMENTATION.md`.
-
-### Telemetry without payment logic
-
-The core primitives stay free of wallet, token, and payment-settlement code. Applications that need usage accounting can build those layers above the node by calling the seventh query/management primitive:
-
-```rust
-let all_metrics = handle.get_metrics(None).await?;
-let peer_metrics = handle.get_metrics(Some(peer_id)).await?;
-```
-
-`get_metrics()` reports runtime-owned bandwidth, storage, and compute counters, including per-peer and per-topic bandwidth where available. That gives apps enough low-level data to implement custom settlement, micropayment, quota, or billing systems without coupling financial logic into the networking core.
+`get_metrics` reports bandwidth, storage and compute usage, so apps can build
+quotas, billing or payments on top without touching the network code.
 
 ## Start a node
 
-Generate the example's full-node config:
-
-```powershell
+```bash
 cargo run --release --features dashboard --example p2p_node -- --write-default-config p2p-node.json
 ```
 
-Run with the config:
-
-```powershell
+```bash
 cargo run --release --features dashboard --example p2p_node -- --config p2p-node.json
 ```
 
-The standalone example is deliberately production-shaped rather than throttled: it selects the `full` profile, runs a Kademlia server, keeps all configured inbound transports available, uses the normal 5-second Gossipsub heartbeat and 15-second Ping cadence, uses the normal three-way DHT query parallelism/provider-key replication, and retains the standard production connection-safety policy. Developers can copy the generated JSON and selectively change roles, listeners, limits, or discovery policy for their deployment. Runtime optimizations are implemented in hot paths instead of by silently reducing protocol capability: public Kademlia request events bypass app-side bookkeeping, DHT/provider observability is coalesced, duplicate Identify/public-address work is suppressed, peer-cache writes are deduplicated and batched, and recovery refreshes cannot form a discovery-to-connection feedback loop. Native WebRTC-direct also bounds and expires unverified pre-handshake UDP state, cleans failed/cancelled ICE mux connections, and closes peer connections on drop so public listener churn cannot retain transport state indefinitely.
-
-The dashboard stays on the existing `crossterm` backend and does not pull `ratatui` or `lru` back into the dependency graph. Its full-screen view uses responsive color-coded panels for reachability, peer state, discovery/relay/DHT health, traffic counters, and a newest-first event stream. Event text is wrapped inside the panel instead of spilling across the console. All dynamic terminal text is bounded and normalized before rendering so peer-derived control characters, escape sequences, bidi controls, and other non-ASCII formatting cannot become terminal commands or deceptive layout.
-
-Press `q` or `Esc`, use Ctrl-C, or close the console window to stop the dashboard node cleanly. Windows console close/logoff/shutdown and Unix SIGTERM/SIGHUP are handled, and node shutdown has a one-second fail-safe before its runtime task is aborted.
-
-Run and ship optimized release builds. Debug-mode libp2p/crypto/network code is substantially more CPU-intensive and is intended for development diagnostics only.
-
-### Canonical reproducible release builds
-
-After the full validation gate is green, use the root release runner for the host platform:
-
-```cmd
-build-release.cmd
-```
-
-```bash
-./build-release.sh
-```
-
-The release runners snapshot the exact current Git working tree into a synthetic detached commit, including tracked modifications and non-ignored untracked files, so an official reproducibility build does not require committing an otherwise validated source snapshot first. They bind the release to a durable full-validation evidence record whose release-input fingerprint matches the code being built; if no matching evidence exists, they validate a detached worktree created from that frozen snapshot outside the repository tree and copy the resulting machine evidence back to the ignored evidence store. Validation fails if it changes any tracked snapshot file, while generated/untracked validation state cannot redefine the already-frozen release identity. `--force-validation` intentionally reruns validation even when matching evidence exists. The exact snapshot is then built twice from two independent detached clean worktrees with separate target directories, build paths are normalized, incremental compilation is disabled, and the build fails unless the two release binaries have identical SHA-256 output. Windows enables MSVC `/Brepro`; Linux uses a deterministic SHA-1 ELF build ID. The output under `dist/<target-triple>/` includes the binary, `BUILD-MANIFEST.txt`, `SHA256SUMS.txt`, `SOURCE-MANIFEST.txt`, `RELEASE-INPUTS.txt`, and the complete `validation-evidence/` bundle used for the release.
-
-## Default connectivity model
-
-Normal app mode uses public fallback by default:
-
-```text
-fresh node -> LAN discovery and public bootstrap/DHT discovery run in parallel -> dialable app peers are recovered -> direct/relay auto-connect attempts start -> DCUtR upgrades relayed paths when possible -> contact trust still requires invite/QR/join-code
-```
-
-Regular users should not have to edit bootstrap settings before first launch. Manual `bootstrap_peers`, `discovery.bootstrap_seed_peers`, `discovery.rendezvous_peers`, and `relay_peers` are power-user/operator controls and should be exposed under Advanced settings in app UIs.
-
-Auto-connect is **not** auto-trust. A peer discovered through public fallback, DHT provider records, or rendezvous may be dialed at the transport layer, but it must not become a trusted chat/contact identity until the app performs an explicit trust action such as QR scan, join code, invite acceptance, or safety-number verification.
-
-The shared crate ships public bootstrap defaults but does not depend on a project-operated rendezvous or relay fleet. Fresh default nodes use a network-specific application namespace, publish/query DHT provider records, recover identity-signed dialable-address records, discover public Circuit Relay v2 hop peers from the public DHT, reserve relay routes when needed, and attempt DCUtR upgrades while retaining relay fallback. Nodes on the same LAN take the faster bounded UDP discovery path first. Operator-provided rendezvous/relay peers remain supported as additional deterministic infrastructure, but they are no longer required for the default discovery path to exchange application-peer addresses.
-
-Runtime snapshots and Prometheus metrics report public fallback by category: `public_bootstrap_used`, `public_rendezvous_used`, and `public_relay_used`. Peer metadata also distinguishes `public_rendezvous` from operator-provided `rendezvous` sources.
-
-Private-infrastructure-first operation is still supported as an Advanced/operator mode by setting `discovery.public_bootstrap.mode` to `disabled` and configuring owned bootstrap/rendezvous/relay infrastructure explicitly. See `docs/operator/CONSUMER_DEFAULT.md` for the normal app walkthrough and `docs/operator/PRIVATE_INFRASTRUCTURE_FIRST.md` for the private mode override.
+This runs a full node with a live dashboard. Press `q` to stop it.
 
 ## Configure a node
 
-Edit `p2p-node.json`. The default config is also available at:
-
-```text
-examples/node-config.example.json
-```
-
-Example configs are also available:
-
-```text
-examples/consumer-default.config.json
-examples/public-fallback.config.json
-examples/private-infrastructure-first.config.json
-```
-
-Use `examples/consumer-default.config.json` for normal app mode. `examples/public-fallback.config.json` is an expanded public-fallback example for operators and power users. `examples/private-infrastructure-first.config.json` is the Advanced/operator private mode.
-
-Operator guidance is in `docs/operator/`.
-
-Important fields:
-
-- `profile`: high-level node role selection: `auto`, `full`, `lite`, `relay`, `mediator`, `rendezvous`, `bootstrap`, `turn`, or `mobile_lite`. `docs/operator/CHOOSING_A_ROLE.md` explains each role in plain terms.
-- `identity_key_path`: stable private node identity; keep this file private and back it up according to `docs/spec/IDENTITY_KEY_BACKUP_ROTATION.md`.
-- `listen_addresses`: local TCP/QUIC/WebSocket/WebRTC-direct listen multiaddrs. Use concrete `/ip4` or `/ip6` listen addresses, not DNS names.
-- `external_addresses`: operator-asserted externally reachable multiaddrs (for example a port-forwarded relay the public-IP probe cannot see, or a relay serving a private network). They are advertised as confirmed external addresses, including in Circuit Relay reservations; a relay must advertise at least one reachable address for clients to accept its reservations.
-- `listeners`: per-transport inbound listener switches. Set `websocket` and/or `webrtc_direct` to `false` when those inbound transports are not needed; outbound dial support remains available.
-- `bootstrap_peers`: trusted `/p2p/<PeerId>` bootstrap multiaddrs. `/dns`, `/dns4`, `/dns6`, and `/dnsaddr` dial addresses are supported by default.
-- `dnsaddr`: `/dnsaddr` DoH policy. Defaults to bounded Cloudflare DoH for simple operation; set `doh_endpoint` to an internal/self-hosted DoH resolver for production, or set `enabled` to `false` to reject `/dnsaddr` in configured peers. See `docs/impl/DNSADDR_DOH.md`.
-- `relay_peers`: operator-pinned relay or mediator peers to dial and reserve through.
-- `discovery.namespace`: derive hashed app/contact/group discovery namespaces from `network_id`, `app_id`, and tags. With no explicit tags, the built-in default derives a reserved network-specific application namespace instead of publishing one generic `p2p-net` provider key. See `docs/spec/DISCOVERY_NAMESPACES.md`.
-- `discovery.lan`: bounded same-LAN multicast/broadcast discovery. Enabled by default; discovery hints are compatibility-scoped and the resulting libp2p connection is still authenticated by Noise + Identify.
-- `discovery.public_bootstrap`: public bootstrap, rendezvous, relay, and network auto-connect fallback. Defaults to `fallback_only` for normal app mode; set `disabled` for private-infrastructure-first mode or `always` for aggressive public fallback. See `docs/spec/PUBLIC_FALLBACK.md`.
-- `discovery.dht`: announce and query hashed app namespaces through Kademlia provider records. See `docs/spec/DHT_PROVIDER_DISCOVERY.md`.
-- `discovery.relay_discovery`: select relay candidates from configured relays, cached healthy peers, rendezvous infrastructure, and public-DHT peers that advertise Circuit Relay v2 hop capability. See `docs/impl/RELAY_DISCOVERY.md`.
-- `dcutr`: direct-connection upgrade policy with relay fallback, retry budget, and observability. See `docs/impl/DCUTR_POLICY.md`.
-- `start_node_with_platform(...)`: embed the shared core with platform runtime/storage adapters. See `docs/impl/PLATFORM_RUNTIME.md`.
-- `bindings`: binding-safe JSON/enum facade for Kotlin, Swift, desktop, and WebView shells. See `docs/impl/BINDINGS.md`.
-- `NodeHandle`: six app data-plane primitives plus `get_metrics()` for runtime-owned telemetry. See `docs/spec/API_PRIMITIVES.md`.
-- `reserve_configured_relays`: request `/p2p-circuit` reservations from selected relays.
-- `discovery.rendezvous`: enable rendezvous client/server registration/discovery.
-- `connection_limits`: global, per-peer, and per-IP connection caps.
-- `message_security`: heartbeat size, timestamp, replay, and reputation settings.
-- Heartbeat gossip uses the compact binary `p2p-net/heartbeat/v2` wire format; the former JSON heartbeat wire is intentionally version-separated.
-- `mediator`: first-class DCUtR mediator policy. `profile = "mediator"` enables the underlying relay server capability intentionally for lite/mobile peers. See `docs/impl/MEDIATOR.md`.
-- `relay.enabled`: opt-in generic relay server mode. Defaults to `false`.
-- `relay.allow_peers` / `relay.deny_peers`: connection-level relay-node ACLs; deny wins.
-- `relay.schedule`: UTC relay service windows.
-- `browser_webrtc`: browser-to-browser WebRTC as its own capability. `enabled`, `ice_transport_policy` (`all`/`relay`), `direct_connections`, and `stun` (`enabled`, `servers`); the original `ice_servers` list is still accepted. See `docs/operator/BROWSER_WEBRTC.md`.
-- `turn.client`: TURN relay sources that feed `browser_webrtc`: TURN-serving p2p-net peers (`auto_discover`, the `libp2p` source), static `servers` (`self_hosted`), and `cloudflare`/`http` credential endpoints, in an automatic or explicit `providers` order. Defaults contact no third-party service.
-- `turn.server`: built-in UDP TURN server (`profile = "turn"`). Relays only to public addresses by default; the relay port range caps allocations.
-- `turn.broker`: hands short-lived TURN credentials to peers over `/p2p-net/turn-credentials/1.0.0` from the built-in server and/or a provider such as Cloudflare. See `docs/operator/TURN.md` and `providers/turn/`.
-
-Minimal volunteer relay config:
+Settings live in a JSON file. Most apps only need this:
 
 ```json
 {
-  "relay": {
-    "enabled": true
-  }
+  "profile": "auto",
+  "network_id": 7001,
+  "discovery": { "namespace": { "app_id": "my-app" } }
 }
 ```
 
-Minimal DCUtR mediator config:
+Commonly changed settings:
 
-```json
-{
-  "profile": "mediator"
-}
+| Setting | What it does |
+| --- | --- |
+| `profile` | The node's role. See [CHOOSING_A_ROLE.md](docs/operator/CHOOSING_A_ROLE.md). |
+| `listen_addresses` | Where the node accepts connections. |
+| `bootstrap_peers`, `relay_peers` | Your own infrastructure, if you run any. |
+| `discovery.public_bootstrap.mode` | `disabled` to use only your own infrastructure. |
+| `browser_webrtc`, `turn` | Browser WebRTC and TURN. See [BROWSER_WEBRTC.md](docs/operator/BROWSER_WEBRTC.md) and [TURN.md](docs/operator/TURN.md). |
+
+More:
+
+- Example configs: [`examples/`](examples/).
+- Deployment and roles: [docs/operator/](docs/operator/README.md).
+- Private infrastructure: [PRIVATE_INFRASTRUCTURE_FIRST.md](docs/operator/PRIVATE_INFRASTRUCTURE_FIRST.md).
+
+Discovering a peer only connects to it. It never makes that peer trusted; apps
+decide trust themselves, for example with an invite or a QR code.
+
+## Validate
+
+```bash
+./run-full-validation.sh
 ```
 
-Minimal TURN node config (UDP 3478 and 49160-49359 must be reachable):
-
-```json
-{
-  "profile": "turn"
-}
-```
-
-Relay/mediator ACL note: current ACL enforcement is connection-level. A peer denied from relay/mediator use is denied from connecting to that node at all.
-
-## Production-readiness status
-
-The shared core and full-node example are hardened for production use when the repository release gates are green: exact Rust/toolchain inputs, committed `Cargo.lock`, tests/clippy/audit/deny, hostile/soak coverage, and scheduled fuzzing. Network-facing state is bounded, identity persistence is fail-closed, application envelopes are authenticated against signed gossipsub authors/topics, and the full node keeps Kademlia/relay/WebRTC capabilities enabled by default.
-
-Production operators still own deployment concerns that no library can supply automatically: monitoring/alerting, identity backup/rotation, firewall/NAT policy, capacity planning, secure application payload design, and representative multi-host soak testing. External security review is strongly recommended for high-value deployments, but is not substituted by or falsely implied by the repository's automated gates.
-
-## Manual checks
-
-Normally, do not run the individual commands manually. Use `run-full-validation.cmd` on Windows or `./run-full-validation.sh` on Linux; these are the canonical root-level one-file validation runners for formatting, tests, clippy, security audit, dependency policy, and the deferred hostile/load/soak tests that are always executed at the end.
-
-- `docs/impl/EVENT_HANDLING.md` documents the single-responsibility swarm event split.
-- `docs/impl/BEHAVIOUR_POLICY.md` documents profile-driven behaviour construction.
-- `docs/impl/RELAY_DISCOVERY.md` documents relay discovery and selection.
-- `docs/impl/DCUTR_POLICY.md` documents DCUtR policy and fallback counters.
-- `docs/impl/BROWSER_WEBRTC_UPGRADE.md` documents the relay-assisted browser WebRTC direct upgrade, its diagnostics, and its relay fallback.
-- `docs/impl/PLATFORM_RUNTIME.md` documents the platform runtime/storage abstraction.
-- `docs/impl/BINDINGS.md` documents the cross-platform binding facade.
-- `docs/spec/API_PRIMITIVES.md` documents the application API and telemetry query primitive.
-- `docs/spec/DISCOVERY_RESURRECTION.md` documents consumer-default public fallback, advanced private-infrastructure mode, and peer roles.
-- `docs/spec/DISCOVERY_NAMESPACES.md` documents hashed app discovery namespace derivation.
-- `docs/spec/PUBLIC_FALLBACK.md` documents default public bootstrap, rendezvous, relay, and auto-connect fallback policy.
-- `docs/operator/README.md` links deployment examples and production operator guidance.
-- `docs/operator/TURN.md` documents the TURN client, built-in TURN server, credential broker, and Cloudflare provider.
-- `docs/spec/DHT_PROVIDER_DISCOVERY.md` documents DHT provider-record namespace discovery.
-- `docs/spec/PEER_BOOK.md` documents normalized peer metadata returned by `get_peers()`.
-- `docs/impl/DHT_PROVIDER_DISCOVERY_IMPLEMENTATION.md` documents DHT provider wiring and observability.
-- `docs/impl/PEER_BOOK_IMPLEMENTATION.md` documents peer-book update paths and observability.
-- `docs/impl/PUBLIC_FALLBACK_IMPLEMENTATION.md` documents the startup wiring for public fallback.
-- `docs/impl/API_IMPLEMENTATION.md` documents API command routing and message delivery.
-- `qa/tests/hygiene/codebase_hygiene.rs` guards repository/layout and profile-decision hygiene, while `qa/tests/hygiene/codebase_architecture_hygiene.rs` guards focused module ownership and complete, unique test registration.
+On Windows, run `run-full-validation.cmd`. It runs formatting, tests, browser
+tests, clippy, and the security and dependency checks. See
+[VALIDATION.md](docs/validation/VALIDATION.md).
