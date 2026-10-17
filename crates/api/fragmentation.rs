@@ -330,6 +330,16 @@ mod tests {
     }
 
     #[test]
+    fn fragments_never_decode_as_complete_messages() {
+        let peer = PeerId::random();
+        let payload = vec![0x5a; 3 * APP_FRAGMENT_PAYLOAD_BYTES];
+        let message = AppMessage::broadcast(1, "fragment-test", peer, payload).unwrap();
+        for wire in fragment_message(&message).unwrap() {
+            assert!(super::super::decode_app_message(&wire).is_err());
+        }
+    }
+
+    #[test]
     fn duplicate_fragment_does_not_double_count_or_complete_early() {
         let peer = PeerId::random();
         let message = AppMessage::broadcast(

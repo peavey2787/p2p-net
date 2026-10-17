@@ -258,8 +258,11 @@ pub trait P2PNode {
     ) -> impl Future<Output = Result<NodeMetrics, NetError>> + '_;
 }
 
-/// Application payload envelope carried by the shared P2P core.
+/// Application payload envelope carried by the shared P2P core. Unknown
+/// fields are rejected so an internal fragment (a superset of these fields)
+/// can never decode as a complete, truncated message.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AppMessage {
     #[serde(default = "default_app_message_schema_version")]
     pub schema_version: u16,
