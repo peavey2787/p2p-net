@@ -83,9 +83,7 @@ mod tests {
     #[test]
     fn empty_payload_round_trips() {
         let message = sample(Vec::new());
-        let wire = encode_app_message(&message);
-        if let Ok(wire) = wire {
-            assert_eq!(decode_app_message(&wire).expect("decode"), message);
-        }
+        let wire = encode_app_message(&message).expect("encode");
+        assert_eq!(decode_app_message(&wire).expect("decode"), message);
     }
 }
