@@ -36,6 +36,7 @@ pub(crate) struct AppFragment {
     pub payload_len: usize,
     pub index: usize,
     pub total: usize,
+    #[serde(with = "super::payload_bytes")]
     pub payload: Vec<u8>,
 }
 

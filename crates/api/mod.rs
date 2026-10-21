@@ -20,6 +20,7 @@ use crate::common::utils::unix_timestamp_ns;
 
 mod fragmentation;
 mod metrics;
+mod payload_bytes;
 mod subscriptions;
 
 pub(crate) use fragmentation::{decode_fragment, fragment_message, AppFragmentReassembler};
@@ -272,6 +273,7 @@ pub struct AppMessage {
     pub target_peer_id: Option<String>,
     pub timestamp_ns: u64,
     pub nonce_hex: String,
+    #[serde(with = "payload_bytes")]
     pub payload: Vec<u8>,
 }
 
