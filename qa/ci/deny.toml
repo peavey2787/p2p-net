@@ -27,7 +27,7 @@ allow = [
     "MIT",
     "Unicode-3.0",
     "Zlib",
-    "BUSL-1.1",
+    "GPL-2.0-or-later",
 ]
 
 [bans]

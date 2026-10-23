@@ -2,7 +2,7 @@
 name = "p2p-net-android-native"
 version = "0.1.0"
 edition = "2021"
-license = "BUSL-1.1"
+license = "GPL-2.0-or-later"
 publish = false
 
 [lib]
