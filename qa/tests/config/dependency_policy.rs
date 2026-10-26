@@ -20,7 +20,7 @@ fn crates_io_manifest_is_publishable_without_manifest_patches() {
     assert!(manifest.contains("rust-version = \"1.98\""));
     assert!(manifest.contains("members = [\"apps/android/native\"]"));
     assert!(manifest.contains(
-        "exclude = [\"qa/fuzz\", \"external/libp2p-webrtc\", \"external/libp2p-relay\", \"external/libp2p-webrtc-websys\", \"external/libp2p-gossipsub\"]"
+        "exclude = [\"qa/fuzz\", \"external/dtls\", \"external/libp2p-webrtc\", \"external/libp2p-relay\", \"external/libp2p-webrtc-websys\", \"external/libp2p-gossipsub\"]"
     ));
     assert!(manifest.contains("\"external/libp2p-webrtc/**\""));
     assert!(manifest.contains("\"external/libp2p-relay/**\""));
@@ -69,6 +69,7 @@ fn crates_io_manifest_is_publishable_without_manifest_patches() {
         "[patch.crates-io]",
         "libp2p-dns = { path = \"external/libp2p-dns\" }",
         "libp2p-mdns = { path = \"external/libp2p-mdns-placeholder\" }",
+        "dtls = { path = \"external/dtls\" }",
     ] {
         assert!(
             cargo_config.contains(required),

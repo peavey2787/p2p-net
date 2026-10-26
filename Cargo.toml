@@ -1,6 +1,6 @@
 [workspace]
 members = ["apps/android/native"]
-exclude = ["qa/fuzz", "external/libp2p-webrtc", "external/libp2p-relay", "external/libp2p-webrtc-websys", "external/libp2p-gossipsub"]
+exclude = ["qa/fuzz", "external/dtls", "external/libp2p-webrtc", "external/libp2p-relay", "external/libp2p-webrtc-websys", "external/libp2p-gossipsub"]
 resolver = "2"
 
 [package]
@@ -19,6 +19,7 @@ documentation = "https://docs.rs/p2p-net"
 publish = true
 exclude = [
     ".cargo/**",
+    "external/dtls/**",
     "external/libp2p-dns/**",
     "external/libp2p-gossipsub/**",
     "external/libp2p-mdns-placeholder/**",

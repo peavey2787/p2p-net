@@ -274,10 +274,11 @@ fn crates_io_release_has_no_root_patch_dependency() {
     assert!(manifest.contains("version = \"0.1.0\""));
     assert!(manifest.contains("members = [\"apps/android/native\"]"));
     assert!(manifest.contains(
-        "exclude = [\"qa/fuzz\", \"external/libp2p-webrtc\", \"external/libp2p-relay\", \"external/libp2p-webrtc-websys\", \"external/libp2p-gossipsub\"]"
+        "exclude = [\"qa/fuzz\", \"external/dtls\", \"external/libp2p-webrtc\", \"external/libp2p-relay\", \"external/libp2p-webrtc-websys\", \"external/libp2p-gossipsub\"]"
     ));
     for excluded in [
         "\".cargo/**\"",
+        "\"external/dtls/**\"",
         "\"external/libp2p-dns/**\"",
         "\"external/libp2p-mdns-placeholder/**\"",
         "\"external/libp2p-relay/**\"",
